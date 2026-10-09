@@ -10,6 +10,20 @@ Chat, Notes, Calendar sab mein sign-in. (Google Account jaisa, but Gothwad!)
 
 ---
 
+## 📚 Documentation Map (naye log/AI ke liye)
+
+| File | Kiske liye | Kya milega |
+|------|-----------|------------|
+| **[AGENTS.md](AGENTS.md)** | 🤖 AI agents | Working guide — rules, style, commands, workflow. **PEHLE YEH PADHO** |
+| **[TASK.md](TASK.md)** | 🤖 Everyone | Live status board + poora kaam ka itihaas (work log) |
+| **[PLAN.md](PLAN.md)** | 🤖 Everyone | Master plan — Steps 3-6 + infrastructure decisions |
+| **[docs/SETUP.md](docs/SETUP.md)** | 👤 Humans | Step-by-step deploy (Supabase → Worker → Pages) |
+| **[docs/OAUTH.md](docs/OAUTH.md)** | 👤 App developers | "Sign in with Gothwad" integration guide |
+| **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** | 🤖 Tech | Flows, cookies, JWT, schema, endpoints |
+| **[ROADMAP.md](ROADMAP.md)** | 📖 Historical | User ka original vision doc |
+
+---
+
 ## 📁 Project Structure
 
 ```

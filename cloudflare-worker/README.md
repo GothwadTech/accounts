@@ -1,6 +1,10 @@
 # ⚡ GOTHWAD AUTH WORKER (Cloudflare Worker)
 
-Yeh Worker Gothwad Accounts ka **real backend** hai — saare `/api/auth/*` routes.
+> Part of Gothwad Accounts — overview: [README.md](../README.md) ·
+> AI guide: [AGENTS.md](../AGENTS.md) · Architecture: [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)
+
+Yeh Worker Gothwad Accounts ka **real backend** hai — saare `/api/auth/*`
+aur `/oauth/*` routes. Ek hi file: `src/index.ts` (well-commented TypeScript).
 
 ## API Routes
 
