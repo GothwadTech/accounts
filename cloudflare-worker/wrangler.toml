@@ -1,60 +1,18 @@
-# =============================================================================
-# GOTHWAD AUTH WORKER — Cloudflare Wrangler Configuration
-# =============================================================================
-# Deploy:  npx wrangler deploy
-# Local:   npx wrangler dev        (http://127.0.0.1:8787)
-# =============================================================================
-
-name = "gothwad-auth"
+name = "gothwad-unified-auth"
 main = "src/index.ts"
-compatibility_date = "2024-11-01"
+compatibility_date = "2024-09-01"
 
-# -----------------------------------------------------------------------------
-# PUBLIC VARIABLES — inhe badalna safe hai (secret nahi hain)
-# -----------------------------------------------------------------------------
 [vars]
-# Rule #1: Domain yahan badlo — code mein kahin domain hardcoded nahi hai.
-# Email automatically banega: username + "@" + APP_DOMAIN
-APP_DOMAIN = "gothwadtech.com"
-
-# Frontend ka public URL (password-reset redirect ke liye)
+ROOT_DOMAIN = "gothwadtech.com"
 AUTH_HUB_URL = "https://accounts.gothwadtech.com"
+SUPABASE_URL = "https://your-supabase-project.supabase.co"
 
-# Apne Supabase project ka URL (Supabase Dashboard → Settings → API)
-SUPABASE_URL = "https://YOUR_PROJECT_ID.supabase.co"
+# Set these secrets using: wrangler secret put <NAME>
+# SUPABASE_ANON_KEY = "..."
+# SUPABASE_SERVICE_ROLE_KEY = "..."
+# JWT_SECRET = "..."
 
-# Resend se bhejne wali emails ka "From" address
-# (jab tak custom domain Resend mein verify nahi hota, Resend ka onboarding@resend.dev use karo)
-RESEND_FROM = "Gothwad Accounts <onboarding@resend.dev>"
-
-# "true"  = DEV MODE: password-reset link API response mein bhi mil jaata hai
-#           (jab Resend configure nahi hoti, testing ke liye).
-# "false" = PRODUCTION: reset link sirf email par jaata hai.
-# ⚠️ LIVE hone se PEHLE isse "false" zaroor kar dena!
-DEV_MODE = "true"
-
-# Extra CORS origins (comma separated) — zaroorat padne par hi.
-# Example local frontend dev: ALLOWED_ORIGINS = "http://localhost:3000"
-# ALLOWED_ORIGINS = ""
-
-# -----------------------------------------------------------------------------
-# SECRETS — yahan kabhi mat likho! Neeche command se set karo:
-# -----------------------------------------------------------------------------
-#   npx wrangler secret put SUPABASE_ANON_KEY
-#   npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
-#   npx wrangler secret put JWT_SECRET               (Step 2: OAuth token signing)
-#   npx wrangler secret put RESEND_API_KEY        (optional, password emails ke liye)
-#
-# SUPABASE_ANON_KEY          = Supabase → Settings → API → anon public
-# SUPABASE_SERVICE_ROLE_KEY  = Supabase → Settings → API → service_role (SECRET!)
-# JWT_SECRET                 = koi bhi strong random string (OAuth access tokens sign)
-# RESEND_API_KEY             = Resend → API Keys (free: 3000 emails/month)
-# -----------------------------------------------------------------------------
-
-# -----------------------------------------------------------------------------
-# ROUTES — Worker ko apne domain par lagane ke liye (Cloudflare Dashboard
-# mein bhi kar sakte ho: Workers → your worker → Settings → Domains & Routes)
-# -----------------------------------------------------------------------------
+# Routes for Gothwad Accounts
 # [routes]
-# pattern = "api.gothwadtech.com/*"
+# pattern = "accounts.gothwadtech.com/*"
 # zone_name = "gothwadtech.com"

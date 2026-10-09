@@ -1,10 +1,6 @@
 # 🚀 Gothwad Account: Unified SSO & Ecosystem Auth System
 ### Complete Master Roadmap & Beginner-Friendly Architecture Guide
 
-> **📌 NOTE (2026-10):** Yeh original vision doc hai (historical reference).
-> **Ab active plan [`PLAN.md`](PLAN.md) hai** — Steps 1-2 (Accounts + OAuth)
-> already built hain. Live status: [`TASK.md`](TASK.md) · AI guide: [`AGENTS.md`](AGENTS.md)
-
 > **Founder Note & Vision:**  
 > "Main (Pawan / Gothwad Tech) ek aisi digital identity banana chahta hoon jaisa Google ka `accounts.google.com` hota hai. Isme user ek baar **Gothwad Account** banayega aur uska custom email `username@gothwadtech.com` banega. Is ek account se wo hamare saare apps login kar sakega:
 > - 📧 **Gothwad Mail**
