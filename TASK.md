@@ -7,7 +7,7 @@
 >
 > Rules & working style: [`AGENTS.md`](AGENTS.md) · Master plan: [`PLAN.md`](PLAN.md)
 
-**Last updated:** 2026-10-09 (Session 6 — deployment fix)
+**Last updated:** 2026-10-09 (Session 7 — sb_secret_ service key fix)
 
 ---
 
@@ -20,12 +20,39 @@
 | 3 | Gothwad Mail — `username@gothwadtech.com` inbox | 🔜 NEXT |
 | 4 | Cross-app SSO (ClashDrive, GrixChat integration) | 📋 Planned |
 
-**Current state in one line:** Auth system ready & tested; ab Supabase project
-banana hai + deploy karna hai (docs/SETUP.md), phir Step 3 (Mail) shuru.
+**Current state in one line:** LIVE on accounts.gothwadtech.com (health OK,
+pages serving, login Supabase se connect hai); ek bug fix deploy ho gaya —
+user ko naya `sb_secret_` service key daalna hai, phir Step 3 (Mail) shuru.
 
 ---
 
 ## ✅ DONE (completed work — newest first)
+
+### Session 7 — 2026-10-09 — FIX: sb_secret_ service key (username check "taken" bug)
+- **Bug (live verified):** `/api/auth/check-username?username=zzrandomtest9` →
+  `available:false` (GALAT — naya naam hai). Signin kaam karta hai (anon key OK),
+  matlab sirf **admin (service_role) calls fail** ho rahi hain.
+- **Root cause:** Supabase ki nayi "Secret key" (`sb_secret_...`) JWT nahi hoti.
+  Purana code usse `Authorization: Bearer` mein bhi bhejta tha → Supabase
+  "Invalid API key" reject karta hai → error response ko code array samajh leta
+  hai → har naam "taken" dikhta hai.
+- **Code fix (`cloudflare-worker/src/index.ts`):**
+  1. Naya top-level helper `serviceKeyHeaders(key)` — `eyJ...` (legacy JWT) →
+     `apikey` + `Authorization: Bearer` dono; `sb_secret_...` (naya) → **sirf `apikey`**.
+  2. `SB.adminFetch` ab is helper ko use karta hai + key `.trim()` karta hai
+     (copy-paste ke extra space/newline bachane ke liye).
+  3. `check-username` handler: `if (!res.ok)` → error log + **503**
+     `{"error":"Server database error"}` — ab galat key par "taken" nahi dikhega.
+  4. (Consistency) `userFetch` mein anon key bhi `.trim()`.
+- **Tested:** `npm install` + `npx wrangler deploy --dry-run --outdir /tmp/x` →
+  PASS (56.40 KiB upload, no TS errors).
+- **Docs:** SETUP.md — Step 2C mein naya `sb_secret_` key format note; troubleshooting
+  mein 2 nayi entries: (i) root/`/signin` par `{"error":"Endpoint not found"}` →
+  extra Custom Domain / `/*` route delete karo, sirf `/api/*` rakho;
+  (ii) username hamesha "taken" → naya secret key + retry deployment steps.
+- **PENDING (user dashboard steps):** naya `sb_secret_` key → Worker secret mein
+  replace → deploy green → verify check-username `available:true` → full
+  signup/signin test. (Steps user ko diye gaye hain.)
 
 ### Session 6 — 2026-10-09 — DEPLOYMENT FIX (phone/dashboard-only setup)
 - **Context:** user phone se kaam kar raha hai — terminal/wrangler CLI nahi. Cloudflare
@@ -149,14 +176,21 @@ banana hai + deploy karna hai (docs/SETUP.md), phir Step 3 (Mail) shuru.
 
 ## 🔜 NEXT UP (priority order)
 
-### 1. Deploy (USER ko dashboard se karna hai — docs/SETUP.md, phone-friendly)
+### 1. Deploy (LIVE ✅ — bas ek key fix pending, USER dashboard se — docs/SETUP.md)
 - [x] Supabase project + schema.sql run + keys mil gaye (Phase 1 DONE)
 - [x] `wrangler.toml` → `SUPABASE_URL` real Project URL set (Session 6)
-- [ ] Worker `accounts` → Settings → Builds → Git connect (root `cloudflare-worker`, deploy `npx wrangler deploy`)
-- [ ] Worker → Variables and Secrets: SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, JWT_SECRET (Type Secret)
-- [ ] Worker → Domains & Routes → Route `accounts.gothwadtech.com/api/*`
-- [ ] Pages: Framework None, build command khaali, output `web` → Retry deployment
-- [ ] Test: `/api/health` → `{"status":"ok"}` → signup → me → signout → login
+- [x] Worker `accounts` → Builds → Git connect + live (health OK — Session 6/7)
+- [x] Secrets: SUPABASE_ANON_KEY ✅ (login test confirm), JWT_SECRET ✅
+- [x] Route `accounts.gothwadtech.com/api/*` + Pages (Framework None, output `web`) ✅ live
+- [x] `/api/health` → OK · `/signin` `/signup` `/me` Pages se serve ho rahe hain
+- [ ] **USER ACTION (Session 7 fix):** Worker → Variables and Secrets →
+      `SUPABASE_SERVICE_ROLE_KEY` mein **naya `sb_secret_` key** daalo (Supabase →
+      Settings → API Keys → New secret key). Purana value poora delete karke paste.
+- [ ] **USER ACTION:** Domains & Routes mein extra Custom Domain / `accounts.gothwadtech.com/*`
+      wali entry **delete** karo — sirf `/api/*` route rehni chahiye
+- [ ] Deploy green hone ka wait (Workers Builds — push se auto deploy hua hai)
+- [ ] Verify: `/api/auth/check-username?username=zzrandomtest9` → `"available":true`
+- [ ] Full test: signup (fresh username) → /me → signout → login
 - [ ] DEV_MODE=false + Resend setup (password reset emails)
 
 ### 2. STEP 3 — GOTHWAD MAIL 🔜 (agla major feature)
@@ -218,13 +252,15 @@ banana hai + deploy karna hai (docs/SETUP.md), phir Step 3 (Mail) shuru.
 | 3 | 2026-10-09 | **Cleanup + 3-route UI.** User feedback par: sirf /signin /signup /me; real logo; brand blue; OAuth consent Worker-rendered; faltu files delete; continuity docs (yeh files). |
 | 4–5 | 2026-10-09 | **Bug fixes:** dashboard `/signin` bounce (hybrid auth: headers + cookies) · refresh-rotation race (single-flight refresh). |
 | 6 | 2026-10-09 | **Deployment fix (dashboard-only).** Worker name → `accounts`; Worker route `/api/*` (same-origin) recommended; consent `fetch` → `/api/oauth/decision`; SETUP.md dashboard-first rewrite; Pages build-fix docs; tested via wrangler dev. |
-| 7 | YYYY-MM-DD | _agli AI yahan likhegi..._ |
+| 7 | 2026-10-09 | **sb_secret_ service key fix.** Live bug: check-username har naam "taken" dikhata tha (purana code naye `sb_secret_` key ko `Authorization: Bearer` mein bhej raha tha → Supabase reject). Fix: `serviceKeyHeaders()` helper (eyJ → dono headers, sb_secret_ → sirf apikey), adminFetch `.trim()`, check-username `!res.ok` → 503 "Server database error". Dry-run deploy PASS. SETUP.md: key-format note + 2 troubleshooting entries. **Pending user:** naya sb_secret_ key Worker secret mein daalna + extra routes delete + verify. |
 
 ---
 
 > **Nayi AI ke liye 30-second summary:**
 > Gothwad Accounts = real auth system (Supabase + Cloudflare Worker + static
-> site). Step 1 & 2 done & tested. Ab user deploy karega (docs/SETUP.md —
-> dashboard-only, phone se; terminal/wrangler CLI user ko mat bolna),
-> phir **Step 3 = Gothwad Mail** banana hai. Rules `AGENTS.md` mein hain,
-> plan `PLAN.md` mein. Yeh file session end par update karna MAT BHULNA.
+> site). Step 1 & 2 done & tested. **Site LIVE hai** (accounts.gothwadtech.com);
+> Session 7 ka code fix push ho gaya — user ko sirf naya `sb_secret_` key
+> Worker secret mein daalna hai (docs/SETUP.md — dashboard-only, phone se;
+> terminal/wrangler CLI user ko mat bolna), phir verify + **Step 3 = Gothwad
+> Mail** banana hai. Rules `AGENTS.md` mein hain, plan `PLAN.md` mein.
+> Yeh file session end par update karna MAT BHULNA.
