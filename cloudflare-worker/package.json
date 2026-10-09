@@ -1,0 +1,15 @@
+{
+  "name": "gothwad-auth-worker",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Gothwad Accounts auth API — Cloudflare Worker",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "check": "wrangler deploy --dry-run"
+  },
+  "devDependencies": {
+    "wrangler": "^3.99.0",
+    "typescript": "^5.6.3"
+  }
+}
