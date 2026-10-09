@@ -194,6 +194,21 @@ function getCookie(request: Request, name: string): string | null {
 // -----------------------------------------------------------------------------
 // Supabase REST/API helpers
 // -----------------------------------------------------------------------------
+
+/**
+ * service key ke liye headers banao.
+ * WHY: Supabase ke NAYE "secret keys" (`sb_secret_...`) JWT nahi hote — agar inhe
+ * `Authorization: Bearer` mein bheja to Supabase "Invalid API key" dekar reject
+ * karta hai. Purane legacy `service_role` JWT (`eyJ...`) dono headers accept
+ * karta hai, naye key sirf `apikey` header mein jaata hai.
+ */
+function serviceKeyHeaders(key: string): Record<string, string> {
+  const k = (key || '').trim(); // copy-paste se extra space/newline hatane ke liye
+  return k.startsWith('eyJ')
+    ? { apikey: k, Authorization: `Bearer ${k}` } // legacy service_role JWT
+    : { apikey: k }; // naya sb_secret_ key — sirf apikey
+}
+
 const SB = {
   /** Supabase Auth ka base URL. */
   authUrl(env: Env, path: string): string {
@@ -202,12 +217,12 @@ const SB = {
 
   /** service_role se call — RLS bypass, sirf Worker ke liye! */
   async adminFetch(env: Env, path: string, init: RequestInit = {}): Promise<Response> {
+    const key = (env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
     return fetch(`${env.SUPABASE_URL}${path}`, {
       ...init,
       headers: {
         'Content-Type': 'application/json',
-        apikey: env.SUPABASE_SERVICE_ROLE_KEY,
-        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+        ...serviceKeyHeaders(key),
         ...(init.headers || {}),
       },
     });
@@ -219,7 +234,7 @@ const SB = {
       ...init,
       headers: {
         'Content-Type': 'application/json',
-        apikey: env.SUPABASE_ANON_KEY,
+        apikey: (env.SUPABASE_ANON_KEY || '').trim(),
         Authorization: `Bearer ${accessToken}`,
         ...(init.headers || {}),
       },
@@ -751,6 +766,13 @@ export default {
           env,
           `/rest/v1/profiles?username=eq.${encodeURIComponent(username)}&select=id`,
         );
+        // Agar Supabase ne error diya (galat key, network, etc.) to "taken" NAHI
+        // dikhana — galat jawab se signup page har naam ko taken bata deti hai.
+        if (!res.ok) {
+          const errBody = await res.text().catch(() => '');
+          console.error(`[check-username] Supabase admin call failed: ${res.status} ${errBody.slice(0, 300)}`);
+          return withCors(json({ available: false, valid: true, error: 'Server database error' }, 503));
+        }
         const rows = (await res.json()) as Record<string, any>[];
         const available = Array.isArray(rows) && rows.length === 0;
 
