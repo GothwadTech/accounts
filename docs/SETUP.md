@@ -2,6 +2,10 @@
 
 > Audience: beginners. Har step explain kiya gaya hai. Koi paid service nahi —
 > sab kuch **free tier** mein fit hoga (Cloudflare + Supabase + Resend).
+>
+> 📱 **Phone / dashboard-only?** Is guide ke steps **Cloudflare Dashboard + Supabase
+> Dashboard + GitHub web** se hote hain — koi terminal / `wrangler` CLI zaroori nahi.
+> CLI wale steps sirf "Alternative" mein diye hain.
 
 Total time: ~30–40 minutes.
 
@@ -10,21 +14,24 @@ Total time: ~30–40 minutes.
 ## 🗺️ Overview — Kya ban raha hai?
 
 ```
-[ Browser: accounts.gothwadtech.com ]     ← web/ (Cloudflare Pages)
-              │  fetch /api/auth/*
-              ▼
-[ Cloudflare Worker: api.gothwadtech.com ] ← cloudflare-worker/ (Auth API)
-              │  Supabase calls (service_role key)
-              ▼
-[ Supabase: Auth + Postgres DB ]          ← supabase/schema.sql
+[ Browser: accounts.gothwadtech.com ]
+      │
+      ├── /            /signin  /signup  /me   → web/ (Cloudflare Pages, static)
+      │
+      └── /api/*       → Cloudflare Worker "accounts"  (Worker ROUTE, same origin)
+                              │  Supabase calls (service_role key)
+                              ▼
+                     [ Supabase: Auth + Postgres DB ]   ← supabase/schema.sql
 ```
 
-Frontend **kabhi** Supabase se directly baat nahi karta — sirf Worker se.
-Isliye secret keys safe rehti hain.
+- **Frontend + API ek hi domain** (`accounts.gothwadtech.com`) par hain.
+  Isliye browser ko CORS ki problem nahi aati aur cookies first-party rehti hain.
+- Frontend **kabhi** Supabase se directly baat nahi karta — sirf Worker se.
+  Isliye secret keys safe rehti hain.
 
 ---
 
-## STEP 1 — Supabase project banao (Database + Auth) 🗄️
+## STEP 1 — Supabase project banao (Database + Auth) 🗄️ ✅ (DONE)
 
 1. **https://supabase.com** kholo → GitHub se **Sign up** karo (free).
 2. **"New project"** dabao:
@@ -35,7 +42,7 @@ Isliye secret keys safe rehti hain.
 4. Left menu → **SQL Editor** → `supabase/schema.sql` ka poora content
    copy-paste karo → **Run** dabao. ✅ Tables + security ready!
 5. Left menu → **Settings → API** → yeh 3 cheezein note karo:
-   - `Project URL` → `SUPABASE_URL`
+   - `Project URL` → `SUPABASE_URL` (jaise `https://abcdxyz.supabase.co`)
    - `anon public` key → `SUPABASE_ANON_KEY`
    - `service_role` key → `SUPABASE_SERVICE_ROLE_KEY` ⚠️ **SECRET — kabhi share mat karo!**
 
@@ -50,80 +57,109 @@ Isliye secret keys safe rehti hain.
 ## STEP 2 — Cloudflare Worker deploy karo (Auth API) ⚡
 
 > Cloudflare account chahiye (free). https://dash.cloudflare.com
+>
+> ⚠️ **Worker ka naam `accounts` hona chahiye** — `cloudflare-worker/wrangler.toml`
+> mein bhi `name = "accounts"` hai. Naam alag hua to Git-deploy (2B) fail hoga.
 
-### 2a. Wrangler CLI login
+### 2A. Worker project check karo
 
-```bash
-cd cloudflare-worker
-npm install
-npx wrangler login        # Browser khulega → "Allow" dabao
-```
+Dashboard → **Workers & Pages** → **`accounts`** (already bana hua hai — delete/rename
+mat karna). Yeh hi Worker hai jispar deploy hoga.
 
-### 2b. Secrets set karo (terminal mein ek-ek karke)
+### 2B. Git se auto-deploy connect karo (Workers Builds) 🔁
 
-```bash
-npx wrangler secret put SUPABASE_ANON_KEY
-# ↑ paste karo: Supabase → Settings → API → anon public
+Dashboard → **Workers & Pages** → **`accounts`** → **Settings** → **Builds** →
+**Connect** → GitHub → repository **`GothwadTech/accounts`** select karo. Phir:
 
-npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
-# ↑ paste karo: Supabase → Settings → API → service_role
-```
+| Field | Value |
+|-------|-------|
+| **Root directory** | `cloudflare-worker` |
+| **Build command** | *(khaali chhodo)* |
+| **Deploy command** | `npx wrangler deploy` |
 
-### 2c. wrangler.toml edit karo
+→ **Save** / **Deploy** dabao. Ab har push par Worker apne-aap deploy hoga. ✅
 
-`cloudflare-worker/wrangler.toml` mein apne values daalo:
+### 2C. Secrets dashboard se daalo (Variables and Secrets) 🔐
 
-```toml
-[vars]
-APP_DOMAIN = "gothwadtech.com"          # ← apna domain
-AUTH_HUB_URL = "https://accounts.gothwadtech.com"
-SUPABASE_URL = "https://abcdxyz.supabase.co"   # ← apna Project URL
-```
+Dashboard → **Workers & Pages** → **`accounts`** → **Settings** →
+**Variables and Secrets** → **Add**. Har ek ko **Type: Secret** choose karo:
 
-### 2d. Deploy!
+| Name | Value kahan se | Type |
+|------|----------------|------|
+| `SUPABASE_ANON_KEY` | Supabase → Settings → API → **anon public** | **Secret** |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Settings → API → **service_role** | **Secret** ⚠️ |
+| `JWT_SECRET` | Koi lambi random string (40+ characters) — password manager ka generator use karo | **Secret** |
 
-```bash
-npx wrangler deploy
-```
+> 💡 `SUPABASE_URL`, `APP_DOMAIN`, `AUTH_HUB_URL`, `DEV_MODE` **public** values hain —
+> ye `wrangler.toml` ke `[vars]` mein already hain (Text). Inhe dashboard mein
+> Text ki tarah rehne do.
+>
+> ⚠️ Agar koi key pehle **Text** type mein daali thi (galti se), to usko **delete**
+> karke **Secret** type se dobara add karo.
 
-Output mein worker ka URL dikhega, jaise:
-`https://gothwad-auth.YOUR-SUBDOMAIN.workers.dev`
+### 2D. Worker ROUTE lagao (API ko `/api/*` par) 🛣️ — RECOMMENDED
 
-Test karo: us URL mein `/api/health` add karo —
-`{ "status": "ok", ... }` dikhna chahiye. ✅
-
-### 2e. Custom domain lagao (api.gothwadtech.com)
-
-Cloudflare Dashboard → **Workers & Pages** → `gothwad-auth` →
-**Settings → Domains & Routes** → **Add** → Custom Domain:
+Dashboard → **Workers & Pages** → **`accounts`** → **Settings** →
+**Domains & Routes** → **Add** → **Route**:
 
 ```
-api.gothwadtech.com
+accounts.gothwadtech.com/api/*
 ```
 
-(DNS record Cloudflare khud bana deta hai.)
+- Zone: `gothwadtech.com` (Cloudflare par yeh domain hona chahiye)
+- Ab `accounts.gothwadtech.com/api/...` requests Worker par jaati hain.
+- Pages wala frontend (`/signin`, `/me`...) same domain par chalta rehta hai.
+- `web/js/config.js` mein `API_URL: ''` hi rehne do — **config badalne ki zaroorat NAHI.**
+
+> ✅ Is route ke saath OAuth endpoints ka base URL = `https://accounts.gothwadtech.com/api`
+> hota hai (Step 6 dekho).
+
+#### Alternative: alag API domain (`api.gothwadtech.com`)
+
+Agar API ko alag subdomain par chahiye:
+Domains & Routes → **Add** → **Custom Domain** → `api.gothwadtech.com`.
+Phir `web/js/config.js` mein `API_URL: 'https://api.gothwadtech.com'` set karo
+(aur Step 6 ka OAuth base URL = `https://api.gothwadtech.com`).
+
+### 2E. Deploy + test ✅
+
+- Pehle Git push / Workers Builds ka deploy complete hone do (Deployments tab mein green ✅).
+- Browser mein kholo: `https://accounts.gothwadtech.com/api/health`
+  → `{ "status": "ok", ... }` dikhna chahiye.
+  (Route abhi nahi lagaya to `https://accounts.<tumhara-subdomain>.workers.dev/api/health`
+  bhi try kar sakte ho — workers.dev URL Worker ke page par dikhta hai.)
+
+> **Alternative (laptop terminal ho to):** `cd cloudflare-worker && npx wrangler login`
+> → `npx wrangler secret put SUPABASE_ANON_KEY` → `npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY`
+> → `npx wrangler secret put JWT_SECRET` → `npx wrangler deploy`.
 
 ---
 
 ## STEP 3 — Frontend deploy karo (Cloudflare Pages) 🌐
 
-1. GitHub par is repo ko push karo (Arena mein: `git push`).
-2. Cloudflare Dashboard → **Workers & Pages** → **Create** → **Pages** →
-   **Connect to Git** → ye repo select karo.
-3. Build settings:
-   - **Framework preset:** None
-   - **Build command:** *(khaali chhodo)*
+1. Cloudflare Dashboard → **Workers & Pages** → **Create** → **Pages** →
+   **Connect to Git** → repo `GothwadTech/accounts` select karo.
+2. **Build settings** (⚠️ yeh exact rakho):
+   - **Framework preset:** **None** ← (Cloudflare "Vite" auto-detect kare to badal do!)
+   - **Build command:** *(khaali chhodo — koi `npm run build` NAHI)*
    - **Build output directory:** `web`
-4. **Save and Deploy**. 🎉
-5. Apne domain par lagao: Pages project → **Custom domains** →
+3. **Save and Deploy** 🎉
+4. Apne domain par lagao: Pages project → **Custom domains** →
    `accounts.gothwadtech.com` add karo.
-6. `web/js/config.js` mein Worker ka URL set karo:
+5. `web/js/config.js` mein `API_URL: ''` hi rehne do (same-origin route ke saath). ✅
 
-```js
-API_URL: 'https://api.gothwadtech.com',
-```
+### 🔧 Pages build fail ho raha hai? (Framework "Vite" + `npm run build`)
 
-(Fir se deploy karo — Pages auto-deploy hota hai push par.)
+Error aata hai jaise: `Missing script: "build"` / Vite build fail.
+Reason: Cloudflare ne repo ko Vite project samajh liya. Is repo mein **build step nahi
+hai** (sirf static HTML/CSS/JS hai).
+
+Fix (dashboard se):
+1. Pages project → **Settings** → **Build & deployments** → **Build configuration**
+2. **Framework preset** → **None**
+3. **Build command** → **khaali** (delete karo jo bhi likha ho)
+4. **Build output directory** → `web`
+5. **Save** → **Deployments** tab → latest deployment par **Retry deployment**.
 
 ---
 
@@ -134,13 +170,9 @@ API_URL: 'https://api.gothwadtech.com',
 
 1. **https://resend.com** → GitHub se sign up karo.
 2. Dashboard → **API Keys** → **Create API Key** → copy karo.
-3. Worker mein secret set karo:
-
-```bash
-npx wrangler secret put RESEND_API_KEY
-```
-
-4. `wrangler.toml` mein:
+3. Cloudflare → Worker **`accounts`** → **Settings** → **Variables and Secrets** →
+   **Add** → Name `RESEND_API_KEY`, Type **Secret**, value paste karo.
+4. `wrangler.toml` (ya dashboard Variables) mein:
 
 ```toml
 DEV_MODE = "false"    # ⚠️ PRODUCTION SAFE MODE — reset link sirf email par jaayega
@@ -152,6 +184,8 @@ DEV_MODE = "false"    # ⚠️ PRODUCTION SAFE MODE — reset link sirf email pa
 ---
 
 ## STEP 5 — Local development (bina deploy ke test) 💻
+
+> Yeh sirf laptop par development ke liye hai. Phone-only setup mein ise skip karo.
 
 ```bash
 # Terminal 1 — API server (with fake Supabase for offline testing)
@@ -177,12 +211,14 @@ forgot password — sab test kar sakte ho. 🧪
 
 Jab GrixChat / ClashDrive / Notes mein Gothwad login lagana ho:
 
-1. Worker mein ek aur secret set karo (agar nahi kiya):
-   ```bash
-   npx wrangler secret put JWT_SECRET     # banao: openssl rand -hex 32
-   ```
+1. `JWT_SECRET` secret set hona chahiye (Step 2C) ✅
 2. App register karo (Supabase SQL Editor): `redirect_uris` update karo
-3. [docs/OAUTH.md](OAUTH.md) ka copy-paste snippet apni app mein lagao
+3. [docs/OAUTH.md](OAUTH.md) ka copy-paste snippet apni app mein lagao.
+
+**OAuth base URL** (Step 2D route ke hisaab se):
+- Route `accounts.gothwadtech.com/api/*` ho → base = `https://accounts.gothwadtech.com/api`
+  (endpoints: `/api/oauth/authorize`, `/api/oauth/token`, `/api/oauth/userinfo`)
+- Custom domain `api.gothwadtech.com` ho → base = `https://api.gothwadtech.com`
 
 Poora guide: **[docs/OAUTH.md](OAUTH.md)**
 
@@ -190,31 +226,44 @@ Poora guide: **[docs/OAUTH.md](OAUTH.md)**
 
 ## 📋 Environment Variables — Quick Reference
 
-| Variable | Kahan set hota hai | Secret? | Kya karta hai |
+| Variable | Kahan set hota hai (dashboard) | Secret? | Kya karta hai |
 |----------|-------------------|---------|---------------|
-| `APP_DOMAIN` | wrangler.toml [vars] | ❌ | Email = username@APP_DOMAIN |
-| `AUTH_HUB_URL` | wrangler.toml [vars] | ❌ | Password-reset redirect URL |
-| `SUPABASE_URL` | wrangler.toml [vars] | ❌ | Supabase project URL |
-| `SUPABASE_ANON_KEY` | `wrangler secret put` | ⚠️ semi | Supabase apikey header |
-| `SUPABASE_SERVICE_ROLE_KEY` | `wrangler secret put` | ✅ YES | Admin DB/auth operations |
-| `JWT_SECRET` | `wrangler secret put` | ✅ YES | OAuth access tokens sign (Step 2) |
-| `RESEND_API_KEY` | `wrangler secret put` | ✅ YES | Reset emails bhejne ke liye |
-| `RESEND_FROM` | wrangler.toml [vars] | ❌ | Email "From" address |
-| `DEV_MODE` | wrangler.toml [vars] | ❌ | Dev conveniences on/off |
-| `ALLOWED_ORIGINS` | wrangler.toml [vars] | ❌ | Extra CORS origins |
-| `API_URL` | web/js/config.js | ❌ | Frontend → Worker URL |
+| `APP_DOMAIN` | wrangler.toml `[vars]` | ❌ | Email = username@APP_DOMAIN |
+| `AUTH_HUB_URL` | wrangler.toml `[vars]` | ❌ | Password-reset redirect URL |
+| `SUPABASE_URL` | wrangler.toml `[vars]` | ❌ | Supabase project URL |
+| `SUPABASE_ANON_KEY` | Worker → Variables and Secrets (Secret) | ⚠️ semi | Supabase apikey header |
+| `SUPABASE_SERVICE_ROLE_KEY` | Worker → Variables and Secrets (Secret) | ✅ YES | Admin DB/auth operations |
+| `JWT_SECRET` | Worker → Variables and Secrets (Secret) | ✅ YES | OAuth access tokens sign (Step 2C) |
+| `RESEND_API_KEY` | Worker → Variables and Secrets (Secret) | ✅ YES | Reset emails bhejne ke liye |
+| `RESEND_FROM` | wrangler.toml `[vars]` | ❌ | Email "From" address |
+| `DEV_MODE` | wrangler.toml `[vars]` | ❌ | Dev conveniences on/off |
+| `ALLOWED_ORIGINS` | wrangler.toml `[vars]` | ❌ | Extra CORS origins |
+| `API_URL` | web/js/config.js | ❌ | Frontend → Worker URL (`''` = same origin, recommended) |
 | `APP_DOMAIN` (UI) | web/js/config.js | ❌ | Email suffix dikhane ke liye |
 
 ---
 
 ## ❓ Common Problems (Troubleshooting)
 
-**"Cannot reach the Gothwad API"**
-→ `web/js/config.js` mein `API_URL` check karo, aur Worker live hai ya nahi.
+**Pages build fail: `Missing script: "build"` / Vite error**
+→ Pages → Settings → Build & deployments → Framework **None**, Build command **khaali**,
+  output `web` → Retry deployment. (Upar Step 3 dekho.)
 
-**Signup par "Could not create account"**
+**Workers Builds (Git deploy) fail / "worker name" mismatch**
+→ `cloudflare-worker/wrangler.toml` mein `name = "accounts"` hai na? Dashboard mein
+  Worker ka naam bhi `accounts` hona chahiye. Root directory `cloudflare-worker` hai na?
+
+**`accounts.gothwadtech.com/api/health` 404 ya HTML dikhata hai**
+→ Route `accounts.gothwadtech.com/api/*` add kiya? (Step 2D)
+→ Pages par `accounts.gothwadtech.com` custom domain add hai? DNS proxied (orange cloud) hai?
+
+**`/api/health` mein `{"status":"ok"}` aata hai par signup "Could not create account"**
 → Supabase → Authentication → Providers → Email → "Confirm email" OFF hai na?
-→ `SUPABASE_SERVICE_ROLE_KEY` sahi daala?
+→ `SUPABASE_SERVICE_ROLE_KEY` **Secret** type mein sahi daala?
+→ `SUPABASE_URL` wrangler.toml mein apna asli URL hai (placeholder `YOUR_PROJECT_ID` nahi)?
+
+**"Cannot reach the Gothwad API"**
+→ `web/js/config.js` mein `API_URL` check karo (same-origin ke liye `''`), aur Worker route/health OK hai ya nahi.
 
 **Login ke baad dashboard par "redirect loop"**
 → `AUTH_HUB_URL` aur Pages ka actual URL match karte hain?
@@ -223,22 +272,29 @@ Poora guide: **[docs/OAUTH.md](OAUTH.md)**
 **Username check hamesha "taken" ya "available"**
 → Schema sahi run hua? (Supabase → Table Editor → `profiles` table dikhni chahiye)
 
-**CORS error in console**
+**"Sign in with Gothwad" consent ke "Allow access" par kuch nahi hota / error**
+→ Worker latest deploy hua? (Workers Builds → Deployments). OAuth base URL route ke hisaab se hai?
+   (Step 6 dekho.)
+
+**CORS error in console** (sirf jab API alag domain par ho)
 → Worker ka `ALLOWED_ORIGINS` mein frontend origin add karo
-   (local dev ke liye `http://localhost:3000`).
+   (local dev ke liye `http://localhost:3000`). Same-origin route par zaroorat nahi.
 
 ---
 
 ## ✅ Launch Checklist (LIVE jaane se pehle)
 
 - [ ] Supabase schema.sql run ho gaya (tables + RLS visible)
-- [ ] `SUPABASE_SERVICE_ROLE_KEY` sirf Worker secrets mein hai (Git mein NAHI)
+- [ ] Worker name `accounts` hai + Git (Workers Builds) connect hai
+- [ ] `SUPABASE_URL` wrangler.toml mein asli Project URL hai
+- [ ] `SUPABASE_SERVICE_ROLE_KEY`, `JWT_SECRET` **Secret** type mein hain (Git mein NAHI)
 - [ ] Supabase → Email confirmation OFF (jab tak custom mail live nahi)
-- [ ] Worker `/api/health` OK dikhata hai
+- [ ] Route `accounts.gothwadtech.com/api/*` lagi hai
+- [ ] Pages: Framework None, build command khaali, output `web` — build green hai
+- [ ] `accounts.gothwadtech.com/api/health` → `{"status":"ok"}`
 - [ ] Signup → auto login → dashboard ka flow test kiya
-- [ ] Password reset (recovery email) test kiya
-- [ ] `DEV_MODE = "false"` kar diya (production)
-- [ ] `web/js/config.js` mein production `API_URL` set hai
+- [ ] Signout → login → wrong password → forgot password test kiya
+- [ ] `DEV_MODE = "false"` kar diya (production) + Resend key (Step 4)
 
 ---
 

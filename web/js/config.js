@@ -13,6 +13,8 @@ export const GOTHWAD_CONFIG = {
    * - Production example: "https://api.gothwadtech.com"
    * - Khaali chhodo ("") agar API same origin par ho
    *   (local dev-server ya `/api` proxy setup) — tab /api/... relative call hota hai.
+   *   Production mein bhi "" hi rakho jab Worker route
+   *   `accounts.gothwadtech.com/api/*` par lagi ho (recommended) — same origin!
    *
    * YEH EK LINE production mein badalni hai — bas!
    */
