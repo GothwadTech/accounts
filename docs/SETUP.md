@@ -173,6 +173,21 @@ forgot password — sab test kar sakte ho. 🧪
 
 ---
 
+## STEP 6 — OAuth: apps ko connect karo ("Sign in with Gothwad") 🔐
+
+Jab GrixChat / ClashDrive / Notes mein Gothwad login lagana ho:
+
+1. Worker mein ek aur secret set karo (agar nahi kiya):
+   ```bash
+   npx wrangler secret put JWT_SECRET     # banao: openssl rand -hex 32
+   ```
+2. App register karo (Supabase SQL Editor): redirect_uris update karo
+3. `examples/sign-in-with-gothwad/` ka code apni app mein copy karo
+
+Poora guide: **[docs/OAUTH.md](OAUTH.md)**
+
+---
+
 ## 📋 Environment Variables — Quick Reference
 
 | Variable | Kahan set hota hai | Secret? | Kya karta hai |
@@ -182,6 +197,7 @@ forgot password — sab test kar sakte ho. 🧪
 | `SUPABASE_URL` | wrangler.toml [vars] | ❌ | Supabase project URL |
 | `SUPABASE_ANON_KEY` | `wrangler secret put` | ⚠️ semi | Supabase apikey header |
 | `SUPABASE_SERVICE_ROLE_KEY` | `wrangler secret put` | ✅ YES | Admin DB/auth operations |
+| `JWT_SECRET` | `wrangler secret put` | ✅ YES | OAuth access tokens sign (Step 2) |
 | `RESEND_API_KEY` | `wrangler secret put` | ✅ YES | Reset emails bhejne ke liye |
 | `RESEND_FROM` | wrangler.toml [vars] | ❌ | Email "From" address |
 | `DEV_MODE` | wrangler.toml [vars] | ❌ | Dev conveniences on/off |

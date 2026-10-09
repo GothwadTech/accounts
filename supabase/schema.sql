@@ -290,7 +290,118 @@ $$;
 -- Anon users ko sirf yeh function chalane ki permission (table access nahi)
 GRANT EXECUTE ON FUNCTION public.is_username_available(TEXT) TO anon, authenticated;
 
+
+-- #############################################################################
+-- #  STEP 2 — OAUTH 2.0 PROVIDER ("Sign in with Gothwad")                      #
+-- #  In tables se Gothwad ek OAuth provider banta hai, taaki GrixChat,        #
+-- #  ClashDrive, Notes jaisi apps mein "Sign in with Gothwad" button lage.    #
+-- #############################################################################
+
+
+-- -----------------------------------------------------------------------------
+-- 9. OAUTH_AUTH_CODES — one-time login codes (30 second se 5 min zyada nahi)
+-- -----------------------------------------------------------------------------
+-- Flow: user consent deta hai → ek code banta hai → app us code ko token se
+-- exchange karta hai → code turant "used" mark ho jaata hai (reuse impossible).
+
+CREATE TABLE IF NOT EXISTS public.oauth_auth_codes (
+  code                  TEXT PRIMARY KEY,
+  client_id             TEXT NOT NULL,                 -- kis app ke liye (ecosystem_apps.id)
+  user_id               UUID NOT NULL REFERENCES public.profiles (id) ON DELETE CASCADE,
+  redirect_uri          TEXT NOT NULL,
+  scopes                TEXT[] NOT NULL DEFAULT '{}',
+  code_challenge        TEXT,                          -- PKCE (mobile/SPA security)
+  code_challenge_method TEXT,                          -- 'S256'
+  expires_at            TIMESTAMPTZ NOT NULL,
+  used                  BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_oauth_codes_user ON public.oauth_auth_codes (user_id);
+
+
+-- -----------------------------------------------------------------------------
+-- 10. OAUTH_REFRESH_TOKENS — lambi sessions ke liye (scope: offline_access)
+-- -----------------------------------------------------------------------------
+-- NOTE: token ka ORIGINAL kabhi store nahi hota — sirf SHA-256 hash.
+-- (Agar DB leak bhi ho jaaye to actual tokens leak nahi hote.)
+
+CREATE TABLE IF NOT EXISTS public.oauth_refresh_tokens (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  token_hash TEXT UNIQUE NOT NULL,                     -- SHA-256(refresh_token)
+  user_id    UUID NOT NULL REFERENCES public.profiles (id) ON DELETE CASCADE,
+  client_id  TEXT NOT NULL,
+  scopes     TEXT[] NOT NULL DEFAULT '{}',
+  expires_at TIMESTAMPTZ NOT NULL,
+  revoked    BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_oauth_refresh_user ON public.oauth_refresh_tokens (user_id);
+
+
+-- -----------------------------------------------------------------------------
+-- 11. ECOSYSTEM_APPS mein OAuth client fields
+-- -----------------------------------------------------------------------------
+-- client_id     = app ki public id (authorize URL mein jaata hai)
+-- secret_hash   = server-side apps ke liye (SHA-256 of client_secret).
+--                 NULL = public client (PKCE mandatory — mobile/SPA ke liye best)
+
+ALTER TABLE public.ecosystem_apps
+  ADD COLUMN IF NOT EXISTS client_id TEXT UNIQUE,
+  ADD COLUMN IF NOT EXISTS secret_hash TEXT;
+
+UPDATE public.ecosystem_apps SET client_id = id WHERE client_id IS NULL;
+
+
+-- Apps ke registered redirect URLs abhi empty hain (domain-agnostic rule).
+-- OAuth launch se PEHLE ye SQL chalao (apne domain ke saath) — docs/OAUTH.md:
+--
+--   UPDATE public.ecosystem_apps SET redirect_uris = ARRAY[
+--     'https://chat.example.com/auth/gothwad/callback',
+--     'http://localhost:3000/examples/sign-in-with-gothwad/callback.html'
+--   ] WHERE id = 'gothwad-chat';
+
+
+-- -----------------------------------------------------------------------------
+-- 12. OAUTH TABLES — RLS ON, lekin policies ZERO
+-- -----------------------------------------------------------------------------
+-- Matlab: in tables ko SIRF Worker (service_role) padh/sakta hai.
+-- User/apps inhe directly kabhi touch nahi kar sakte — extra secure.
+
+ALTER TABLE public.oauth_auth_codes      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.oauth_refresh_tokens  ENABLE ROW LEVEL SECURITY;
+
+
+-- -----------------------------------------------------------------------------
+-- 13. Helper: user ke connected apps (dashboard ke liye)
+-- -----------------------------------------------------------------------------
+-- User apne authorized apps dekh sake — sirf apne grants.
+-- (Direct profiles access nahi — safe.)
+
+CREATE OR REPLACE FUNCTION public.get_my_app_grants()
+RETURNS TABLE (
+  app_id       TEXT,
+  app_name     TEXT,
+  app_icon     TEXT,
+  scopes       TEXT[],
+  granted_at   TIMESTAMPTZ,
+  last_used_at TIMESTAMPTZ
+)
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+  SELECT a.app_id, e.name, e.icon, a.scopes, a.granted_at, a.last_used_at
+  FROM public.app_authorizations a
+  JOIN public.ecosystem_apps e ON e.id = a.app_id
+  WHERE a.user_id = auth.uid();
+$$;
+
+GRANT EXECUTE ON FUNCTION public.get_my_app_grants() TO authenticated;
+
 -- =============================================================================
--- HO GAYA! 🎉
--- Next: docs/SETUP.md follow karo — Worker + Frontend connect karne ke liye.
+-- HO GAYA! 🎉 (Step 1 + Step 2 dono ready)
+-- Next: docs/SETUP.md (deploy) → docs/OAUTH.md (apps ko connect karo)
 -- =============================================================================

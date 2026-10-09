@@ -28,12 +28,48 @@ const PORT = Number(process.env.MOCK_SUPABASE_PORT || 8788);
 const DATA_FILE = path.join(__dirname, '.mock-data.json');
 
 // ------------------------------------------------------------------ storage
-let db = { users: [], profiles: [], sessions: [], accessTokens: {}, refreshTokens: {} };
+let db = { users: [], profiles: [], sessions: [], accessTokens: {}, refreshTokens: {}, tokenPairs: {},
+  ecosystem_apps: [], app_authorizations: [], oauth_auth_codes: [], oauth_refresh_tokens: [] };
+
+function seedApps() {
+  // Real Supabase jaisa seed — schema.sql se
+  const apps = [
+    ['gothwad-mail', 'Gothwad Mail', 'Custom email + webmail', 'mail'],
+    ['gothwad-drive', 'Gothwad Drive', 'Unlimited storage via Telegram', 'hard-drive'],
+    ['gothwad-chat', 'Gothwad Chat', 'Messaging (GrixChat)', 'message-circle'],
+    ['gothwad-notes', 'Gothwad Notes', 'Synced notes & lists', 'file-text'],
+    ['gothwad-calendar', 'Gothwad Calendar', 'Events & reminders', 'calendar'],
+    ['gothwad-browser', 'Gothwad Browser', 'Private browser + sync', 'compass'],
+  ];
+  for (const [id, name, description, icon] of apps) {
+    if (!db.ecosystem_apps.some((a) => a.id === id)) {
+      db.ecosystem_apps.push({
+        id, client_id: id, name, description, icon,
+        // DEV_MODE mein worker koi bhi localhost redirect accept karta hai.
+        // Production: schema.sql ka UPDATE snippet dekho (docs/OAUTH.md).
+        redirect_uris: [
+          'http://localhost:3000/examples/sign-in-with-gothwad/callback.html',
+          `https://${id.replace('gothwad-', '')}.example.com/auth/gothwad/callback`,
+        ],
+        is_verified: true,
+        secret_hash: null, // public client (PKCE)
+        created_at: new Date().toISOString(),
+      });
+    }
+  }
+}
 
 function loadDb() {
   try {
     if (fs.existsSync(DATA_FILE)) db = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
   } catch { /* corrupt file → fresh start */ }
+  // Table defaults (purane data files ke liye)
+  db.ecosystem_apps = db.ecosystem_apps || [];
+  db.app_authorizations = db.app_authorizations || [];
+  db.oauth_auth_codes = db.oauth_auth_codes || [];
+  db.oauth_refresh_tokens = db.oauth_refresh_tokens || [];
+  db.tokenPairs = db.tokenPairs || {};
+  seedApps();
 }
 function saveDb() {
   try { fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2)); } catch { /* ignore */ }
@@ -42,6 +78,11 @@ loadDb();
 
 const uid = () => crypto.randomUUID();
 const token = () => crypto.randomBytes(24).toString('hex');
+/** Har table ke liye default id (kuch tables code/token khud dete hain) */
+function row_id(tableName) {
+  if (tableName === 'oauth_auth_codes') return token();
+  return uid();
+}
 
 // ------------------------------------------------------------- query helpers
 /** PostgREST style filters parse karo: ?id=eq.123&user_id=eq.456&select=* */
@@ -292,9 +333,39 @@ const server = http.createServer((req, res) => {
         }
       }
 
-      // ---- ecosystem_apps / app_authorizations (simple passthrough) ----
+      // ---- Generic tables (ecosystem_apps, app_authorizations, oauth_*) ----
       if (pathname.startsWith('/rest/v1/')) {
-        return send(res, 200, []);
+        const tableName = pathname.slice('/rest/v1/'.length).split('/')[0];
+        const table = db[tableName];
+        if (!Array.isArray(table)) return send(res, 404, { msg: `Unknown table ${tableName}` });
+
+        const filters = parseFilters(url.searchParams);
+
+        if (req.method === 'GET') {
+          return send(res, 200, applyOrder(table.filter((r) => matches(r, filters)), url.searchParams.get('order')));
+        }
+        if (req.method === 'POST') {
+          const row = { id: row_id(tableName), created_at: new Date().toISOString(), ...body };
+          table.push(row);
+          saveDb();
+          return send(res, 201, [row]);
+        }
+        if (req.method === 'PATCH') {
+          const updated = [];
+          for (const r of table) {
+            if (matches(r, filters)) {
+              Object.assign(r, body);
+              updated.push(r);
+            }
+          }
+          saveDb();
+          return send(res, 200, updated);
+        }
+        if (req.method === 'DELETE') {
+          db[tableName] = table.filter((r) => !matches(r, filters));
+          saveDb();
+          return send(res, 204);
+        }
       }
 
       return send(res, 404, { msg: `Mock Supabase: no route for ${req.method} ${pathname}` });

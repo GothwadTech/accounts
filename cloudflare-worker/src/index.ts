@@ -42,6 +42,8 @@ export interface Env {
   DEV_MODE?: string;
   /** Extra allowed CORS origins, comma separated (dev/preview ke liye). */
   ALLOWED_ORIGINS?: string;
+  /** Secret for signing OAuth access tokens (JWT HS256). `wrangler secret put JWT_SECRET` */
+  JWT_SECRET?: string;
 }
 
 // -----------------------------------------------------------------------------
@@ -338,6 +340,177 @@ function parseUserAgent(ua: string): { device_name: string; browser: string; os:
   return { device_name: `${browser} on ${os}`, browser, os, device_type };
 }
 
+// =============================================================================
+// STEP 2 — OAUTH 2.0 PROVIDER HELPERS ("Sign in with Gothwad")
+// =============================================================================
+// Gothwad khud ek OAuth 2.0 provider hai. GrixChat / ClashDrive / Notes jaisi
+// apps "Sign in with Gothwad" button lagakar user ko yahan bhejti hain.
+//
+// Standard OAuth 2.0 Authorization Code flow + PKCE (mobile/SPA ke liye).
+// Docs: docs/OAUTH.md
+
+/** Konsi scopes supported hain — aur consent screen par kya dikhega. */
+const OAUTH_SCOPES: Record<string, string> = {
+  profile: 'View your basic profile (name, username, avatar)',
+  email: 'View your Gothwad email address',
+  drive: 'Read & write files in your Gothwad Drive',
+  'drive.read': 'View files in your Gothwad Drive',
+  notes: 'Read & write your Gothwad Notes',
+  chat: 'Access your Gothwad Chat messages',
+  offline_access: 'Keep you signed in to this app even when you are away',
+};
+
+/** Space-separated scope string → clean array (unknown scopes hata do). */
+function parseScopes(scopeStr: string): string[] {
+  return String(scopeStr || '')
+    .split(' ')
+    .map((s) => s.trim())
+    .filter((s) => s && OAUTH_SCOPES[s]);
+}
+
+/* --------------------------- base64url + hashing helpers ------------------- */
+
+function b64url(input: string | Uint8Array): string {
+  const bytes = typeof input === 'string' ? new TextEncoder().encode(input) : input;
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function b64urlDecode(s: string): string {
+  const pad = s.replace(/-/g, '+').replace(/_/g, '/');
+  return atob(pad + '='.repeat((4 - (pad.length % 4)) % 4));
+}
+
+async function sha256Base64Url(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return b64url(new Uint8Array(digest));
+}
+
+async function sha256Hex(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** Random secure token (codes, refresh tokens ke liye). */
+function randomToken(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/* ------------------------------- JWT (HS256) ------------------------------- */
+// Access token ek signed JWT hota hai. Koi bhi app /oauth/userinfo par isse
+// bhej sakta hai — Worker signature verify karke profile deta hai.
+
+async function signJwt(payload: Record<string, any>, secret: string): Promise<string> {
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const data = `${b64url(JSON.stringify(header))}.${b64url(JSON.stringify(payload))}`;
+  const key = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(data));
+  return `${data}.${b64url(new Uint8Array(sig))}`;
+}
+
+async function verifyJwt(token: string, secret: string): Promise<Record<string, any> | null> {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const data = `${parts[0]}.${parts[1]}`;
+    const key = await crypto.subtle.importKey(
+      'raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify'],
+    );
+    const sigBytes = Uint8Array.from(atob(parts[2].replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
+    const ok = await crypto.subtle.verify('HMAC', key, sigBytes, new TextEncoder().encode(data));
+    if (!ok) return null;
+
+    const payload = JSON.parse(b64urlDecode(parts[1]));
+    if (payload.exp && payload.exp * 1000 < Date.now()) return null; // expired
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+/* --------------------------- OAuth request body ---------------------------- */
+// OAuth spec form-encoding use karta hai, lekin hum JSON bhi accept karte hain
+// taaki beginner apps ko dikkat na ho.
+
+async function readFormOrJson(request: Request): Promise<Record<string, any>> {
+  const ct = request.headers.get('Content-Type') || '';
+  if (ct.includes('application/x-www-form-urlencoded')) {
+    const text = await request.text();
+    return Object.fromEntries(new URLSearchParams(text));
+  }
+  return readJson(request);
+}
+
+/* ------------------------------ OAuth clients ------------------------------ */
+// Client = ecosystem app (jaise gothwad-chat). DB mein registered hona zaroori.
+
+async function findOAuthClient(env: Env, clientId: string): Promise<Record<string, any> | null> {
+  // Pehle client_id se, phir id se (dono same ho sakte hain)
+  for (const col of ['client_id', 'id']) {
+    const res = await SB.adminFetch(
+      env,
+      `/rest/v1/ecosystem_apps?${col}=eq.${encodeURIComponent(clientId)}&select=*`,
+    );
+    const rows = (await res.json()) as Record<string, any>[];
+    if (Array.isArray(rows) && rows[0]) return rows[0];
+  }
+  return null;
+}
+
+/**
+ * redirect_uri check — SIRF registered URLs allowed (security!).
+ * Phle exact match; DEV_MODE mein localhost URLs extra allowed (testing ke liye).
+ */
+function isRedirectUriAllowed(env: Env, client: Record<string, any>, redirectUri: string): boolean {
+  const allowed: string[] = Array.isArray(client.redirect_uris) ? client.redirect_uris : [];
+  if (allowed.includes(redirectUri)) return true;
+  if (env.DEV_MODE === 'true') {
+    try {
+      const u = new URL(redirectUri);
+      if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') return true;
+    } catch { /* invalid URL */ }
+  }
+  return false;
+}
+
+/** PKCE verify: SHA256(code_verifier) === code_challenge (method S256) */
+async function verifyPkce(verifier: string, challenge: string | null, method: string | null): Promise<boolean> {
+  if (!challenge) return true; // PKCE optional (confidential clients)
+  if (method && method !== 'S256') return false; // sirf S256 supported
+  const computed = await sha256Base64Url(verifier);
+  return computed === challenge;
+}
+
+/** Client secret check — sirf confidential clients (secret_hash set ho) ke liye. */
+async function verifyClientSecret(client: Record<string, any>, secret: string | undefined): Promise<boolean> {
+  if (!client.secret_hash) return true; // public client (PKCE se protected)
+  if (!secret) return false;
+  return (await sha256Hex(secret)) === client.secret_hash;
+}
+
+/** OAuth access token banao (1 ghanta valid). */
+async function issueAccessToken(env: Env, opts: {
+  userId: string; username: string; clientId: string; scopes: string[];
+}): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  return signJwt({
+    iss: env.AUTH_HUB_URL,          // issuer: Gothwad Accounts
+    sub: opts.userId,               // subject: user ki id
+    aud: opts.clientId,             // audience: kaunsi app
+    client_id: opts.clientId,
+    username: opts.username,
+    scope: opts.scopes.join(' '),
+    iat: now,
+    exp: now + 3600,                // 1 hour
+    jti: randomToken().slice(0, 16), // unique token id
+  }, env.JWT_SECRET || env.SUPABASE_SERVICE_ROLE_KEY);
+}
+
 // -----------------------------------------------------------------------------
 // Resend — password reset email bhejne ke liye (free: 3000 emails/month)
 // -----------------------------------------------------------------------------
@@ -389,16 +562,17 @@ export default {
     };
 
     try {
-      const { pathname } = url;
+      const pathname = url.pathname;
+    const route = pathname.startsWith('/api') ? pathname.slice(4) : pathname;
 
       // -------------------------------------------------------------- health
-      if (pathname === '/api/health' && request.method === 'GET') {
+      if (route === '/health' && request.method === 'GET') {
         return withCors(json({ status: 'ok', service: 'gothwad-auth-api', time: new Date().toISOString() }));
       }
 
       // ------------------------------------------------- check-username (GET)
       // Signup page live check karta hai: username available hai ya nahi.
-      if (pathname === '/api/auth/check-username' && request.method === 'GET') {
+      if (route === '/auth/check-username' && request.method === 'GET') {
         const username = (url.searchParams.get('username') || '').toLowerCase().trim();
         if (!username || !isValidUsername(username)) {
           return withCors(json({ available: false, valid: false, error: 'Invalid username format' }));
@@ -423,7 +597,7 @@ export default {
       // Flow: validate → username free? → Supabase auth user banao (email_confirm
       // true, kyunki @APP_DOMAIN mail abhi live nahi) → trigger profile banata
       // hai → turant session cookies set kar dete hain (auto login!).
-      if (pathname === '/api/auth/signup' && request.method === 'POST') {
+      if (route === '/auth/signup' && request.method === 'POST') {
         const body = await readJson(request);
         const firstName = String(body.first_name || '').trim();
         const lastName = String(body.last_name || '').trim();
@@ -525,7 +699,7 @@ export default {
 
       // ---------------------------------------------------------- signin
       // Identifier = username ya full email, dono chalte hain.
-      if (pathname === '/api/auth/signin' && request.method === 'POST') {
+      if (route === '/auth/signin' && request.method === 'POST') {
         const body = await readJson(request);
         const identifier = String(body.identifier || '').trim().toLowerCase();
         const password = String(body.password || '');
@@ -583,7 +757,7 @@ export default {
       }
 
       // ---------------------------------------------------------- signout
-      if (pathname === '/api/auth/signout' && request.method === 'POST') {
+      if (route === '/auth/signout' && request.method === 'POST') {
         const accessToken = getCookie(request, 'gothwad_at');
         const sessionId = getCookie(request, 'gothwad_sid');
 
@@ -610,7 +784,7 @@ export default {
       // ------------------------------------------------------- session (me)
       // Frontend page-load par call karta hai: "logged-in hoon kya?"
       // Access token expire ho to automatically refresh ho jaata hai.
-      if (pathname === '/api/auth/me' && request.method === 'GET') {
+      if (route === '/auth/me' && request.method === 'GET') {
         const session = await resolveSession(request, env);
         if (!session.ok) {
           return withCors(
@@ -629,7 +803,7 @@ export default {
       // Sirf username maango. Reset link RECOVERY email par jaata hai.
       // (Hamesha same generic response — taaki koi pata na laga sake ki
       //  kaunsa username exist karta hai. Security best-practice.)
-      if (pathname === '/api/auth/forgot-password' && request.method === 'POST') {
+      if (route === '/auth/forgot-password' && request.method === 'POST') {
         const body = await readJson(request);
         const username = String(body.username || '').toLowerCase().trim();
         const genericOk = () =>
@@ -670,7 +844,7 @@ export default {
 
       // ------------------------------------------------- reset-password
       // User reset link par click karke aaya hai → uske token se naya password.
-      if (pathname === '/api/auth/reset-password' && request.method === 'POST') {
+      if (route === '/auth/reset-password' && request.method === 'POST') {
         const authHeader = request.headers.get('Authorization') || '';
         const token = authHeader.replace('Bearer ', '').trim();
         const body = await readJson(request);
@@ -697,7 +871,7 @@ export default {
 
       // ------------------------------------------------- change-password
       // Logged-in user apna password change kare.
-      if (pathname === '/api/auth/change-password' && request.method === 'POST') {
+      if (route === '/auth/change-password' && request.method === 'POST') {
         const session = await resolveSession(request, env);
         if (!session.ok) return withCors(apiError('Please sign in first', 401));
 
@@ -730,7 +904,7 @@ export default {
       }
 
       // ------------------------------------------------- update-profile
-      if (pathname === '/api/auth/update-profile' && request.method === 'POST') {
+      if (route === '/auth/update-profile' && request.method === 'POST') {
         const session = await resolveSession(request, env);
         if (!session.ok) return withCors(apiError('Please sign in first', 401));
 
@@ -759,7 +933,7 @@ export default {
       }
 
       // ------------------------------------------------------- sessions
-      if (pathname === '/api/auth/sessions' && request.method === 'GET') {
+      if (route === '/auth/sessions' && request.method === 'GET') {
         const session = await resolveSession(request, env);
         if (!session.ok) return withCors(apiError('Please sign in first', 401));
 
@@ -774,7 +948,7 @@ export default {
       }
 
       // Ek specific device se sign-out (remote revoke)
-      if (pathname === '/api/auth/sessions/revoke' && request.method === 'POST') {
+      if (route === '/auth/sessions/revoke' && request.method === 'POST') {
         const session = await resolveSession(request, env);
         if (!session.ok) return withCors(apiError('Please sign in first', 401));
 
@@ -792,7 +966,7 @@ export default {
       }
 
       // Saare other devices se sign-out
-      if (pathname === '/api/auth/sessions/revoke-others' && request.method === 'POST') {
+      if (route === '/auth/sessions/revoke-others' && request.method === 'POST') {
         const session = await resolveSession(request, env);
         if (!session.ok) return withCors(apiError('Please sign in first', 401));
 
@@ -803,6 +977,358 @@ export default {
           { method: 'DELETE' },
         );
         return withCors(json({ ok: true, message: 'All other devices signed out' }));
+      }
+
+      // ================================================================
+      // STEP 2 — OAUTH 2.0 PROVIDER ("Sign in with Gothwad")
+      // External apps ke liye canonical paths: /oauth/* (bina /api ke bhi chalte hain)
+      // ================================================================
+
+      // ------------------------------------------- /oauth/app-info (GET)
+      // Consent screen ko app ka naam chahiye hota hai. Public info only.
+      if (route === '/oauth/app-info' && request.method === 'GET') {
+        const clientId = url.searchParams.get('client_id') || '';
+        const client = await findOAuthClient(env, clientId);
+        if (!client) return withCors(apiError('Unknown OAuth client', 404));
+        return withCors(json({
+          id: client.id,
+          name: client.name,
+          icon: client.icon,
+          is_verified: !!client.is_verified,
+          scopes_supported: Object.keys(OAUTH_SCOPES),
+        }));
+      }
+
+      // --------------------------------------------- /oauth/authorize (GET)
+      // User ko "Sign in with Gothwad" button yahan bhejta hai.
+      // Flow: validate params → login hai? → consent screen par redirect.
+      if (route === '/oauth/authorize' && request.method === 'GET') {
+        const clientId = url.searchParams.get('client_id') || '';
+        const redirectUri = url.searchParams.get('redirect_uri') || '';
+        const responseType = url.searchParams.get('response_type') || '';
+        const scopes = parseScopes(url.searchParams.get('scope') || '');
+
+        const client = await findOAuthClient(env, clientId);
+        if (!client) return withCors(apiError('Unknown client_id', 400));
+        if (responseType !== 'code') return withCors(apiError('Only response_type=code is supported', 400));
+        if (!isRedirectUriAllowed(env, client, redirectUri)) {
+          return withCors(apiError('redirect_uri is not registered for this app', 400));
+        }
+        if (scopes.length === 0) return withCors(apiError('At least one valid scope is required', 400));
+
+        // Public clients (secret nahi) ke liye PKCE mandatory — security best practice
+        const challenge = url.searchParams.get('code_challenge');
+        const isPublicClient = !client.secret_hash;
+        if (isPublicClient && !challenge) {
+          return withCors(apiError('PKCE required: pass code_challenge (S256)', 400));
+        }
+
+        // Logged-in nahi? → login page par bhejo, login ke baad wapas yahin
+        const session = await resolveSession(request, env);
+        if (!session.ok) {
+          const loginUrl = `${env.AUTH_HUB_URL}/login.html?next=${encodeURIComponent(url.pathname + url.search)}`;
+          return withCors(new Response(null, { status: 302, headers: { Location: loginUrl } }));
+        }
+
+        // Logged-in → consent screen (user ko poonchho: access dena hai?)
+        const consentUrl = `${env.AUTH_HUB_URL}/authorize.html${url.search}`;
+        return withCors(new Response(null, { status: 302, headers: { Location: consentUrl } }));
+      }
+
+      // ---------------------------------------------- /oauth/decision (POST)
+      // Consent screen se: user ne Allow/Deny kiya.
+      if ((route === '/oauth/decision' || route === '/oauth/authorize/decision') && request.method === 'POST') {
+        const session = await resolveSession(request, env);
+        if (!session.ok) return withCors(apiError('Please sign in first', 401));
+
+        const body = await readJson(request);
+        const approved = body.approved === true;
+        const clientId = String(body.client_id || '');
+        const redirectUri = String(body.redirect_uri || '');
+        const state = body.state ? String(body.state) : '';
+        const scopes = parseScopes(String(body.scope || ''));
+        const challenge = body.code_challenge ? String(body.code_challenge) : null;
+        const challengeMethod = body.code_challenge_method ? String(body.code_challenge_method) : 'S256';
+
+        const client = await findOAuthClient(env, clientId);
+        if (!client) return withCors(apiError('Unknown client_id', 400));
+        if (!isRedirectUriAllowed(env, client, redirectUri)) {
+          return withCors(apiError('redirect_uri is not registered', 400));
+        }
+
+        // User ne DENY kiya → error ke saath app par wapas
+        if (!approved) {
+          const denyUrl = `${redirectUri}?error=access_denied${state ? `&state=${encodeURIComponent(state)}` : ''}`;
+          return withCors(json({ redirect_url: denyUrl }));
+        }
+
+        if (scopes.length === 0) return withCors(apiError('No valid scopes requested', 400));
+
+        // One-time authorization code banao (5 minute valid)
+        const code = randomToken();
+        const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+        await SB.adminFetch(env, '/rest/v1/oauth_auth_codes', {
+          method: 'POST',
+          body: JSON.stringify({
+            code,
+            client_id: client.id,
+            user_id: session.authUser!.id,
+            redirect_uri: redirectUri,
+            scopes,
+            code_challenge: challenge,
+            code_challenge_method: challenge ? challengeMethod : null,
+            expires_at: expiresAt,
+            used: false,
+          }),
+        });
+
+        // Grant save (dashboard mein "Connected apps" dikhta hai)
+        // Pehle check, phir insert/update — taaki duplicate na bane
+        const existingRes = await SB.adminFetch(
+          env,
+          `/rest/v1/app_authorizations?user_id=eq.${encodeURIComponent(session.authUser!.id)}&app_id=eq.${encodeURIComponent(client.id)}&select=id`,
+        );
+        const existingRows = (await existingRes.json()) as Record<string, any>[];
+        const grantBody = {
+          user_id: session.authUser!.id,
+          app_id: client.id,
+          scopes,
+          granted_at: new Date().toISOString(),
+          last_used_at: new Date().toISOString(),
+        };
+        if (existingRows.length > 0) {
+          await SB.adminFetch(env, `/rest/v1/app_authorizations?id=eq.${encodeURIComponent(existingRows[0].id)}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ scopes, last_used_at: new Date().toISOString() }),
+          });
+        } else {
+          await SB.adminFetch(env, '/rest/v1/app_authorizations', { method: 'POST', body: JSON.stringify(grantBody) });
+        }
+
+        // App par wapas: code + state ke saath (standard OAuth redirect)
+        const backUrl = `${redirectUri}?code=${encodeURIComponent(code)}${state ? `&state=${encodeURIComponent(state)}` : ''}`;
+        return withCors(json({ redirect_url: backUrl }));
+      }
+
+      // -------------------------------------------------- /oauth/token (POST)
+      // App apna code yahan token se exchange karta hai.
+      // grant_type=authorization_code  ya  grant_type=refresh_token
+      // (form-encoding standard hai — JSON bhi accept karte hain)
+      if (route === '/oauth/token' && request.method === 'POST') {
+        const body = await readFormOrJson(request);
+        const grantType = String(body.grant_type || '');
+        const clientId = String(body.client_id || '');
+        const clientSecret = body.client_secret ? String(body.client_secret) : undefined;
+
+        const client = await findOAuthClient(env, clientId);
+        if (!client) return withCors(json({ error: 'invalid_client', error_description: 'Unknown client_id' }, 401));
+        if (!(await verifyClientSecret(client, clientSecret))) {
+          return withCors(json({ error: 'invalid_client', error_description: 'Bad client_secret' }, 401));
+        }
+
+        // ---- Authorization Code grant ----
+        if (grantType === 'authorization_code') {
+          const code = String(body.code || '');
+          const redirectUri = String(body.redirect_uri || '');
+          const codeVerifier = body.code_verifier ? String(body.code_verifier) : '';
+
+          const codeRes = await SB.adminFetch(env, `/rest/v1/oauth_auth_codes?code=eq.${encodeURIComponent(code)}&select=*`);
+          const codeRows = (await codeRes.json()) as Record<string, any>[];
+          const row = codeRows[0];
+
+          // Har check zaroori hai: code ek baar hi use ho sakta hai!
+          if (!row || row.used) {
+            return withCors(json({ error: 'invalid_grant', error_description: 'Code is invalid or already used' }, 400));
+          }
+          if (new Date(row.expires_at).getTime() < Date.now()) {
+            return withCors(json({ error: 'invalid_grant', error_description: 'Code expired' }, 400));
+          }
+          if (row.client_id !== client.id || row.redirect_uri !== redirectUri) {
+            return withCors(json({ error: 'invalid_grant', error_description: 'redirect_uri or client mismatch' }, 400));
+          }
+          if (!(await verifyPkce(codeVerifier, row.code_challenge, row.code_challenge_method))) {
+            return withCors(json({ error: 'invalid_grant', error_description: 'PKCE verification failed' }, 400));
+          }
+
+          // Code burn — reuse rokne ke liye turant used mark karo
+          await SB.adminFetch(env, `/rest/v1/oauth_auth_codes?code=eq.${encodeURIComponent(code)}`, {
+            method: 'PATCH', body: JSON.stringify({ used: true }),
+          });
+
+          const profile = await fetchProfile(env, row.user_id);
+          const username = profile?.username || '';
+          const scopes: string[] = row.scopes || [];
+          const accessToken = await issueAccessToken(env, {
+            userId: row.user_id, username, clientId: client.id, scopes,
+          });
+
+          const response: Record<string, any> = {
+            access_token: accessToken,
+            token_type: 'Bearer',
+            expires_in: 3600,
+            scope: scopes.join(' '),
+          };
+
+          // offline_access scope → refresh token (30 din, DB mein sirf hash)
+          if (scopes.includes('offline_access')) {
+            const rt = randomToken();
+            await SB.adminFetch(env, '/rest/v1/oauth_refresh_tokens', {
+              method: 'POST',
+              body: JSON.stringify({
+                token_hash: await sha256Hex(rt),
+                user_id: row.user_id,
+                client_id: client.id,
+                scopes,
+                expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+                revoked: false,
+              }),
+            });
+            response.refresh_token = rt;
+          }
+
+          return withCors(json(response));
+        }
+
+        // ---- Refresh Token grant (rotation ke saath) ----
+        if (grantType === 'refresh_token') {
+          const rt = String(body.refresh_token || '');
+          const hash = await sha256Hex(rt);
+
+          const rtRes = await SB.adminFetch(env, `/rest/v1/oauth_refresh_tokens?token_hash=eq.${encodeURIComponent(hash)}&select=*`);
+          const rtRows = (await rtRes.json()) as Record<string, any>[];
+          const row = rtRows[0];
+
+          if (!row || row.revoked || new Date(row.expires_at).getTime() < Date.now()) {
+            return withCors(json({ error: 'invalid_grant', error_description: 'Refresh token invalid or expired' }, 400));
+          }
+          if (row.client_id !== client.id) {
+            return withCors(json({ error: 'invalid_grant', error_description: 'Token was issued to another app' }, 400));
+          }
+
+          // ROTATION: purana token revoke, naya bhejo (token leak par purana bekaar)
+          await SB.adminFetch(env, `/rest/v1/oauth_refresh_tokens?token_hash=eq.${encodeURIComponent(hash)}`, {
+            method: 'PATCH', body: JSON.stringify({ revoked: true }),
+          });
+
+          const profile = await fetchProfile(env, row.user_id);
+          const accessToken = await issueAccessToken(env, {
+            userId: row.user_id,
+            username: profile?.username || '',
+            clientId: client.id,
+            scopes: row.scopes || [],
+          });
+
+          const newRt = randomToken();
+          await SB.adminFetch(env, '/rest/v1/oauth_refresh_tokens', {
+            method: 'POST',
+            body: JSON.stringify({
+              token_hash: await sha256Hex(newRt),
+              user_id: row.user_id,
+              client_id: client.id,
+              scopes: row.scopes || [],
+              expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+              revoked: false,
+            }),
+          });
+
+          return withCors(json({
+            access_token: accessToken,
+            token_type: 'Bearer',
+            expires_in: 3600,
+            scope: (row.scopes || []).join(' '),
+            refresh_token: newRt,
+          }));
+        }
+
+        return withCors(json({ error: 'unsupported_grant_type' }, 400));
+      }
+
+      // ------------------------------------------------ /oauth/userinfo (GET)
+      // Apps yahan se user ka profile leti hain (Bearer access_token ke saath).
+      // Response scopes par depend karta hai — jyada data kabhi nahi.
+      if (route === '/oauth/userinfo' && request.method === 'GET') {
+        const authHeader = request.headers.get('Authorization') || '';
+        const token = authHeader.replace('Bearer ', '').trim();
+        if (!token) return withCors(json({ error: 'invalid_token' }, 401));
+
+        const payload = await verifyJwt(token, env.JWT_SECRET || env.SUPABASE_SERVICE_ROLE_KEY);
+        if (!payload) return withCors(json({ error: 'invalid_token' }, 401));
+
+        const scopes: string[] = String(payload.scope || '').split(' ').filter(Boolean);
+        const profile = await fetchProfile(env, String(payload.sub));
+
+        const info: Record<string, any> = { sub: payload.sub };
+
+        if (scopes.includes('profile')) {
+          info.name = `${profile?.first_name || ''} ${profile?.last_name || ''}`.trim();
+          info.preferred_username = profile?.username || payload.username;
+          info.picture = profile?.avatar_url || null;
+          info.updated_at = profile?.updated_at || null;
+        }
+        if (scopes.includes('email')) {
+          info.email = `${profile?.username || payload.username}@${env.APP_DOMAIN}`; // derived (Rule #2)
+          info.email_verified = true;
+        }
+        if (scopes.includes('drive') || scopes.includes('drive.read')) {
+          info.drive = {
+            used_bytes: Number(profile?.storage_used_bytes || 0),
+            limit_bytes: Number(profile?.storage_limit_bytes || 0),
+            write_access: scopes.includes('drive'),
+          };
+        }
+        return withCors(json(info));
+      }
+
+      // ------------------------------ /api/oauth/authorizations (GET, session)
+      // Dashboard ke "Connected apps" tab ke liye: user ke grants + app details.
+      if (route === '/oauth/authorizations' && request.method === 'GET') {
+        const session = await resolveSession(request, env);
+        if (!session.ok) return withCors(apiError('Please sign in first', 401));
+
+        const uid = session.authUser!.id;
+        const [grantsRes, appsRes] = await Promise.all([
+          SB.adminFetch(env, `/rest/v1/app_authorizations?user_id=eq.${encodeURIComponent(uid)}&select=*`),
+          SB.adminFetch(env, `/rest/v1/ecosystem_apps?select=*`),
+        ]);
+        const grants = (await grantsRes.json()) as Record<string, any>[];
+        const apps = (await appsRes.json()) as Record<string, any>[];
+
+        const connected = (grants || []).map((g) => {
+          const app = (apps || []).find((a) => a.id === g.app_id) || {};
+          return {
+            app_id: g.app_id,
+            name: app.name || g.app_id,
+            icon: app.icon || 'app',
+            scopes: g.scopes || [],
+            granted_at: g.granted_at,
+            last_used_at: g.last_used_at,
+          };
+        });
+        return withCors(json({ ok: true, connected, apps: (apps || []).map((a) => ({ id: a.id, name: a.name, icon: a.icon, description: a.description })) }));
+      }
+
+      // ------------------------------------- /api/oauth/revoke (POST, session)
+      // Dashboard se "Disconnect" — grant + refresh tokens sab revoke.
+      if (route === '/oauth/revoke' && request.method === 'POST') {
+        const session = await resolveSession(request, env);
+        if (!session.ok) return withCors(apiError('Please sign in first', 401));
+
+        const body = await readJson(request);
+        const appId = String(body.app_id || '');
+        if (!appId) return withCors(apiError('app_id is required'));
+        const uid = session.authUser!.id;
+
+        await SB.adminFetch(
+          env,
+          `/rest/v1/app_authorizations?user_id=eq.${encodeURIComponent(uid)}&app_id=eq.${encodeURIComponent(appId)}`,
+          { method: 'DELETE' },
+        );
+        await SB.adminFetch(
+          env,
+          `/rest/v1/oauth_refresh_tokens?user_id=eq.${encodeURIComponent(uid)}&client_id=eq.${encodeURIComponent(appId)}`,
+          { method: 'PATCH', body: JSON.stringify({ revoked: true }) },
+        );
+        return withCors(json({ ok: true, message: 'App disconnected' }));
       }
 
       return withCors(apiError('Endpoint not found', 404));

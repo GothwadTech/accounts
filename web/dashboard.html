@@ -173,15 +173,24 @@
           <div class="card">
             <div class="card-title">Gothwad ecosystem apps</div>
             <div class="card-subtitle">
-              In apps mein aap apne Gothwad Account se sign-in kar paoge (OAuth SSO — coming in Step 2).
+              "Sign in with Gothwad" se connected apps yahan dikhte hain.
+              Kisi bhi app ka access kabhi bhi hata sakte ho.
             </div>
-            <div class="apps-grid">
-              <div class="app-tile"><div class="app-icon">📧</div><div><div class="app-name">Gothwad Mail</div><div class="app-desc">Custom email + webmail</div></div></div>
-              <div class="app-tile"><div class="app-icon">☁️</div><div><div class="app-name">Gothwad Drive</div><div class="app-desc">Unlimited storage via Telegram</div></div></div>
-              <div class="app-tile"><div class="app-icon">💬</div><div><div class="app-name">Gothwad Chat</div><div class="app-desc">Messaging (GrixChat)</div></div></div>
-              <div class="app-tile"><div class="app-icon">📝</div><div><div class="app-name">Gothwad Notes</div><div class="app-desc">Synced notes &amp; lists</div></div></div>
-              <div class="app-tile"><div class="app-icon">📅</div><div><div class="app-name">Gothwad Calendar</div><div class="app-desc">Events &amp; reminders</div></div></div>
-              <div class="app-tile"><div class="app-icon">🌐</div><div><div class="app-name">Gothwad Browser</div><div class="app-desc">Private browser + sync</div></div></div>
+
+            <!-- Connected apps (real OAuth grants) -->
+            <div class="label" style="text-transform:uppercase;letter-spacing:0.08em;font-size:10.5px;">
+              Connected apps
+            </div>
+            <div class="device-list mb-6" id="connected-list" style="gap:10px;">
+              <div class="text-muted text-sm">Loading…</div>
+            </div>
+
+            <!-- All ecosystem apps -->
+            <div class="label" style="text-transform:uppercase;letter-spacing:0.08em;font-size:10.5px;">
+              All Gothwad apps
+            </div>
+            <div class="apps-grid" id="apps-grid">
+              <div class="text-muted text-sm">Loading…</div>
             </div>
           </div>
         </section>

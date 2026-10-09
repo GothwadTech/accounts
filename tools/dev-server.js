@@ -26,6 +26,7 @@ const path = require('path');
 const PORT = Number(process.env.PORT || 3000);
 const WORKER_URL = process.env.WORKER_URL || 'http://127.0.0.1:8787';
 const WEB_ROOT = path.join(__dirname, '..', 'web');
+const EXAMPLES_ROOT = path.join(__dirname, '..', 'examples');
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -43,8 +44,10 @@ const MIME = {
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
 
-  // ---------------------------------------------------- /api/* → Worker proxy
-  if (url.pathname.startsWith('/api/')) {
+  // ------------------------------------ /api/* + /oauth/* → Worker proxy
+  // /oauth/* bhi proxy hota hai taaki OAuth apps local dev mein bhi
+  // same-origin se Worker ke standard endpoints use kar sakein.
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/oauth/')) {
     const target = new URL(url.pathname + url.search, WORKER_URL);
     const proxyReq = http.request(
       target,
@@ -65,11 +68,15 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // ------------------------------------------------------- static files (web/)
-  let filePath = path.join(WEB_ROOT, url.pathname === '/' ? 'index.html' : url.pathname);
+  // ------------------------------------- static files (web/ + /examples/)
+  const isExample = url.pathname.startsWith('/examples/');
+  const root = isExample ? EXAMPLES_ROOT : WEB_ROOT;
+  // '/examples/...' → EXAMPLES_ROOT ke andar '...'
+  const relPath = isExample ? url.pathname.slice('/examples/'.length) : (url.pathname === '/' ? 'index.html' : url.pathname.slice(1));
+  let filePath = path.join(root, relPath);
 
-  // Directory traversal se bachav: web/ ke bahar access na ho
-  if (!filePath.startsWith(WEB_ROOT)) {
+  // Directory traversal se bachav: allowed root ke bahar access na ho
+  if (!filePath.startsWith(root)) {
     res.writeHead(403);
     res.end('Forbidden');
     return;

@@ -3,9 +3,10 @@
 **Central auth system for the Gothwad ecosystem** — ek hi account se Mail, Drive,
 Chat, Notes, Calendar sab mein sign-in. (Google Account jaisa, but Gothwad!)
 
-> Status: **Step 1 complete** — real email+password auth (Supabase), JWT sessions,
-> remember-me, password reset, device management, dark-themed UI.
-> Next: Step 2 = OAuth 2.0 provider ("Sign in with Gothwad").
+> Status: **Step 1 ✅ + Step 2 ✅** — real auth (Supabase), JWT sessions, remember-me,
+> password reset, device management, dark UI + **OAuth 2.0 provider**
+> ("Sign in with Gothwad" — authorization/token/userinfo endpoints, PKCE, scopes).
+> Next: Step 3 = Gothwad Mail.
 
 ---
 
@@ -29,11 +30,16 @@ accounts/
 │
 ├── supabase/schema.sql      🗄️ Database schema + RLS (copy-paste in Supabase)
 │
+├── examples/
+│   └── sign-in-with-gothwad/ 🔘 Drop-in OAuth client template (GrixChat ke liye!)
+│
 ├── tools/                   🛠️ Local dev helpers (never deploy!)
-│   ├── dev-server.js        Static server + /api proxy for local dev
+│   ├── dev-server.js        Static server + /api + /oauth proxy for local dev
 │   └── mock-supabase.js     Fake Supabase for offline testing only
 │
-├── docs/SETUP.md            📘 STEP-BY-STEP setup guide (start here!)
+├── docs/
+│   ├── SETUP.md             📘 STEP-BY-STEP setup guide (start here!)
+│   └── OAUTH.md             🔐 OAuth 2.0 provider integration guide
 ├── legacy-react-demo/       📦 Old placeholder demo (kept for reference)
 └── .env.example             📋 All environment variables listed
 ```
@@ -55,7 +61,11 @@ node tools/dev-server.js         # → http://localhost:3000
 
 Browser mein `http://localhost:3000` kholo — signup/login/dashboard sab chalega!
 
+**OAuth demo try karo:** `http://localhost:3000/examples/sign-in-with-gothwad/`
+— "Sign in with Gothwad" button → consent screen → app login. 🎉
+
 > **Full setup (Supabase + Cloudflare deploy):** [docs/SETUP.md](docs/SETUP.md)
+> **Apps ko connect karna:** [docs/OAUTH.md](docs/OAUTH.md)
 
 ---
 
@@ -64,8 +74,8 @@ Browser mein `http://localhost:3000` kholo — signup/login/dashboard sab chaleg
 | Step | Kya hai | Status |
 |------|---------|--------|
 | **1** | Gothwad Accounts (signup, login, sessions, reset) | ✅ Done |
-| **2** | OAuth 2.0 provider ("Sign in with Gothwad") | 🔜 Next |
-| **3** | Gothwad Mail (Cloudflare Email Routing + Resend) | 📋 Planned |
+| **2** | OAuth 2.0 provider ("Sign in with Gothwad") | ✅ Done |
+| **3** | Gothwad Mail (Cloudflare Email Routing + Resend) | 🔜 Next |
 | **4** | Cross-app SSO (ClashDrive, GrixChat connect) | 📋 Planned |
 
 Full architecture & vision: [ROADMAP.md](ROADMAP.md)

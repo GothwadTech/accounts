@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Authorize app — Gothwad Accounts</title>
+  <link rel="icon" href="/favicon.ico" sizes="any" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="page">
+    <header id="topbar" class="topbar"></header>
+
+    <main class="main">
+      <div class="auth-wrap">
+        <div class="card auth-card" style="max-width:480px;">
+          <a class="brand" href="index.html">
+            <span class="flame">🔥</span>
+            <span>GOTHWAD<span class="brand-sub">Accounts</span></span>
+          </a>
+
+          <!-- Loading state -->
+          <div id="loading" class="text-center" style="padding:30px 0;">
+            <span class="spinner dark"></span>
+            <p class="text-sm text-muted mt-4">Checking authorization request…</p>
+          </div>
+
+          <!-- Consent card (JS se fill hota hai) -->
+          <div id="consent" class="hidden">
+            <!-- Kis app ko access chahiye -->
+            <div class="text-center mb-6">
+              <div class="app-icon" id="app-icon"
+                   style="width:56px;height:56px;font-size:26px;margin:0 auto 12px;border-radius:16px;">🔐</div>
+              <h1 class="auth-heading" style="font-size:20px;">
+                <span id="app-name">An app</span> wants to access
+              </h1>
+              <p class="auth-subheading" style="margin-bottom:0;">
+                your <b>Gothwad Account</b>
+              </p>
+            </div>
+
+            <!-- Signed-in user -->
+            <div class="device mb-6" style="padding:12px 14px;">
+              <div class="device-info">
+                <div class="avatar sm" id="user-initials">…</div>
+                <div>
+                  <div class="device-name" id="user-name">…</div>
+                  <div class="device-meta mono" id="user-email">…</div>
+                </div>
+              </div>
+              <a href="login.html" class="text-xs">Switch</a>
+            </div>
+
+            <!-- Scopes list -->
+            <div class="label" style="text-transform:uppercase;letter-spacing:0.08em;font-size:10.5px;">
+              This will allow the app to:
+            </div>
+            <div id="scope-list" class="device-list mb-6" style="gap:8px;"></div>
+
+            <div class="alert alert-info text-xs">
+              🔒 Gothwad kabhi aapka password app ke saath share nahi karta.
+              Aap kabhi bhi <a href="dashboard.html">Dashboard → Connected apps</a> se access hata sakte ho.
+            </div>
+
+            <!-- Actions -->
+            <div class="row-2" style="grid-template-columns:1fr 1.4fr;">
+              <button class="btn btn-ghost btn-block" id="btn-deny">Deny</button>
+              <button class="btn btn-primary btn-block" id="btn-allow">Allow access</button>
+            </div>
+          </div>
+
+          <!-- Error state -->
+          <div id="error-box" class="hidden">
+            <div class="alert alert-error" id="error-text">Invalid authorization request.</div>
+            <a class="btn btn-ghost btn-block" href="index.html">Back to Gothwad</a>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="container footer-inner">
+        <div>© 2026 Gothwad Tech · Secure OAuth 2.0 Authorization</div>
+        <div class="footer-links"><a href="index.html">Home</a></div>
+      </div>
+    </footer>
+  </div>
+
+  <script type="module" src="/js/authorize.js"></script>
+</body>
+</html>

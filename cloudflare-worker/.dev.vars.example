@@ -25,6 +25,9 @@ APP_DOMAIN=gothwadtech.com
 AUTH_HUB_URL=http://localhost:3000
 DEV_MODE=true
 
+# OAuth access token signing (Step 2) — dev ke liye koi bhi random string
+JWT_SECRET=dev-only-jwt-secret-change-me
+
 # Frontend dev-server ke liye CORS allow
 ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 

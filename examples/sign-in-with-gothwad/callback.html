@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Signing in… — Gothwad Chat Demo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif; background: #0d1117; color: #e6edf3;
+      min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;
+    }
+    .card {
+      background: #161b22; border: 1px solid #2a3140; border-radius: 18px;
+      padding: 40px 34px; max-width: 460px; width: 100%;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.45);
+    }
+    h1 { font-size: 19px; font-weight: 800; margin-bottom: 8px; }
+    p.sub { color: #8b98a9; font-size: 13px; margin-bottom: 22px; line-height: 1.6; }
+    .spinner {
+      width: 26px; height: 26px; border: 3px solid rgba(233,69,96,0.25);
+      border-top-color: #e94560; border-radius: 50%; animation: spin 0.7s linear infinite;
+      margin: 18px auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .ok-badge { font-size: 40px; text-align: center; margin-bottom: 12px; }
+    .profile {
+      display: flex; align-items: center; gap: 14px; padding: 16px;
+      background: #1c2330; border-radius: 12px; margin: 16px 0;
+    }
+    .avatar {
+      width: 48px; height: 48px; border-radius: 14px; background: #e94560; color: #fff;
+      font-weight: 700; font-size: 17px; display: flex; align-items: center; justify-content: center;
+    }
+    .p-name { font-weight: 700; font-size: 14.5px; }
+    .p-email { color: #8b98a9; font-family: 'JetBrains Mono', monospace; font-size: 12px; margin-top: 2px; }
+    .kv { background: #0f141b; border: 1px solid #2a3140; border-radius: 10px; padding: 12px 14px;
+      font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #8b98a9;
+      white-space: pre-wrap; word-break: break-all; max-height: 220px; overflow: auto; }
+    .error { background: rgba(240,71,71,0.12); border: 1px solid rgba(240,71,71,0.35);
+      color: #ff8a8a; border-radius: 10px; padding: 14px; font-size: 13px; line-height: 1.6; }
+    a.btn {
+      display: inline-flex; margin-top: 18px; padding: 11px 18px; border-radius: 10px;
+      background: #e94560; color: #fff; text-decoration: none; font-size: 13px; font-weight: 700;
+    }
+    a.btn.ghost { background: transparent; border: 1px solid #2a3140; color: #e6edf3; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>💬 Gothwad Chat — OAuth Callback</h1>
+    <p class="sub">Authorization code ko secure token se exchange kar rahe hain…</p>
+
+    <div id="loading">
+      <div class="spinner"></div>
+      <p class="sub text-center" style="margin:0;">Verifying with Gothwad…</p>
+    </div>
+
+    <div id="success" class="hidden" style="display:none;">
+      <div class="ok-badge">✅</div>
+      <h1 style="text-align:center;">Signed in with Gothwad!</h1>
+      <p class="sub" style="text-align:center;">Neeche /oauth/userinfo se aaya data hai.</p>
+      <div class="profile">
+        <div class="avatar" id="p-initials">…</div>
+        <div>
+          <div class="p-name" id="p-name">…</div>
+          <div class="p-email" id="p-email">…</div>
+        </div>
+      </div>
+      <p class="sub" style="margin-bottom:8px;">Raw API response:</p>
+      <div class="kv" id="p-raw"></div>
+      <div class="row">
+        <a class="btn" href="index.html">Try again</a>
+        <a class="btn ghost" id="dashboard-link" href="/dashboard.html">Gothwad Dashboard</a>
+      </div>
+    </div>
+
+    <div id="error" class="error" style="display:none;"></div>
+  </div>
+
+  <script type="module">
+    /**
+     * ============== OAUTH CALLBACK — CODE → TOKEN → USERINFO ==============
+     * Yeh bhi copy-paste ready hai apni app ke callback page ke liye.
+     * =========================================================================
+     */
+
+    const GOTHWAD_AUTH_URL = '';                 // '' = same-origin (dev)
+    const CLIENT_ID = 'gothwad-chat';
+    const SCOPES = 'profile email offline_access';
+
+    const authBase = GOTHWAD_AUTH_URL || location.origin;
+    const params = new URLSearchParams(location.search);
+
+    const loading = document.getElementById('loading');
+    const successBox = document.getElementById('success');
+    const errorBox = document.getElementById('error');
+
+    function fail(msg) {
+      loading.style.display = 'none';
+      successBox.style.display = 'none';
+      errorBox.style.display = 'block';
+      errorBox.innerHTML = `❌ ${msg}<br><br><a href="index.html" style="color:#e94560;">← Wapas try karo</a>`;
+    }
+
+    async function run() {
+      // 1) Error aaya ho (user ne Deny kiya)
+      if (params.get('error')) {
+        return fail(`Authorization denied: ${params.get('error')}`);
+      }
+
+      const code = params.get('code');
+      const state = params.get('state');
+      const expectedState = sessionStorage.getItem('gothwad_oauth_state');
+      const verifier = sessionStorage.getItem('gothwad_pkce_verifier');
+
+      if (!code) return fail('No authorization code received.');
+      if (!verifier) return fail('PKCE verifier missing (session purani ho gayi?).');
+      if (state !== expectedState) return fail('State mismatch — possible CSRF!');
+
+      // 2) Code → token exchange (PKCE verifier ke saath)
+      const tokenRes = await fetch(`${authBase}/oauth/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          grant_type: 'authorization_code',
+          code,
+          redirect_uri: location.origin + location.pathname,
+          client_id: CLIENT_ID,
+          code_verifier: verifier,
+        }),
+      });
+      const tokens = await tokenRes.json();
+      if (!tokenRes.ok) return fail(`Token exchange failed: ${tokens.error_description || tokens.error}`);
+
+      // 3) Token save (asli app ise apne secure storage mein rakhega)
+      sessionStorage.removeItem('gothwad_pkce_verifier');
+      sessionStorage.removeItem('gothwad_oauth_state');
+      sessionStorage.setItem('gothwad_access_token', tokens.access_token);
+      if (tokens.refresh_token) sessionStorage.setItem('gothwad_refresh_token', tokens.refresh_token);
+
+      // 4) UserInfo — user ka profile
+      const infoRes = await fetch(`${authBase}/oauth/userinfo`, {
+        headers: { Authorization: `Bearer ${tokens.access_token}` },
+      });
+      const info = await infoRes.json();
+      if (!infoRes.ok) return fail(`UserInfo failed: ${info.error || infoRes.status}`);
+
+      // 5) Success UI
+      loading.style.display = 'none';
+      successBox.style.display = 'block';
+      document.getElementById('p-initials').textContent =
+        (info.name || info.preferred_username || '?').slice(0, 2).toUpperCase();
+      document.getElementById('p-name').textContent = info.name || info.preferred_username;
+      document.getElementById('p-email').textContent = info.email || '';
+      document.getElementById('p-raw').textContent = JSON.stringify(info, null, 2);
+      document.getElementById('dashboard-link').href = `${authBase}/dashboard.html`;
+    }
+
+    run().catch((err) => fail(String(err)));
+  </script>
+</body>
+</html>
