@@ -13,7 +13,8 @@ import {
 } from './common.js';
 import { GOTHWAD_CONFIG, gothwadEmail } from './config.js';
 
-renderTopbar();
+// NOTE: renderTopbar() yahan NAHI — loadUser() ke andar chalega jab session
+// confirm ho jaaye (ek hi /auth/me call — parallel calls se race hoti thi).
 
 let currentUser = null;
 
@@ -22,7 +23,8 @@ async function loadUser() {
   currentUser = await requireAuth(); // login nahi hai to /signin par bhej dega
   if (!currentUser) return;
 
-  // Auth confirmed → loading hatao, dashboard dikhao
+  // Auth confirmed → topbar + dashboard dikhao
+  renderTopbar({ authenticated: true, user: currentUser });
   document.getElementById('auth-loading').classList.add('hidden');
   document.getElementById('dash-content').classList.remove('hidden');
 

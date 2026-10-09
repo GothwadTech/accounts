@@ -97,12 +97,14 @@ export async function signOut() {
 /**
  * Topbar render karo (real Gothwad logo + auth state ke hisaab se buttons).
  * Har page mein <header id="topbar"></header> hona chahiye.
+ * NOTE: agar session pehle se pata ho (getPageSession()) to use bhejo —
+ * warna ye khud /auth/me call karega.
  */
-export async function renderTopbar() {
+export async function renderTopbar(existingSession = null) {
   const el = document.getElementById('topbar');
   if (!el) return;
 
-  const session = await getSession();
+  const session = existingSession || (await getSession());
   const authed = session.authenticated;
 
   el.innerHTML = `

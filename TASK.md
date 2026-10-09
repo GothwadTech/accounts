@@ -27,6 +27,28 @@ banana hai + deploy karna hai (docs/SETUP.md), phir Step 3 (Mail) shuru.
 
 ## ✅ DONE (completed work — newest first)
 
+### Session 5 — 2026-10-09 — BUG FIX #2: refresh-token rotation RACE (dashboard bounce)
+- **Bug report (user):** login ke baad header "My Account + Sign out" dikhata hai
+  PAR /me dashboard 2 sec baad /signin bounce! (Header logged-in, page logged-out.)
+- **Root cause — REFRESH ROTATION RACE (reproduced!):** jab access token dead
+  hota, to page ke PARALLEL requests (topbar + requireAuth + apps tab) EK HI
+  refresh token se rotate karne jaati the → mock/Supabase rotation ke baad
+  purana refresh revoke → **1 request jeetti (header: My Account), baaki
+  haarti (requireAuth: bounce)**. Test: `3 parallel /auth/me` with dead access
+  + valid refresh → True, False, False!
+- **Fix (3 layers):**
+  1. **Client single-flight refresh** (`web/js/api.js`): X-Gothwad-Refresh ab
+     har request par NAHI jaata. Token dead → SIRF EK refresh (shared promise)
+     → sab requests naye token se retry. Race impossible.
+  2. **`POST /api/auth/refresh`** endpoint (worker) — explicit rotation.
+  3. **Mock grace window** (60s, Supabase `refresh_token_reuse_interval` jaisa):
+     rotated refresh dobara aaye to fail nahi — current pair milta hai.
+  4. Pages ab EK hi session check share karte hain (renderTopbar(session)).
+- **Tested:** tools/test-singleflight.mjs — 7/7 (parallel race, rotation,
+  consistency, logged-out case). Manual: 8-call pressure race ALL TRUE.
+- **Production impact (user ka sawal):** HAAN, ye race REAL Supabase mein bhi
+  hoti (1h access expiry + parallel requests) — ab fix ke baad NAHI hogi.
+
 ### Session 4 — 2026-10-09 — BUG FIX: dashboard se /signin bounce (hybrid auth)
 - **Bug report (user):** signup/signin ke baad `/me` par 2-3 second dikhta hai,
   phir wapas `/signin` par bounce ho jaata hai.

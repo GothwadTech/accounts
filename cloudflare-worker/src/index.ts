@@ -993,6 +993,54 @@ export default {
         return withCors(json(body, 200, headers));
       }
 
+      // ------------------------------------------------- refresh (rotation)
+      // Single-flight refresh ke liye: frontend token expire hone par YAHAN
+      // ek hi dafa refresh karta hai (parallel requests ek hi refresh ka
+      // intezaar karti hain — rotation race khatam!).
+      if (route === '/auth/refresh' && request.method === 'POST') {
+        const body = await readJson(request);
+        const refresh =
+          (request.headers.get('X-Gothwad-Refresh') || '').trim() ||
+          String(body.refresh_token || '').trim();
+        if (!refresh) return withCors(apiError('Missing refresh token', 401));
+
+        const res = await fetch(SB.authUrl(env, '/token?grant_type=refresh_token'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', apikey: env.SUPABASE_ANON_KEY },
+          body: JSON.stringify({ refresh_token: refresh }),
+        });
+        const data = (await res.json()) as Record<string, any>;
+        if (!res.ok || !data.access_token) {
+          return withCors(apiError('Session expired, please sign in again', 401));
+        }
+
+        // Purana session id rakho (device row continuity ke liye)
+        const sessionId = String(body.session_id || '') || getCookie(request, 'gothwad_sid');
+        const newTokens = {
+          access_token: data.access_token as string,
+          refresh_token: data.refresh_token as string,
+        };
+        const headers: [string, string][] = sessionCookies(request, env, {
+          access_token: newTokens.access_token,
+          refresh_token: newTokens.refresh_token,
+          session_id: sessionId,
+          remember: true,
+        }).map((c) => ['Set-Cookie', c]);
+
+        return withCors(
+          json(
+            {
+              ok: true,
+              access_token: newTokens.access_token,
+              refresh_token: newTokens.refresh_token,
+              session_id: sessionId || undefined,
+            },
+            200,
+            headers,
+          ),
+        );
+      }
+
       // ------------------------------------------------- forgot-password
       // Sirf username maango. Reset link RECOVERY email par jaata hai.
       // (Hamesha same generic response — taaki koi pata na laga sake ki

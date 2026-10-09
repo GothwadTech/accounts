@@ -84,6 +84,14 @@ Session **2 tarike se** chalta hain (dono ek saath active):
 Worker `resolveSession()` pehle headers padhta hai, phir cookies. Refresh
 rotation par DONO update hote hain (Set-Cookie + body tokens).
 
+**Refresh = SINGLE FLIGHT (rotation race protection):** frontend access token
+dead hone par SIRF EK dafa `POST /api/auth/refresh` karta hai — jitni bhi
+parallel requests hon, sab uske poore hone ka intezaar karti hain phir naye
+token se retry karti hain. (Warna parallel refresh race mein 1 request jeetti
+thi, baaki 401 → header "logged-in" + dashboard bounce!). Mock/Supabase mein
+~60s ka refresh-reuse grace window bhi hai (Supabase
+`refresh_token_reuse_interval` jaisa) — true simultaneity bhi safe.
+
 ### Cookies
 
 | Cookie | Kya hai | Lifetime |

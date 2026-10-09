@@ -7,12 +7,18 @@
  *   1. Cookies (HttpOnly) — automatically jaati/aati hain (credentials: 'include')
  *      → production SSO ke liye best (subdomains share karte hain)
  *
- *   2. Tokens (sessionStorage) — signin/signup/me ke response mein aate hain,
- *      hum unhe save karke HAR request par Authorization header mein bhejte hain
- *      → zaroori hai kyunki Arena preview jaise IFRAME/webview environments mein
- *        browsers third-party cookies BLOCK kar dete hain!
+ *   2. Tokens (sessionStorage) — signin/signup ke response mein aate hain,
+ *      hum unhe save karke har request par Authorization header mein bhejte hain
+ *      → zaroori hai kyunki iframe/webview environments mein browsers
+ *        third-party cookies BLOCK kar dete hain!
  *
- * Isliye login karke dashboard par tikna ab dono jagah (iframe + normal tab) chalega.
+ * REFRESH — SINGLE FLIGHT (bahut zaroori!):
+ *   Access token expire ho to ek hi jagah refresh hota hai. Agar 3 parallel
+ *   requests ek hi refresh token se refresh karein to rotation race ho jaati
+ *   hai (1 jeetti hain, 2 haarti hain → dashboard "logged in" bhi dikhta hai
+ *   aur bounce bhi karta hai). Isliye refresh SIRF ek dafa hota hai — baaki
+ *   sab requests uske poore hone ka intezaar karti hain, phir sab naye token
+ *   se retry karti hain.
  */
 
 import { apiUrl } from './config.js';
@@ -49,34 +55,96 @@ export function clearTokens() {
   } catch { /* ignore */ }
 }
 
+/* --------------------------------------------- single-flight token refresh */
+// Ek waqt mein sirf EK refresh — jitni bhi requests pending hon, sab isi ka
+// intezaar karti hain (rotation race khatam!).
+let refreshPromise = null;
+
+async function doRefresh() {
+  const t = getTokens();
+  if (!t.refresh_token) return false;
+
+  const res = await fetch(apiUrl('/auth/refresh'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ refresh_token: t.refresh_token, session_id: t.session_id || null }),
+  }).catch(() => null);
+  if (!res || !res.ok) {
+    clearTokens(); // session sach mein khatam
+    return false;
+  }
+  const data = await res.json().catch(() => null);
+  if (data && data.access_token) {
+    saveTokens({
+      access_token: data.access_token,
+      refresh_token: data.refresh_token,
+      session_id: data.session_id,
+    });
+    return true;
+  }
+  clearTokens();
+  return false;
+}
+
+function refreshOnce() {
+  if (!refreshPromise) {
+    refreshPromise = doRefresh().finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
+}
+
 /* ------------------------------------------------------------- api call */
+function authHeaders(token) {
+  const headers = { 'Content-Type': 'application/json' };
+  const t = getTokens();
+  const access = token || t.access_token;
+  if (access) headers['Authorization'] = `Bearer ${access}`;
+  // NOTE: X-Gothwad-Refresh har request par NAHI bhejte (rotation race se bachne
+  // ke liye). Refresh sirf /auth/refresh par hota hai — single flight.
+  return headers;
+}
+
+async function parseJson(res) {
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
 /**
  * API call karo. Response hamesha { ok, status, data, error } shape mein.
- * - Tokens (agar response mein aayein) automatically save ho jaate hain.
+ * - Agar access token dead nikle (401 / authenticated:false) to ek baar
+ *   automatically refresh karke request RETRY hoti hai.
  * - Network fail ho to throw nahi — error object hi return hota hai.
  */
 export async function apiCall(path, { method = 'GET', body = null, token = null } = {}) {
-  const headers = { 'Content-Type': 'application/json' };
-
-  // Session tokens header mein (iframe/webview-safe auth)
-  const tokens = getTokens();
-  const access = token || tokens.access_token;
-  if (access) headers['Authorization'] = `Bearer ${access}`;
-  if (!token && tokens.refresh_token) headers['X-Gothwad-Refresh'] = tokens.refresh_token;
+  const opts = {
+    method,
+    credentials: 'include', // cookies bhi bhejo (production SSO ke liye)
+    body: body ? JSON.stringify(body) : undefined,
+  };
 
   try {
-    const res = await fetch(apiUrl(path), {
-      method,
-      headers,
-      credentials: 'include', // cookies bhi bhejo (production SSO ke liye)
-      body: body ? JSON.stringify(body) : undefined,
-    });
+    let res = await fetch(apiUrl(path), { ...opts, headers: authHeaders(token) });
+    let data = await parseJson(res);
 
-    let data = null;
-    try {
-      data = await res.json();
-    } catch {
-      data = null;
+    // Token dead hai? (401, ya /auth/me bole authenticated:false)
+    // → ek baar refresh karke retry (sirf jab tokens storage mein hon).
+    const hadToken = !token && !!getTokens().access_token;
+    const dead = res.status === 401 || (data && data.authenticated === false);
+    if (hadToken && dead) {
+      const usedAccess = getTokens().access_token;
+      await refreshOnce();
+      const now = getTokens();
+      // Refresh safal → naye token se retry. Warna (sach mein logged-out) chhod do.
+      if (now.access_token && now.access_token !== usedAccess) {
+        res = await fetch(apiUrl(path), { ...opts, headers: authHeaders(token) });
+        data = await parseJson(res);
+      }
     }
 
     // Response mein tokens aaye hain (rotation ya fresh login) → save karo

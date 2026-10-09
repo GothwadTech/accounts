@@ -11,9 +11,9 @@ import {
 } from './common.js';
 import { GOTHWAD_CONFIG } from './config.js';
 
-renderTopbar();
 setupPasswordEyes();
-redirectIfAuthed();
+// Ek hi session check share karo (parallel /auth/me calls se race hoti thi!)
+redirectIfAuthed().then((sess) => renderTopbar(sess));
 
 document.getElementById('domain-suffix').textContent = `@${GOTHWAD_CONFIG.APP_DOMAIN}`;
 

@@ -224,13 +224,37 @@ const server = http.createServer((req, res) => {
         }
 
         if (grant === 'refresh_token') {
+          // GRACE WINDOW (Supabase ke refresh_token_reuse_interval jaisa):
+          // Agar koi purana refresh token rotate hone ke 60s ke andar dobara
+          // aaye (parallel requests ki race!) to FAIL mat karo — wahi current
+          // token pair de do. Isse ek hi request "jeetti" hai aur baaki sab
+          // ko bhi valid session mil jaata hai.
+          db.rotatedRefresh = db.rotatedRefresh || {};
+          const grace = db.rotatedRefresh[body.refresh_token];
+          if (grace && Date.now() - grace.at < 60000) {
+            return send(res, 200, {
+              access_token: grace.access_token,
+              refresh_token: grace.refresh_token,
+              token_type: 'bearer',
+              expires_in: 3600,
+              user: publicUser(db.users.find((u) => u.id === grace.user_id)),
+            });
+          }
+
           const userId = db.refreshTokens[body.refresh_token];
           const user = db.users.find((u) => u.id === userId);
           if (!user) return send(res, 400, { error: 'invalid_grant', error_description: 'Invalid refresh token' });
           // Rotation: purana refresh token hata do (real Supabase bhi yahi karta hai)
           delete db.refreshTokens[body.refresh_token];
+          const session = makeSession(user);
+          db.rotatedRefresh[body.refresh_token] = {
+            at: Date.now(),
+            user_id: user.id,
+            access_token: session.access_token,
+            refresh_token: session.refresh_token,
+          };
           saveDb();
-          return send(res, 200, makeSession(user));
+          return send(res, 200, session);
         }
         return send(res, 400, { error: 'unsupported_grant_type' });
       }
