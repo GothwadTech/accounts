@@ -72,7 +72,19 @@ GET /api/auth/me
 
 ---
 
-## 3. Cookie Model (SSO-ready)
+## 3. Auth Model — HYBRID (cookies + tokens)
+
+Session **2 tarike se** chalta hain (dono ek saath active):
+
+| Channel | Kaise | Kyun |
+|---------|-------|------|
+| **Tokens** (sessionStorage + `Authorization: Bearer` header + `X-Gothwad-Refresh`) | signin/signup/me ke response body mein tokens aate hain; frontend save karke HAR request par bhejta hai | **Iframe/webview environments** (jaise Arena preview) mein browsers third-party cookies BLOCK karte hain — header auth wahan kaam karta hai |
+| **HttpOnly cookies** (`gothwad_at` / `gothwad_rt` / `gothwad_sid`) | fetch `credentials: 'include'` — automatic | **Production SSO** ke liye best (Domain=.APP_DOMAIN share across subdomains) |
+
+Worker `resolveSession()` pehle headers padhta hai, phir cookies. Refresh
+rotation par DONO update hote hain (Set-Cookie + body tokens).
+
+### Cookies
 
 | Cookie | Kya hai | Lifetime |
 |--------|---------|----------|
@@ -80,10 +92,11 @@ GET /api/auth/me
 | `gothwad_rt` | Supabase refresh token (rotation) | remember? 30d : session |
 | `gothwad_sid` | user_sessions row id (device mgmt) | remember? 30d : session |
 
-- **HttpOnly + Secure + SameSite=Lax** — JS kabhi nahi padh sakta (XSS-safe)
-- **Domain:** `.APP_DOMAIN` (subdomains share — SSO ke liye!). Localhost/preview
-  par host-only (`cookieDomain()` logic — sirf tab jab request host APP_DOMAIN ho)
+- **HttpOnly + Secure + SameSite=Lax** — JS cookies nahi padh sakta
+- **Domain:** `.APP_DOMAIN` (subdomains share — SSO!). Localhost/preview par host-only
 - **Remember me:** false = browser-session cookies (band karo to logout)
+- **Signout:** token family revoke (Supabase logout) + session row delete
+  (body `session_id` ya cookie) + cookies clear + frontend sessionStorage clear
 
 ## 4. JWT Access Tokens (OAuth ke liye)
 

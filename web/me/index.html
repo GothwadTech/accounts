@@ -18,7 +18,13 @@
     <header id="topbar" class="topbar"></header>
 
     <main class="main">
-      <div class="container">
+      <!-- Auth check hone tak loading (taaki dashboard flash na ho) -->
+      <div id="auth-loading" class="container text-center" style="padding:70px 0;">
+        <span class="spinner dark" style="width:28px;height:28px;"></span>
+        <p class="text-sm text-muted mt-4">Loading your account…</p>
+      </div>
+
+      <div class="container hidden" id="dash-content">
 
         <!-- ═══════════════════ WELCOME HEADER ═══════════════════ -->
         <div class="dash-header">

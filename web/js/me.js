@@ -22,6 +22,10 @@ async function loadUser() {
   currentUser = await requireAuth(); // login nahi hai to /signin par bhej dega
   if (!currentUser) return;
 
+  // Auth confirmed → loading hatao, dashboard dikhao
+  document.getElementById('auth-loading').classList.add('hidden');
+  document.getElementById('dash-content').classList.remove('hidden');
+
   const u = currentUser;
   const initials = ((u.first_name || '?')[0] || '?') + ((u.last_name || '')[0] || '');
 

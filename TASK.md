@@ -27,6 +27,27 @@ banana hai + deploy karna hai (docs/SETUP.md), phir Step 3 (Mail) shuru.
 
 ## ✅ DONE (completed work — newest first)
 
+### Session 4 — 2026-10-09 — BUG FIX: dashboard se /signin bounce (hybrid auth)
+- **Bug report (user):** signup/signin ke baad `/me` par 2-3 second dikhta hai,
+  phir wapas `/signin` par bounce ho jaata hai.
+- **Root cause:** Arena preview ek **iframe** hai → browsers third-party
+  cookies BLOCK karte hain → Set-Cookie drop → agli request bina session →
+  `/auth/me` = unauthenticated → redirect. (Logs se prove: signin 200 ke
+  turant baad me() + authorizations 401.)
+- **Fix — HYBRID AUTH:**
+  - Worker: signin/signup/me responses mein `access_token` + `refresh_token`
+    + `session_id` body mein bhi (cookies ke saath)
+  - `resolveSession()` ab headers accept karta hai: `Authorization: Bearer`
+    + `X-Gothwad-Refresh` (pehle sirf cookies)
+  - Frontend `api.js`: tokens sessionStorage mein → har request par headers
+    (iframe/webview safe) — cookies bhi chalti hain (production SSO intact)
+  - Signout fix: header token se bhi Supabase logout + session row delete
+    (body `session_id`) — pehle sirf cookie se hota tha
+  - `/me` loading gate — dashboard ka 2-3s flash nahi dikhta ab
+- **Tested:** headers-only auth ✅, refresh rotation via header ✅, old-refresh
+  rejection ✅, cookie regression ✅, signout revokes token ✅
+- Docs: ARCHITECTURE.md §3 hybrid auth model
+
 ### Session 3 — 2026-10-09 — Cleanup + 3-route UI + Continuity docs
 - User feedback: sirf 3 routes chahiye, faltu files delete, real icons use karo
 - Site restructured → **`/signin` · `/signup` · `/me`** (pretty URLs, folder-based)

@@ -116,7 +116,7 @@ function buildCorsHeaders(request: Request, env: Env): Headers {
     headers.set('Access-Control-Allow-Credentials', 'true'); // cookies ke liye zaroori
     headers.set('Vary', 'Origin');
     headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Gothwad-Refresh');
     headers.set('Access-Control-Max-Age', '86400');
   }
   return headers;
@@ -261,9 +261,16 @@ function presentUser(profile: Record<string, any> | null, authUser: Record<strin
 }
 
 /**
- * Request ke cookies se session verify karo.
+ * Request se session verify karo.
+ *
+ * TOKEN KE 2 SOURCES (hybrid auth):
+ *   1. Headers: Authorization: Bearer + X-Gothwad-Refresh
+ *      (SPA/iframe/webview ke liye — jahan third-party cookies block hote hain)
+ *   2. HttpOnly cookies (gothwad_at / gothwad_rt)
+ *      (production SSO ke liye — subdomains share karte hain)
+ *
  * Access token expire ho gaya ho to refresh token se automatically
- * naya token le lete hain (JWT session management — Rule: auto-refresh).
+ * naya token le lete hain (JWT session management — auto-refresh + rotation).
  */
 async function resolveSession(
   request: Request,
@@ -272,10 +279,15 @@ async function resolveSession(
   ok: boolean;
   accessToken?: string;
   newCookies?: string[];
+  newTokens?: { access_token: string; refresh_token: string };
   authUser?: Record<string, any>;
 }> {
-  const accessToken = getCookie(request, 'gothwad_at');
-  const refreshToken = getCookie(request, 'gothwad_rt');
+  // Priority: headers (explicit) → cookies (automatic)
+  const authHeader = request.headers.get('Authorization') || '';
+  const headerAccess = authHeader.replace('Bearer ', '').trim();
+  const headerRefresh = (request.headers.get('X-Gothwad-Refresh') || '').trim();
+  const accessToken = headerAccess || getCookie(request, 'gothwad_at');
+  const refreshToken = headerRefresh || getCookie(request, 'gothwad_rt');
 
   if (!accessToken && !refreshToken) return { ok: false };
 
@@ -298,15 +310,19 @@ async function resolveSession(
     });
     if (res.ok) {
       const data = (await res.json()) as Record<string, any>;
-      const remember = getCookie(request, 'gothwad_rt') !== null && !!getCookie(request, 'gothwad_sid');
       const sessionId = getCookie(request, 'gothwad_sid');
+      const newTokens = {
+        access_token: data.access_token as string,
+        refresh_token: data.refresh_token as string,
+      };
       return {
         ok: true,
         accessToken: data.access_token,
         authUser: data.user,
+        newTokens, // client (frontend) ko body mein bhejne ke liye — rotation!
         newCookies: sessionCookies(request, env, {
-          access_token: data.access_token,
-          refresh_token: data.refresh_token,
+          access_token: newTokens.access_token,
+          refresh_token: newTokens.refresh_token,
           session_id: sessionId,
           remember: true, // refresh hote waqt lambi validity hi rakhte hain
         }),
@@ -836,7 +852,16 @@ export default {
 
         return withCors(
           json(
-            { ok: true, user: presentUser(profile, login.user, env) },
+            {
+              ok: true,
+              user: presentUser(profile, login.user, env),
+              // Hybrid auth: cookies SET hote hain + tokens body mein bhi
+              // (iframe/webview mein third-party cookies block hote hain —
+              //  wahan frontend in tokens ko sessionStorage mein rakhta hai)
+              access_token: login.access_token,
+              refresh_token: login.refresh_token,
+              session_id: sessionId,
+            },
             201,
             cookies.map((c) => ['Set-Cookie', c] as [string, string]),
           ),
@@ -895,7 +920,14 @@ export default {
 
         return withCors(
           json(
-            { ok: true, user: presentUser(profile, auth.user, env) },
+            {
+              ok: true,
+              user: presentUser(profile, auth.user, env),
+              // Hybrid auth: cookies SET + tokens body mein (iframe/webview safe)
+              access_token: auth.access_token,
+              refresh_token: auth.refresh_token,
+              session_id: sessionId,
+            },
             200,
             cookies.map((c) => ['Set-Cookie', c] as [string, string]),
           ),
@@ -904,22 +936,30 @@ export default {
 
       // ---------------------------------------------------------- signout
       if (route === '/auth/signout' && request.method === 'POST') {
-        const accessToken = getCookie(request, 'gothwad_at');
-        const sessionId = getCookie(request, 'gothwad_sid');
+        // Hybrid auth: headers (token) ya cookies — dono se signout chalta hai.
+        // resolveSession auto-refresh bhi kar sakta hai, taaki expired access
+        // ke saath bhi refresh-token family properly revoke ho.
+        const session = await resolveSession(request, env);
 
-        // Supabase side refresh tokens revoke karo
-        if (accessToken) {
+        if (session.ok && session.accessToken) {
+          // Supabase side poora token family revoke karo
           await fetch(SB.authUrl(env, '/logout'), {
             method: 'POST',
-            headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${accessToken}` },
+            headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${session.accessToken}` },
           }).catch(() => undefined);
         }
 
-        // Device session row hatao
-        if (sessionId) {
-          await SB.adminFetch(env, `/rest/v1/user_sessions?id=eq.${encodeURIComponent(sessionId)}`, {
-            method: 'DELETE',
-          }).catch(() => undefined);
+        // Device session row hatao (frontend body mein session_id bhejta hai,
+        // fallback: gothwad_sid cookie)
+        const body = await readJson(request);
+        const sessionId = String(body.session_id || '') || getCookie(request, 'gothwad_sid');
+        if (sessionId && session.ok) {
+          // user_id guard: user sirf APNA session row delete kar sake
+          await SB.adminFetch(
+            env,
+            `/rest/v1/user_sessions?id=eq.${encodeURIComponent(sessionId)}&user_id=eq.${encodeURIComponent(session.authUser!.id)}`,
+            { method: 'DELETE' },
+          ).catch(() => undefined);
         }
 
         return withCors(
@@ -940,9 +980,17 @@ export default {
 
         const profile = await fetchProfile(env, session.authUser!.id);
         const headers: [string, string][] = (session.newCookies || []).map((c) => ['Set-Cookie', c]);
-        return withCors(
-          json({ authenticated: true, user: presentUser(profile, session.authUser, env) }, 200, headers),
-        );
+
+        // Body mein tokens: rotation ke baad NAYA refresh token zaroor bhejo
+        // (warna frontend ka purana token revoke ho jaata hai), warna current access.
+        const body: Record<string, any> = { authenticated: true, user: presentUser(profile, session.authUser, env) };
+        if (session.newTokens) {
+          body.access_token = session.newTokens.access_token;
+          body.refresh_token = session.newTokens.refresh_token;
+        } else if (session.accessToken) {
+          body.access_token = session.accessToken;
+        }
+        return withCors(json(body, 200, headers));
       }
 
       // ------------------------------------------------- forgot-password

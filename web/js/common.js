@@ -5,7 +5,7 @@
  * =============================================================================
  */
 
-import { api } from './api.js';
+import { api, clearTokens, getTokens } from './api.js';
 
 /* ----------------------------------------------------------------- toasts */
 /** toast('Saved!', 'success') ya toast('Something went wrong', 'error') */
@@ -87,7 +87,9 @@ export async function redirectIfAuthed() {
 
 /** Sign out + /signin par redirect. */
 export async function signOut() {
-  await api.post('/auth/signout', {});
+  // session_id body mein: taaki device row bhi delete ho (header-auth case)
+  await api.post('/auth/signout', { session_id: getTokens().session_id || null });
+  clearTokens(); // sessionStorage se tokens hatao (hybrid auth)
   location.href = '/signin';
 }
 
