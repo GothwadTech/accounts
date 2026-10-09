@@ -1,52 +1,39 @@
-# ⚡ GOTHWAD AUTH WORKER (Cloudflare Worker)
+# Cloudflare Worker Deployment Guide (Gothwad Unified Auth)
 
-> Part of Gothwad Accounts — overview: [README.md](../README.md) ·
-> AI guide: [AGENTS.md](../AGENTS.md) · Architecture: [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)
+## 📌 Asaan Bhasha Me Deploy Kaise Karein (Step-by-Step)
 
-Yeh Worker Gothwad Accounts ka **real backend** hai — saare `/api/auth/*`
-aur `/oauth/*` routes. Ek hi file: `src/index.ts` (well-commented TypeScript).
+### Step 1: Cloudflare Account & Node.js
+1. Apne computer me terminal ya command prompt kholein.
+2. Check karein ki Node.js installed hai (`node -v`).
 
-## API Routes
-
-| Method | Route | Kya karta hai |
-|--------|-------|---------------|
-| GET | `/api/health` | Health check |
-| GET | `/api/auth/check-username?username=` | Username available hai? |
-| POST | `/api/auth/signup` | Naya account + auto-login |
-| POST | `/api/auth/signin` | Login (username ya email) |
-| POST | `/api/auth/signout` | Logout (cookies clear + token revoke) |
-| GET | `/api/auth/me` | Current session (auto-refresh JWT) |
-| POST | `/api/auth/forgot-password` | Reset link → recovery email |
-| POST | `/api/auth/reset-password` | Naya password (email link token se) |
-| POST | `/api/auth/change-password` | Logged-in password change |
-| POST | `/api/auth/update-profile` | Profile update |
-| GET | `/api/auth/sessions` | Device sessions list |
-| POST | `/api/auth/sessions/revoke` | Ek device sign-out |
-| POST | `/api/auth/sessions/revoke-others` | Other devices sign-out |
-
-## Local Development
-
+### Step 2: Wrangler CLI Install Karein
 ```bash
-cp .dev.vars.example .dev.vars   # apni keys daalo (mock values already included)
-npm install
-npx wrangler dev                 # → http://127.0.0.1:8787
+npm install -g wrangler
 ```
 
-## Deploy
-
+### Step 3: Cloudflare Me Login Karein
 ```bash
-npx wrangler login               # pehli baar
+npx wrangler login
+```
+Ek browser window open hogi, wahan **Allow** par click karein.
+
+### Step 4: Environment Variables Set Karein
+Is folder me aakar secrets configure karein:
+```bash
+# Apne Supabase Project ke API Keys daalein:
 npx wrangler secret put SUPABASE_ANON_KEY
 npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
-npx wrangler deploy
 ```
 
-Config (`wrangler.toml`) aur env vars ki poori list:
-[docs/SETUP.md](../docs/SETUP.md) + [.env.example](../.env.example)
+### Step 5: Worker Deploy Karein!
+```bash
+npx wrangler deploy
+```
+Aapka worker 5 seconds me live ho jayega aur ek URL milega (e.g. `https://gothwad-unified-auth.your-subdomain.workers.dev`).
 
-## Security Notes
-
-- `SUPABASE_SERVICE_ROLE_KEY` sirf yahan rehti hai (secret) — frontend kabhi nahi.
-- Session tokens **HttpOnly cookies** mein (JS access nahi kar sakta).
-- CORS sirf `*.APP_DOMAIN` + configured origins ke liye enabled.
-- Passwords kabhi store nahi hote — Supabase Auth hash sambhalta hai.
+### Step 6: Custom Domain Attach Karein (`accounts.gothwadtech.com`)
+1. Cloudflare Dashboard me jayein.
+2. **Workers & Pages** -> **gothwad-unified-auth** select karein.
+3. **Settings** -> **Domains & Routes** -> **Add Custom Domain** par click karein.
+4. Type karein: `accounts.gothwadtech.com`.
+5. Cloudflare automatically SSL certificate issue kar dega!
