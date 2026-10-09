@@ -1,0 +1,6 @@
+{
+  "name": "Gothwad Account - Unified SSO & Auth System",
+  "description": "Unified authentication and Single Sign-On (SSO) system for the Gothwad Ecosystem (Gothwad Mail, Drive, Tube, Notes, Browser, Manager) powered by Cloudflare Workers and Supabase.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
