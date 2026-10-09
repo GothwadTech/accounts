@@ -24,7 +24,7 @@ APP_DOMAIN = "gothwadtech.com"
 AUTH_HUB_URL = "https://accounts.gothwadtech.com"
 
 # Apne Supabase project ka URL (Supabase Dashboard → Settings → API)
-SUPABASE_URL = "https://YOUR_PROJECT_ID.supabase.co"
+SUPABASE_URL = "https://ruqauxozsawzjfwoonfz.supabase.co"
 
 # Resend se bhejne wali emails ka "From" address
 # (jab tak custom domain Resend mein verify nahi hota, Resend ka onboarding@resend.dev use karo)

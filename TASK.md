@@ -34,8 +34,8 @@ banana hai + deploy karna hai (docs/SETUP.md), phir Step 3 (Mail) shuru.
 - **wrangler.toml:** `name = "gothwad-auth"` → **`name = "accounts"`** (Workers Builds
   Git-deploy dashboard ke Worker naam se match karna zaroori). Routes ka recommended
   pattern comment mein likha: `accounts.gothwadtech.com/api/*`.
-- **SUPABASE_URL:** wrangler.toml mein abhi placeholder `YOUR_PROJECT_ID` hai —
-  user ka real Project URL pending (user se maanga hai).
+- **SUPABASE_URL:** wrangler.toml mein user ka real Project URL set kiya
+  (`https://ruqauxozsawzjfwoonfz.supabase.co`, public — secret nahi).
 - **Worker route approach (recommended):** frontend + API same origin
   (`accounts.gothwadtech.com`), `web/js/config.js` `API_URL: ''` unchanged.
   - **BUG PREVENTED:** consent screen (Worker-rendered HTML) `fetch('/oauth/decision')`
@@ -151,7 +151,7 @@ banana hai + deploy karna hai (docs/SETUP.md), phir Step 3 (Mail) shuru.
 
 ### 1. Deploy (USER ko dashboard se karna hai — docs/SETUP.md, phone-friendly)
 - [x] Supabase project + schema.sql run + keys mil gaye (Phase 1 DONE)
-- [ ] `wrangler.toml` → `SUPABASE_URL` mein user ka real Project URL (PENDING — user se maanga)
+- [x] `wrangler.toml` → `SUPABASE_URL` real Project URL set (Session 6)
 - [ ] Worker `accounts` → Settings → Builds → Git connect (root `cloudflare-worker`, deploy `npx wrangler deploy`)
 - [ ] Worker → Variables and Secrets: SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, JWT_SECRET (Type Secret)
 - [ ] Worker → Domains & Routes → Route `accounts.gothwadtech.com/api/*`
