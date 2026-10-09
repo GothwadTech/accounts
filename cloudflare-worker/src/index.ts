@@ -511,6 +511,152 @@ async function issueAccessToken(env: Env, opts: {
   }, env.JWT_SECRET || env.SUPABASE_SERVICE_ROLE_KEY);
 }
 
+/**
+ * CONSENT PAGE — Worker khud render karta hai (self-contained HTML).
+ * Isliye accounts site par sirf 3 routes hain: /signin, /signup, /me.
+ * Allow/Deny button /oauth/decision ko call karta hai, phir app par redirect.
+ */
+function consentPageHtml(
+  env: Env,
+  client: Record<string, any>,
+  authUser: Record<string, any>,
+  profile: Record<string, any> | null,
+  params: URLSearchParams,
+): Response {
+  const esc = (s: any) => String(s ?? '').replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+
+  // User ki identity (profile se, fallback auth metadata se)
+  const username = profile?.username || authUser.user_metadata?.username || String(authUser.email || '').split('@')[0] || 'user';
+  const firstName = profile?.first_name || authUser.user_metadata?.first_name || '';
+  const lastName = profile?.last_name || authUser.user_metadata?.last_name || '';
+  const displayName = `${firstName} ${lastName}`.trim() || username;
+  const initials = ((firstName[0] || username[0] || '?') + (lastName[0] || '')).toUpperCase();
+
+  const scopeIcons: Record<string, string> = {
+    profile: '🪪', email: '📧', drive: '☁️', 'drive.read': '☁️',
+    notes: '📝', chat: '💬', offline_access: '🕐',
+  };
+  const scopes = parseScopes(params.get('scope') || '');
+  const scopeItems = scopes.map((s) => `
+    <div class="scope">
+      <div class="scope-icon">${scopeIcons[s] || '🔑'}</div>
+      <div><div class="scope-name">${esc(s)}</div>
+      <div class="scope-desc">${esc(OAUTH_SCOPES[s] || '')}</div></div>
+    </div>`).join('');
+
+  const data = {
+    client_id: params.get('client_id') || '',
+    redirect_uri: params.get('redirect_uri') || '',
+    response_type: params.get('response_type') || 'code',
+    scope: params.get('scope') || '',
+    state: params.get('state') || '',
+    code_challenge: params.get('code_challenge') || '',
+    code_challenge_method: params.get('code_challenge_method') || 'S256',
+  };
+
+  const html = `<!doctype html>
+<html lang="en"><head>
+<meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Authorize — Gothwad</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: #0d1117; color: #e6edf3;
+         min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  body::before { content: ''; position: fixed; inset: 0 0 auto 0; height: 280px;
+    background: radial-gradient(ellipse 80% 100% at 50% -30%, rgba(47,128,237,0.16), transparent 70%); }
+  .card { background: #161b22; border: 1px solid #2a3140; border-radius: 18px; padding: 36px 30px;
+          max-width: 460px; width: 100%; box-shadow: 0 8px 30px rgba(0,0,0,0.45); position: relative; }
+  .brand { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-bottom: 20px; }
+  .brand img { width: 52px; height: 52px; border-radius: 15px; box-shadow: 0 4px 14px rgba(47,128,237,0.35); }
+  .brand span { font-size: 22px; font-weight: 700; background: linear-gradient(120deg,#4da3ff,#2980eb);
+    -webkit-background-clip: text; background-clip: text; color: transparent; }
+  h1 { font-size: 19px; font-weight: 700; text-align: center; letter-spacing: -0.01em; }
+  .sub { text-align: center; color: #8b98a9; font-size: 13px; margin: 6px 0 20px; }
+  .user { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: #1c2330;
+          border: 1px solid #2a3140; border-radius: 12px; margin-bottom: 18px; }
+  .user .av { width: 38px; height: 38px; border-radius: 12px; background: linear-gradient(135deg,#2f80ed,#1b5fc1);
+              color: #fff; font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center; }
+  .user .n { font-size: 13px; font-weight: 600; } .user .e { font-size: 11px; color: #8b98a9; font-family: monospace; }
+  .label { font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+           color: #6a7686; margin-bottom: 10px; }
+  .scope { display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: #1c2330;
+           border: 1px solid #2a3140; border-radius: 10px; margin-bottom: 8px; }
+  .scope-icon { width: 34px; height: 34px; border-radius: 10px; background: #0f141b; display: flex;
+                align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }
+  .scope-name { font-size: 12.5px; font-weight: 600; } .scope-desc { font-size: 11px; color: #8b98a9; margin-top: 1px; }
+  .note { background: rgba(47,128,237,0.12); border: 1px solid rgba(47,128,237,0.35); color: #a8c7f5;
+          border-radius: 10px; padding: 11px 13px; font-size: 11.5px; line-height: 1.55; margin: 16px 0; }
+  .row { display: grid; grid-template-columns: 1fr 1.4fr; gap: 10px; margin-top: 4px; }
+  .btn { padding: 12px 18px; border-radius: 12px; border: none; font-size: 13.5px; font-weight: 700;
+         font-family: inherit; cursor: pointer; width: 100%; transition: background 0.15s; }
+  .btn-ghost { background: transparent; color: #e6edf3; border: 1px solid #2a3140; }
+  .btn-ghost:hover { background: #21283a; }
+  .btn-primary { background: #2f80ed; color: #fff; box-shadow: 0 4px 16px rgba(47,128,237,0.3); }
+  .btn-primary:hover { background: #4da3ff; }
+  .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.25);
+             border-top-color: #fff; border-radius: 50%; animation: sp 0.7s linear infinite; vertical-align: -2px; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  .err { background: rgba(240,71,71,0.12); border: 1px solid rgba(240,71,71,0.35); color: #ff8a8a;
+         border-radius: 10px; padding: 11px 13px; font-size: 12px; margin-bottom: 14px; display: none; }
+</style></head>
+<body>
+  <div class="card">
+    <div class="brand"><img src="/favicon.ico" onerror="this.style.display='none'" alt="Gothwad" /><span>Gothwad</span></div>
+    <h1>${esc(client.name)} wants to access your account</h1>
+    <p class="sub">Gothwad Account se sign in kar rahe ho</p>
+
+    <div class="user">
+      <div class="av">${esc(initials)}</div>
+      <div><div class="n">${esc(displayName)}</div>
+      <div class="e">${esc(username)}@${esc(env.APP_DOMAIN)}</div></div>
+    </div>
+
+    <div class="label">This will allow the app to:</div>
+    ${scopeItems}
+
+    <div class="note">🔒 Gothwad kabhi aapka password app ke saath share nahi karta.
+      Access kabhi bhi <b>/me → Connected apps</b> se hata sakte ho.</div>
+
+    <div class="err" id="err"></div>
+    <div class="row">
+      <button class="btn btn-ghost" id="deny">Deny</button>
+      <button class="btn btn-primary" id="allow">Allow access</button>
+    </div>
+  </div>
+<script>
+  const data = ${JSON.stringify(data)};
+  async function decide(approved) {
+    const btn = document.getElementById(approved ? 'allow' : 'deny');
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> ' + (approved ? 'Authorizing…' : 'Denying…');
+    try {
+      const res = await fetch('/oauth/decision', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approved, ...data }),
+      });
+      const out = await res.json();
+      if (!res.ok || !out.redirect_url) throw new Error(out.error || 'Authorization failed');
+      location.href = out.redirect_url;
+    } catch (e) {
+      const err = document.getElementById('err');
+      err.textContent = e.message; err.style.display = 'block';
+      btn.disabled = false; btn.textContent = approved ? 'Allow access' : 'Deny';
+    }
+  }
+  document.getElementById('allow').onclick = () => decide(true);
+  document.getElementById('deny').onclick = () => decide(false);
+</script>
+</body></html>`;
+
+  return new Response(html, {
+    status: 200,
+    headers: { 'Content-Type': 'text/html; charset=utf-8' },
+  });
+}
+
 // -----------------------------------------------------------------------------
 // Resend — password reset email bhejne ke liye (free: 3000 emails/month)
 // -----------------------------------------------------------------------------
@@ -825,7 +971,7 @@ export default {
           body: JSON.stringify({
             type: 'recovery',
             email: `${username}@${env.APP_DOMAIN}`,
-            options: { redirect_to: `${env.AUTH_HUB_URL}/reset-password.html` },
+            options: { redirect_to: `${env.AUTH_HUB_URL}/signin` },
           }),
         });
         const linkData = (await linkRes.json()) as Record<string, any>;
@@ -1023,16 +1169,17 @@ export default {
           return withCors(apiError('PKCE required: pass code_challenge (S256)', 400));
         }
 
-        // Logged-in nahi? → login page par bhejo, login ke baad wapas yahin
+        // Logged-in nahi? → signin page par bhejo, login ke baad wapas yahin
         const session = await resolveSession(request, env);
         if (!session.ok) {
-          const loginUrl = `${env.AUTH_HUB_URL}/login.html?next=${encodeURIComponent(url.pathname + url.search)}`;
+          const loginUrl = `${env.AUTH_HUB_URL}/signin?next=${encodeURIComponent(url.toString())}`;
           return withCors(new Response(null, { status: 302, headers: { Location: loginUrl } }));
         }
 
-        // Logged-in → consent screen (user ko poonchho: access dena hai?)
-        const consentUrl = `${env.AUTH_HUB_URL}/authorize.html${url.search}`;
-        return withCors(new Response(null, { status: 302, headers: { Location: consentUrl } }));
+        // Logged-in → consent screen (Worker khud HTML render karta hai —
+        // site par koi extra route/page nahi chahiye!)
+        const profile = await fetchProfile(env, session.authUser!.id);
+        return withCors(consentPageHtml(env, client, session.authUser!, profile, url.searchParams));
       }
 
       // ---------------------------------------------- /oauth/decision (POST)

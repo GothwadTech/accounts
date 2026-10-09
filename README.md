@@ -15,34 +15,33 @@ Chat, Notes, Calendar sab mein sign-in. (Google Account jaisa, but Gothwad!)
 ```
 accounts/
 ├── web/                     🌐 Frontend (HTML/CSS/JS — no build step!)
-│   ├── index.html           Landing page
-│   ├── login.html           Sign in
-│   ├── signup.html          Create account (live username check)
-│   ├── dashboard.html       Profile, security, devices, apps
-│   ├── reset-password.html  Forgot / reset password
-│   ├── css/styles.css       Dark theme design system (accent #e94560)
-│   └── js/                  config.js (THE 1 file to edit), api.js, common.js
+│   ├── signin/              /signin   — Login + forgot/reset password
+│   ├── signup/              /signup   — Create account (live username check)
+│   ├── me/                  /me       — Account dashboard (profile, security, devices, apps)
+│   ├── index.html           Root → smart redirect (/me ya /signin)
+│   ├── css/styles.css       Dark theme design system (brand blue #2f80ed)
+│   └── js/                  config.js (THE 1 file to edit), api.js, common.js + page scripts
 │
-├── cloudflare-worker/       ⚡ Auth API (Cloudflare Worker)
-│   ├── src/index.ts         All /api/auth/* routes (well commented)
+├── cloudflare-worker/       ⚡ Auth + OAuth API (Cloudflare Worker)
+│   ├── src/index.ts         /api/auth/* + /oauth/* routes (well commented)
 │   ├── wrangler.toml        Config + env vars (APP_DOMAIN yahan badlo)
 │   └── .dev.vars.example    Local development secrets template
 │
 ├── supabase/schema.sql      🗄️ Database schema + RLS (copy-paste in Supabase)
 │
-├── examples/
-│   └── sign-in-with-gothwad/ 🔘 Drop-in OAuth client template (GrixChat ke liye!)
-│
 ├── tools/                   🛠️ Local dev helpers (never deploy!)
-│   ├── dev-server.js        Static server + /api + /oauth proxy for local dev
+│   ├── dev-server.js        Static server + /api + /oauth proxy (pretty URLs)
 │   └── mock-supabase.js     Fake Supabase for offline testing only
 │
 ├── docs/
 │   ├── SETUP.md             📘 STEP-BY-STEP setup guide (start here!)
 │   └── OAUTH.md             🔐 OAuth 2.0 provider integration guide
-├── legacy-react-demo/       📦 Old placeholder demo (kept for reference)
+├── ROADMAP.md               🗺️ Poora ecosystem vision & architecture
 └── .env.example             📋 All environment variables listed
 ```
+
+> **Site ke sirf 3 routes hain:** `/signin` · `/signup` · `/me`
+> (OAuth consent screen Worker khud render karta hai — extra page nahi.)
 
 ---
 
@@ -59,10 +58,7 @@ npx wrangler dev                 # → http://127.0.0.1:8787
 node tools/dev-server.js         # → http://localhost:3000
 ```
 
-Browser mein `http://localhost:3000` kholo — signup/login/dashboard sab chalega!
-
-**OAuth demo try karo:** `http://localhost:3000/examples/sign-in-with-gothwad/`
-— "Sign in with Gothwad" button → consent screen → app login. 🎉
+Browser mein `http://localhost:3000` kholo — `/signin`, `/signup`, `/me` sab chalega!
 
 > **Full setup (Supabase + Cloudflare deploy):** [docs/SETUP.md](docs/SETUP.md)
 > **Apps ko connect karna:** [docs/OAUTH.md](docs/OAUTH.md)

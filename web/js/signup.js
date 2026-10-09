@@ -1,35 +1,31 @@
 /**
- * SIGNUP PAGE logic
+ * /signup page logic
  * - Username live availability check (/api/auth/check-username)
  * - Password strength meter
- * - Real account creation (/api/auth/signup) → auto login → dashboard
+ * - Real account creation (/api/auth/signup) → auto login → /me
  */
 
 import { api } from './api.js';
-import { renderTopbar, redirectIfAuthed, setBusy, toast, passwordStrength } from './common.js';
+import {
+  renderTopbar, redirectIfAuthed, setBusy, toast, passwordStrength, setupPasswordEyes,
+} from './common.js';
 import { GOTHWAD_CONFIG } from './config.js';
 
 renderTopbar();
+setupPasswordEyes();
 redirectIfAuthed();
 
 document.getElementById('domain-suffix').textContent = `@${GOTHWAD_CONFIG.APP_DOMAIN}`;
 
 const form = document.getElementById('signup-form');
-const alertBox = document.getElementById('alert');
+const alertBox = document.getElementById('alert-signup');
 const usernameInput = document.getElementById('username');
 const usernameHint = document.getElementById('username-hint');
 const passwordInput = document.getElementById('password');
 const confirmInput = document.getElementById('confirm_password');
 const strengthFill = document.getElementById('strength-fill');
 const strengthText = document.getElementById('strength-text');
-const submitBtn = document.getElementById('submit-btn');
-
-document.getElementById('toggle-password').addEventListener('click', (e) => {
-  const isPassword = passwordInput.type === 'password';
-  passwordInput.type = isPassword ? 'text' : 'password';
-  confirmInput.type = isPassword ? 'text' : 'password';
-  e.currentTarget.textContent = isPassword ? '🙈' : '👁️';
-});
+const submitBtn = document.getElementById('signup-btn');
 
 function showError(message) {
   alertBox.textContent = message;
@@ -40,11 +36,9 @@ function clearError() {
 }
 
 /* ---------------------------------------------------- username live check */
-// Har input par debounce (ruk kar) ke saath availability check karte hain,
-// taaki har keystroke par API call na jaye.
+// Debounce (ruk kar) check — taaki har keystroke par API call na jaye.
 let usernameTimer = null;
 usernameInput.addEventListener('input', () => {
-  // Allowed characters only
   usernameInput.value = usernameInput.value.toLowerCase().replace(/[^a-z0-9._-]/g, '');
 
   clearTimeout(usernameTimer);
@@ -72,7 +66,7 @@ usernameInput.addEventListener('input', () => {
           : `✗ "${username}" is already taken.`;
       }
     }
-  }, 450); // 450ms debounce
+  }, 450);
 });
 
 /* --------------------------------------------------- password strength UI */
@@ -113,7 +107,7 @@ form.addEventListener('submit', async (e) => {
 
   setBusy(submitBtn, true, 'Creating your account...');
 
-  // REAL API CALL → Worker → Supabase (profile auto-banta hai trigger se)
+  // REAL API → Worker → Supabase (profile auto-banta hai trigger se)
   const res = await api.post('/auth/signup', {
     first_name: firstName,
     last_name: lastName,
@@ -130,10 +124,10 @@ form.addEventListener('submit', async (e) => {
     return showError(res.error || 'Could not create account. Please try again.');
   }
 
-  toast(`Account created! Welcome to Gothwad, ${firstName}! 🔥`);
+  toast(`Account created! Welcome to Gothwad, ${firstName}!`);
 
-  // Signup ke saath hi session mil jaata hai → seedha dashboard
+  // Signup ke saath hi session mil jaata hai → seedha /me
   setTimeout(() => {
-    location.href = 'dashboard.html';
+    location.href = '/me';
   }, 600);
 });

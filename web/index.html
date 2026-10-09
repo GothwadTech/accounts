@@ -3,85 +3,22 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Gothwad Accounts — One login for everything</title>
-  <meta name="description" content="One Gothwad Account for Mail, Drive, Chat, Notes, Calendar and more. Secure, unified sign-in for the Gothwad ecosystem." />
+  <title>Gothwad Accounts</title>
   <link rel="icon" href="/favicon.ico" sizes="any" />
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-  <link rel="manifest" href="/manifest.json" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/css/styles.css" />
+  <style>
+    body { background: #0d1117; color: #8b98a9; font-family: system-ui, sans-serif;
+           display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+  </style>
 </head>
 <body>
-  <div class="page">
-    <header id="topbar" class="topbar"></header>
-
-    <main class="main">
-      <div class="container">
-        <!-- ============================ HERO ============================ -->
-        <section class="hero">
-          <div class="hero-badge">🔥 Gothwad Tech · Unified Ecosystem</div>
-          <h1>
-            One account for<br />
-            <span class="fire-text">everything Gothwad.</span>
-          </h1>
-          <p>
-            Sign in once and get access to Gothwad Mail, Drive, Chat, Notes,
-            Calendar and every future app — with one secure identity and one password.
-          </p>
-          <div class="hero-actions">
-            <a class="btn btn-primary btn-block" style="max-width:220px;" href="signup.html">Create your account</a>
-            <a class="btn btn-ghost btn-block" style="max-width:220px;" href="login.html">Sign in</a>
-          </div>
-        </section>
-
-        <!-- ========================== FEATURES ========================== -->
-        <section class="feature-grid">
-          <div class="feature">
-            <div class="f-icon">🪪</div>
-            <h3>One unified identity</h3>
-            <p>Your username becomes your Gothwad email address. One profile powers every Gothwad app.</p>
-          </div>
-          <div class="feature">
-            <div class="f-icon">🔐</div>
-            <h3>Security first</h3>
-            <p>JWT sessions, HttpOnly cookies, password reset via recovery email, and device session controls.</p>
-          </div>
-          <div class="feature">
-            <div class="f-icon">🌍</div>
-            <h3>Sign in from any app</h3>
-            <p>Coming next: "Sign in with Gothwad" — OAuth 2.0 single sign-on across the whole ecosystem.</p>
-          </div>
-          <div class="feature">
-            <div class="f-icon">⚡</div>
-            <h3>Fast &amp; free-tier friendly</h3>
-            <p>Built on Cloudflare Workers + Supabase. No paid services, no hidden costs — for us and for you.</p>
-          </div>
-        </section>
-      </div>
-    </main>
-
-    <footer class="footer">
-      <div class="container footer-inner">
-        <div>© 2026 Gothwad Tech · Built with 🔥 by the GOTHWAD team</div>
-        <div class="footer-links">
-          <a href="login.html">Sign in</a>
-          <a href="signup.html">Create account</a>
-        </div>
-      </div>
-    </footer>
-  </div>
-
+  <div>Redirecting to Gothwad Accounts…</div>
   <script type="module">
-    // Agar user already logged-in hai to seedha dashboard dikha do
-    import { renderTopbar, getSession } from '/js/common.js';
-    renderTopbar();
+    // Root koi page nahi hai — sirf smart redirect:
+    // logged-in → /me, warna → /signin  (site ke sirf 3 routes hain)
+    import { getSession } from '/js/common.js';
     const session = await getSession();
-    if (session.authenticated) {
-      document.querySelector('.hero-actions').innerHTML = `
-        <a class="btn btn-primary" style="min-width:220px;" href="dashboard.html">Go to my dashboard →</a>`;
-    }
+    location.replace(session.authenticated ? '/me' : '/signin');
   </script>
+  <noscript><meta http-equiv="refresh" content="0;url=/signin" /></noscript>
 </body>
 </html>

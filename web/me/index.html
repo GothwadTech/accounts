@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>My Account — Gothwad Accounts</title>
+  <title>My Account — Gothwad</title>
+  <meta name="description" content="Manage your Gothwad Account — profile, security, devices and connected apps." />
   <link rel="icon" href="/favicon.ico" sizes="any" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="manifest" href="/manifest.json" />
@@ -19,7 +20,7 @@
     <main class="main">
       <div class="container">
 
-        <!-- ======================= WELCOME HEADER ======================= -->
+        <!-- ═══════════════════ WELCOME HEADER ═══════════════════ -->
         <div class="dash-header">
           <div class="avatar" id="user-avatar">…</div>
           <div style="flex:1;min-width:220px;">
@@ -33,7 +34,7 @@
           <button class="btn btn-ghost" id="btn-signout">Sign out</button>
         </div>
 
-        <!-- ============================ TABS ============================ -->
+        <!-- ═══════════════════ TABS ═══════════════════ -->
         <div class="tabs" role="tablist">
           <button class="tab active" data-tab="overview">Overview</button>
           <button class="tab" data-tab="profile">Profile</button>
@@ -41,7 +42,7 @@
           <button class="tab" data-tab="apps">Connected apps</button>
         </div>
 
-        <!-- ========================== OVERVIEW ========================== -->
+        <!-- ═══════════════════ OVERVIEW ═══════════════════ -->
         <section class="tab-panel active" id="tab-overview">
           <div class="stat-grid">
             <div class="stat">
@@ -60,7 +61,7 @@
 
           <div class="card">
             <div class="card-title">☁️ Storage</div>
-            <div class="card-subtitle">Shared across Gothwad Drive &amp; Mail (soon)</div>
+            <div class="card-subtitle">Shared across Gothwad Drive &amp; Mail (coming soon)</div>
             <div class="storage-bar">
               <div class="storage-fill" id="storage-fill" style="width:2%"></div>
             </div>
@@ -72,7 +73,7 @@
 
           <div class="card mt-4">
             <div class="card-title">🛡️ Account status</div>
-            <div class="card-subtitle">Your Gothwad identity is protected and ready.</div>
+            <div class="card-subtitle">Aapki Gothwad identity protected aur ready hai.</div>
             <div class="flex gap-2" style="flex-wrap:wrap;">
               <span class="tag tag-success">✓ Email identity active</span>
               <span class="tag tag-success">✓ Session secured (HttpOnly JWT)</span>
@@ -81,7 +82,7 @@
           </div>
         </section>
 
-        <!-- =========================== PROFILE =========================== -->
+        <!-- ═══════════════════ PROFILE ═══════════════════ -->
         <section class="tab-panel" id="tab-profile">
           <div class="card" style="max-width:620px;">
             <div class="card-title">Personal information</div>
@@ -125,9 +126,8 @@
           </div>
         </section>
 
-        <!-- =========================== SECURITY =========================== -->
+        <!-- ═══════════════════ SECURITY ═══════════════════ -->
         <section class="tab-panel" id="tab-security">
-          <!-- Change password -->
           <div class="card" style="max-width:620px;">
             <div class="card-title">🔑 Change password</div>
             <div class="card-subtitle">Strong password rakho — kam se kam 8 characters.</div>
@@ -153,7 +153,6 @@
             </form>
           </div>
 
-          <!-- Devices / sessions -->
           <div class="card mt-4">
             <div class="flex justify-between items-center gap-3" style="flex-wrap:wrap;">
               <div>
@@ -168,7 +167,7 @@
           </div>
         </section>
 
-        <!-- ============================= APPS ============================= -->
+        <!-- ═══════════════════ CONNECTED APPS ═══════════════════ -->
         <section class="tab-panel" id="tab-apps">
           <div class="card">
             <div class="card-title">Gothwad ecosystem apps</div>
@@ -177,7 +176,6 @@
               Kisi bhi app ka access kabhi bhi hata sakte ho.
             </div>
 
-            <!-- Connected apps (real OAuth grants) -->
             <div class="label" style="text-transform:uppercase;letter-spacing:0.08em;font-size:10.5px;">
               Connected apps
             </div>
@@ -185,7 +183,6 @@
               <div class="text-muted text-sm">Loading…</div>
             </div>
 
-            <!-- All ecosystem apps -->
             <div class="label" style="text-transform:uppercase;letter-spacing:0.08em;font-size:10.5px;">
               All Gothwad apps
             </div>
@@ -200,12 +197,18 @@
 
     <footer class="footer">
       <div class="container footer-inner">
-        <div>© 2026 Gothwad Tech · Gothwad Accounts</div>
-        <div class="footer-links"><a href="index.html">Home</a></div>
+        <div class="flex items-center gap-2">
+          <img src="/icon-192.png" alt="" style="width:16px;height:16px;border-radius:4px;" />
+          <span>© 2026 Gothwad Tech · Gothwad Accounts</span>
+        </div>
+        <div class="footer-links">
+          <a href="/signin">Sign in</a>
+          <a href="/signup">Create account</a>
+        </div>
       </div>
     </footer>
   </div>
 
-  <script type="module" src="/js/dashboard.js"></script>
+  <script type="module" src="/js/me.js"></script>
 </body>
 </html>

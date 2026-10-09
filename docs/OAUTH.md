@@ -14,10 +14,10 @@
         │
         ├─ redirect ──────────────►  /oauth/authorize
         │                                 │  login nahi hai?
-        │                                 ├────────────────────────► login.html
+        │                                 ├────────────────────────► /signin
         │                                 │  login hai?
-        │                                 ├────────────────────────► authorize.html
-        │                                 │  (Consent screen: Allow / Deny)
+        │                                 ├────────────────────────► Consent screen
+        │                                 │  (Worker-rendered HTML: Allow / Deny)
         │  ◄── redirect + code ──────────┤
         │                                │
         ├─ POST /oauth/token (code) ───────────────────────────────►  code verify
@@ -28,6 +28,9 @@
         ▼
   App logged in! 🎉
 ```
+
+> Note: Consent screen Worker khud render karta hai (`/oauth/authorize` par).
+> Accounts site ke sirf 3 routes hain: `/signin`, `/signup`, `/me`.
 
 **Security built-in:**
 - **PKCE** (S256) — public clients ke liye mandatory (mobile/SPA safe)
@@ -161,7 +164,7 @@ Supabase SQL Editor mein:
 UPDATE public.ecosystem_apps
 SET redirect_uris = ARRAY[
   'https://chat.gothwadtech.com/auth/gothwad/callback',
-  'http://localhost:3000/examples/sign-in-with-gothwad/callback.html'  -- dev
+  'http://localhost:3000/auth/gothwad/callback'  -- dev
 ]
 WHERE id = 'gothwad-chat';
 ```
@@ -180,20 +183,82 @@ PKCE unhe protect karta hai.
 
 ---
 
-## 🧩 App side integration (quick version)
+## 🧩 App side integration (copy-paste)
 
-Pura copy-paste example: [`examples/sign-in-with-gothwad/`](../examples/sign-in-with-gothwad/)
+Apni app ke login page mein yeh button + JS copy karo (koi library nahi chahiye):
 
-```js
-// 1. PKCE pair banao
-const verifier = base64url(crypto.getRandomValues(new Uint8Array(32)));
-const challenge = base64url(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))));
+```html
+<button id="btn-signin-gothwad">🔥 Sign in with Gothwad</button>
 
-// 2. User ko bhejo
-location.href = `${AUTH}/oauth/authorize?client_id=gothwad-chat&redirect_uri=${encodeURIComponent(cb)}&response_type=code&scope=profile email&state=${state}&code_challenge=${challenge}&code_challenge_method=S256`;
+<script type="module">
+  // ⚙️ CONFIG — apni app ke hisaab se badlo
+  const GOTHWAD_AUTH_URL = 'https://accounts-api.gothwadtech.com'; // Worker URL
+  const CLIENT_ID = 'gothwad-chat';
+  const REDIRECT_URI = location.origin + '/auth/gothwad/callback'; // registered hona chahiye
+  const SCOPES = 'profile email offline_access';
 
-// 3. Callback par: code → token → userinfo (callback.html dekho)
+  // PKCE generate (bina kisi library ke)
+  const b64url = (bytes) => btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+  document.getElementById('btn-signin-gothwad').addEventListener('click', async () => {
+    const verifier = b64url(crypto.getRandomValues(new Uint8Array(32)));
+    const challenge = b64url(new Uint8Array(
+      await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))));
+    const state = b64url(crypto.getRandomValues(new Uint8Array(16)));
+
+    sessionStorage.setItem('pkce_verifier', verifier);
+    sessionStorage.setItem('oauth_state', state);
+
+    const u = new URL('/oauth/authorize', GOTHWAD_AUTH_URL);
+    u.searchParams.set('client_id', CLIENT_ID);
+    u.searchParams.set('redirect_uri', REDIRECT_URI);
+    u.searchParams.set('response_type', 'code');
+    u.searchParams.set('scope', SCOPES);
+    u.searchParams.set('state', state);
+    u.searchParams.set('code_challenge', challenge);
+    u.searchParams.set('code_challenge_method', 'S256');
+    location.href = u.toString();
+  });
+</script>
 ```
+
+Callback page (`/auth/gothwad/callback`) par:
+
+```html
+<script type="module">
+  const GOTHWAD_AUTH_URL = 'https://accounts-api.gothwadtech.com';
+  const CLIENT_ID = 'gothwad-chat';
+  const p = new URLSearchParams(location.search);
+
+  if (p.get('error')) alert('Denied: ' + p.get('error'));
+  else {
+    // 1) Code → token (PKCE verifier ke saath)
+    const tokens = await (await fetch(`${GOTHWAD_AUTH_URL}/oauth/token`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        grant_type: 'authorization_code',
+        code: p.get('code'),
+        redirect_uri: location.origin + '/auth/gothwad/callback',
+        client_id: CLIENT_ID,
+        code_verifier: sessionStorage.getItem('pkce_verifier'),
+      }),
+    })).json();
+
+    // 2) Token save (asli app ise secure storage mein rakhega)
+    sessionStorage.setItem('gothwad_access_token', tokens.access_token);
+
+    // 3) UserInfo — user ka profile
+    const me = await (await fetch(`${GOTHWAD_AUTH_URL}/oauth/userinfo`, {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    })).json();
+    console.log('Logged in as:', me.name, me.email);
+  }
+</script>
+```
+
+**Server-side app hai?** (Node/PHP/etc.) To token exchange apne SERVER par karo
+(client_secret ke saath) — browser mein secret mat rakho. Flow same hai.
 
 ---
 

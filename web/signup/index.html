@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Create account — Gothwad Accounts</title>
+  <meta name="description" content="Create your Gothwad Account — one identity for Mail, Drive, Chat, Notes and more." />
   <link rel="icon" href="/favicon.ico" sizes="any" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="manifest" href="/manifest.json" />
@@ -19,15 +20,17 @@
     <main class="main">
       <div class="auth-wrap">
         <div class="card auth-card" style="max-width:520px;">
-          <a class="brand" href="index.html">
-            <span class="flame">🔥</span>
-            <span>GOTHWAD<span class="brand-sub">Accounts</span></span>
-          </a>
+
+          <!-- Brand: real Gothwad logo -->
+          <div class="brand brand-center">
+            <img class="brand-logo" src="/icon-192.png" alt="Gothwad" />
+            <span class="brand-name">Gothwad</span>
+          </div>
 
           <h1 class="auth-heading">Create your Gothwad Account</h1>
           <p class="auth-subheading">One identity for Mail, Drive, Chat, Notes &amp; more</p>
 
-          <div id="alert" class="alert alert-error hidden"></div>
+          <div id="alert-signup" class="alert alert-error hidden"></div>
 
           <form id="signup-form" novalidate>
             <!-- Name -->
@@ -50,9 +53,7 @@
                        autocomplete="username" required maxlength="24" />
                 <span class="suffix" id="domain-suffix"></span>
               </div>
-              <div class="hint" id="username-hint">
-                3–24 characters: a-z, 0-9, dot (.), dash (-), underscore (_)
-              </div>
+              <div class="hint" id="username-hint">3–24 characters: a-z, 0-9, dot (.), dash (-), underscore (_)</div>
             </div>
 
             <!-- Password -->
@@ -62,7 +63,7 @@
                 <div class="input-wrap">
                   <input class="input" id="password" type="password" placeholder="Min. 8 characters"
                          autocomplete="new-password" required />
-                  <button type="button" class="input-eye" id="toggle-password" aria-label="Show password">👁️</button>
+                  <button type="button" class="input-eye" data-eye="password" aria-label="Show password">👁️</button>
                 </div>
               </div>
               <div class="field">
@@ -72,8 +73,8 @@
               </div>
             </div>
 
-            <!-- Password strength meter -->
-            <div class="field" id="strength-wrap" style="margin-top:-6px;">
+            <!-- Password strength -->
+            <div class="field" style="margin-top:-6px;">
               <div class="storage-bar" style="margin:2px 0 6px;">
                 <div class="storage-fill" id="strength-fill" style="width:0%;background:#6a7686;"></div>
               </div>
@@ -84,7 +85,7 @@
             <div class="field">
               <label class="label" for="recovery_email">Recovery email</label>
               <input class="input" id="recovery_email" type="email" placeholder="you@gmail.com" required />
-              <div class="hint">Password reset link isi email par jaayega. (Apna personal email daalo.)</div>
+              <div class="hint">Password reset link isi email par jaayega — apna personal email daalo.</div>
             </div>
 
             <!-- Phone (optional) -->
@@ -97,11 +98,11 @@
               By creating an account you agree to the Gothwad Terms of Service &amp; Privacy Policy.
             </div>
 
-            <button type="submit" class="btn btn-primary btn-block" id="submit-btn">Create account</button>
+            <button type="submit" class="btn btn-primary btn-block" id="signup-btn">Create account</button>
           </form>
 
           <p class="auth-footer">
-            Already have an account? <a href="login.html">Sign in</a>
+            Already have an account? <a href="/signin">Sign in</a>
           </p>
         </div>
       </div>
@@ -109,8 +110,13 @@
 
     <footer class="footer">
       <div class="container footer-inner">
-        <div>© 2026 Gothwad Tech</div>
-        <div class="footer-links"><a href="index.html">Home</a></div>
+        <div class="flex items-center gap-2">
+          <img src="/icon-192.png" alt="" style="width:16px;height:16px;border-radius:4px;" />
+          <span>© 2026 Gothwad Tech</span>
+        </div>
+        <div class="footer-links">
+          <a href="/signin">Sign in</a>
+        </div>
       </div>
     </footer>
   </div>

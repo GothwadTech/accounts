@@ -181,8 +181,8 @@ Jab GrixChat / ClashDrive / Notes mein Gothwad login lagana ho:
    ```bash
    npx wrangler secret put JWT_SECRET     # banao: openssl rand -hex 32
    ```
-2. App register karo (Supabase SQL Editor): redirect_uris update karo
-3. `examples/sign-in-with-gothwad/` ka code apni app mein copy karo
+2. App register karo (Supabase SQL Editor): `redirect_uris` update karo
+3. [docs/OAUTH.md](OAUTH.md) ka copy-paste snippet apni app mein lagao
 
 Poora guide: **[docs/OAUTH.md](OAUTH.md)**
 

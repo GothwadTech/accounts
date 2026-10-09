@@ -1,6 +1,7 @@
 /**
  * =============================================================================
  * COMMON HELPERS — shared UI + auth logic (har page yeh use karta hai)
+ * Routes: /signin · /signup · /me   (iske alawa koi page nahi)
  * =============================================================================
  */
 
@@ -47,7 +48,7 @@ export function setBusy(btn, busy, busyText = 'Please wait...') {
 /* ---------------------------------------------------------------- session */
 /**
  * Current session check: /api/auth/me call karta hai.
- * Returns: { authenticated, user } — cookies ki wajah se token manage nahi karna padta.
+ * Returns: { authenticated, user }
  */
 export async function getSession() {
   const res = await api.get('/auth/me');
@@ -58,38 +59,41 @@ export async function getSession() {
 }
 
 /**
- * Protected pages (dashboard): login nahi hai to login.html par bhej do.
- * Returns user object (already logged-in case mein).
+ * Protected page (/me): login nahi hai to /signin par bhej do.
+ * Returns user object (logged-in case mein).
  */
 export async function requireAuth() {
   const session = await getSession();
   if (!session.authenticated) {
     const next = encodeURIComponent(location.pathname + location.search);
-    location.href = `login.html?next=${next}`;
+    location.href = `/signin?next=${next}`;
     return null;
   }
   return session.user;
 }
 
-/** Login/Signup pages: pehle se logged-in hai to ?next= ya dashboard par bhej do. */
+/** /signin, /signup: pehle se logged-in hai to /me par bhej do. */
 export async function redirectIfAuthed() {
   const session = await getSession();
   if (session.authenticated) {
     const params = new URLSearchParams(location.search);
-    location.href = params.get('next') || 'dashboard.html';
+    const next = params.get('next');
+    // Sirf relative ya apne hi origin ke URLs allow (open-redirect se bachav)
+    const safeNext = next && (next.startsWith('/') || next.startsWith(location.origin)) ? next : '/me';
+    location.href = safeNext;
   }
   return session;
 }
 
-/** Sign out + login page par redirect. */
+/** Sign out + /signin par redirect. */
 export async function signOut() {
   await api.post('/auth/signout', {});
-  location.href = 'login.html';
+  location.href = '/signin';
 }
 
 /* ---------------------------------------------------------------- header */
 /**
- * Topbar render karo (auth state ke hisaab se buttons badalte hain).
+ * Topbar render karo (real Gothwad logo + auth state ke hisaab se buttons).
  * Har page mein <header id="topbar"></header> hona chahiye.
  */
 export async function renderTopbar() {
@@ -101,20 +105,17 @@ export async function renderTopbar() {
 
   el.innerHTML = `
     <div class="container topbar-inner">
-      <a class="brand" href="index.html">
-        <span class="flame">🔥</span>
-        <span>
-          GOTHWAD
-          <span class="brand-sub">Accounts</span>
-        </span>
+      <a class="brand" href="${authed ? '/me' : '/signin'}">
+        <img class="brand-logo sm" src="/icon-192.png" alt="Gothwad" />
+        <span class="brand-name">Gothwad</span>
       </a>
       <nav class="nav">
         ${authed ? `
-          <a class="nav-link hide-mobile" href="dashboard.html">My Account</a>
+          <a class="nav-link hide-mobile" href="/me">My Account</a>
           <button class="btn btn-ghost" id="btn-signout" style="padding:8px 14px;">Sign out</button>
         ` : `
-          <a class="nav-link" href="login.html">Sign in</a>
-          <a class="btn btn-primary" href="signup.html" style="padding:8px 16px;">Create account</a>
+          <a class="nav-link" href="/signin">Sign in</a>
+          <a class="btn btn-primary" href="/signup" style="padding:8px 16px;">Create account</a>
         `}
       </nav>
     </div>`;
@@ -156,4 +157,21 @@ export function passwordStrength(pw) {
   if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) score++;
   if (/\d/.test(pw) && /[^A-Za-z0-9]/.test(pw)) score++;
   return Math.min(score, 4);
+}
+
+/* ------------------------------------------------------------- eye toggle */
+/**
+ * Show/hide password buttons — har page par <button class="input-eye" data-eye="FIELD_ID">
+ * Setup: setupPasswordEyes() call karo page load par.
+ */
+export function setupPasswordEyes() {
+  document.querySelectorAll('.input-eye').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const input = document.getElementById(btn.dataset.eye);
+      if (!input) return;
+      const isPassword = input.type === 'password';
+      input.type = isPassword ? 'text' : 'password';
+      btn.textContent = isPassword ? '🙈' : '👁️';
+    });
+  });
 }

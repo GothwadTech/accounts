@@ -3,7 +3,7 @@
    =============================================================================
    Colors:
      - Background:  GitHub-dark style deep navy (#0d1117)
-     - Accent:      Crimson #e94560 (Gothwad fire brand 🔥)
+     - Accent:      Brand blue #2f80ed (real Gothwad logo se match)
      - Font:        Inter / system-ui
    Har page isi CSS use karta hai. Ek jagah badlo, poora site badlega.
    ========================================================================== */
@@ -25,11 +25,11 @@
   --text-muted: #8b98a9;
   --text-faint: #6a7686;
 
-  /* Brand accent */
-  --accent: #e94560;
-  --accent-hover: #f2546e;
-  --accent-soft: rgba(233, 69, 96, 0.14);
-  --accent-border: rgba(233, 69, 96, 0.4);
+  /* Brand accent — real Gothwad logo (blue) se match karta hai */
+  --accent: #2f80ed;
+  --accent-hover: #4da3ff;
+  --accent-soft: rgba(47, 128, 237, 0.14);
+  --accent-border: rgba(47, 128, 237, 0.4);
 
   /* Status colors */
   --success: #2ea86e;
@@ -62,13 +62,13 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Subtle red glow at top of every page */
+/* Subtle blue glow at top of every page (brand logo se match) */
 body::before {
   content: '';
   position: fixed;
   inset: 0 0 auto 0;
   height: 280px;
-  background: radial-gradient(ellipse 80% 100% at 50% -30%, rgba(233, 69, 96, 0.16), transparent 70%);
+  background: radial-gradient(ellipse 80% 100% at 50% -30%, rgba(47, 128, 237, 0.16), transparent 70%);
   pointer-events: none;
   z-index: 0;
 }
@@ -78,7 +78,7 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 
 img { max-width: 100%; }
 
-::selection { background: rgba(233, 69, 96, 0.35); }
+::selection { background: rgba(47, 128, 237, 0.35); }
 
 /* Scrollbars */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -134,27 +134,49 @@ img { max-width: 100%; }
 }
 .brand:hover { text-decoration: none; color: var(--text); }
 
-.brand .flame {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, var(--accent), #b32644);
-  font-size: 17px;
-  box-shadow: 0 4px 14px rgba(233, 69, 96, 0.35);
+/* Real Gothwad brand icon (Google-style logo mark) */
+.brand-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  box-shadow: 0 4px 14px rgba(41, 128, 230, 0.35);
+  flex-shrink: 0;
+}
+.brand-logo.sm { width: 32px; height: 32px; border-radius: 10px; }
+
+.brand-name {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  background: linear-gradient(120deg, #4da3ff, #2980eb);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
-.brand .brand-sub {
-  display: block;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  margin-top: -2px;
+/* Auth pages ke upar centered logo */
+.brand-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 18px;
 }
+.brand-center .brand-logo { width: 52px; height: 52px; border-radius: 15px; }
+.brand-center .brand-name { font-size: 22px; }
+
+/* Text-style button (links jaisa) */
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0;
+}
+.link-btn:hover { color: var(--accent-hover); text-decoration: underline; }
 
 .nav { display: flex; align-items: center; gap: 8px; }
 
@@ -370,7 +392,7 @@ img { max-width: 100%; }
 .btn-primary {
   background: var(--accent);
   color: #fff;
-  box-shadow: 0 4px 16px rgba(233, 69, 96, 0.3);
+  box-shadow: 0 4px 16px rgba(47, 128, 237, 0.3);
 }
 .btn-primary:hover:not(:disabled) { background: var(--accent-hover); color: #fff; }
 
@@ -417,7 +439,7 @@ img { max-width: 100%; }
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }
-.spinner.dark { border-color: rgba(233, 69, 96, 0.25); border-top-color: var(--accent); }
+.spinner.dark { border-color: rgba(47, 128, 237, 0.25); border-top-color: var(--accent); }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -466,7 +488,7 @@ img { max-width: 100%; }
   width: 64px;
   height: 64px;
   border-radius: 20px;
-  background: linear-gradient(135deg, var(--accent), #b32644);
+  background: linear-gradient(135deg, var(--accent), #1b5fc1);
   color: #fff;
   font-size: 23px;
   font-weight: 700;
@@ -474,7 +496,7 @@ img { max-width: 100%; }
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-shadow: 0 6px 20px rgba(233, 69, 96, 0.35);
+  box-shadow: 0 6px 20px rgba(47, 128, 237, 0.35);
 }
 .avatar.sm { width: 36px; height: 36px; font-size: 13px; border-radius: 11px; }
 
@@ -632,73 +654,6 @@ img { max-width: 100%; }
 .app-name { font-size: 13.5px; font-weight: 600; }
 .app-desc { font-size: 11px; color: var(--text-faint); margin-top: 1px; }
 
-/* --------------------------------------------------------------- landing */
-.hero {
-  text-align: center;
-  padding: 72px 0 56px;
-}
-
-.hero-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 14px;
-  border-radius: 999px;
-  background: var(--accent-soft);
-  border: 1px solid var(--accent-border);
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: 600;
-  margin-bottom: 22px;
-}
-
-.hero h1 {
-  font-size: clamp(32px, 6vw, 52px);
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  line-height: 1.12;
-  margin-bottom: 18px;
-}
-
-.hero h1 .fire-text {
-  background: linear-gradient(120deg, var(--accent) 20%, #ff8a5c 80%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-.hero p {
-  font-size: 16.5px;
-  color: var(--text-muted);
-  max-width: 560px;
-  margin: 0 auto 32px;
-  line-height: 1.65;
-}
-
-.hero-actions {
-  display: flex;
-  gap: 12px;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-
-.feature-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 16px;
-  margin-top: 28px;
-}
-
-.feature {
-  padding: 22px;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-}
-.feature .f-icon { font-size: 24px; margin-bottom: 12px; }
-.feature h3 { font-size: 14.5px; font-weight: 700; margin-bottom: 6px; }
-.feature p { font-size: 12.5px; color: var(--text-muted); line-height: 1.6; }
-
 /* --------------------------------------------------------------- footer */
 .footer {
   border-top: 1px solid var(--border);
@@ -738,7 +693,6 @@ img { max-width: 100%; }
 @media (max-width: 640px) {
   .main { padding: 24px 0 48px; }
   .card { padding: 22px 18px; }
-  .hero { padding: 44px 0 36px; }
   .nav-link.hide-mobile { display: none; }
   .topbar-inner { height: 58px; }
 }

@@ -1,9 +1,9 @@
 /**
- * DASHBOARD logic
- * - Session check (login nahi → login page)
+ * /me page logic — Gothwad Account dashboard
+ * - Session check (login nahi → /signin)
  * - Profile view + edit
- * - Change password
- * - Device sessions list + remote sign-out
+ * - Change password + device sessions (remote sign-out)
+ * - Connected apps (OAuth grants + disconnect)
  */
 
 import { api } from './api.js';
@@ -15,11 +15,11 @@ import { GOTHWAD_CONFIG, gothwadEmail } from './config.js';
 
 renderTopbar();
 
-// ------------------------------------------------------------ load user
 let currentUser = null;
 
+/* ------------------------------------------------------------ load user */
 async function loadUser() {
-  currentUser = await requireAuth(); // login nahi hai to login.html par bhej dega
+  currentUser = await requireAuth(); // login nahi hai to /signin par bhej dega
   if (!currentUser) return;
 
   const u = currentUser;
@@ -53,35 +53,27 @@ async function loadUser() {
 }
 
 loadUser();
+document.getElementById('domain-suffix-profile').textContent = `@${GOTHWAD_CONFIG.APP_DOMAIN}`;
 
-// ---------------------------------------------------------------- tabs
+/* ---------------------------------------------------------------- tabs */
 document.querySelectorAll('.tab').forEach((tab) => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
     document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
     tab.classList.add('active');
     document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
-    if (tab.dataset.tab === 'security') loadSessions(); // devices tab par sessions load
-    if (tab.dataset.tab === 'apps') loadConnectedApps(); // apps tab par grants load
+    if (tab.dataset.tab === 'security') loadSessions();
+    if (tab.dataset.tab === 'apps') loadConnectedApps();
   });
 });
 
-// Domain suffixes
-const suffixEls = ['domain-suffix-profile'];
-suffixEls.forEach((id) => {
-  const el = document.getElementById(id);
-  if (el) el.textContent = `@${GOTHWAD_CONFIG.APP_DOMAIN}`;
-});
-
-// ------------------------------------------------------------- sign out
+/* ------------------------------------------------------------- sign out */
 document.getElementById('btn-signout').addEventListener('click', () => signOut());
 
-// -------------------------------------------------------- profile save
-const profileForm = document.getElementById('profile-form');
-const profileAlert = document.getElementById('alert-profile');
-
-profileForm.addEventListener('submit', async (e) => {
+/* -------------------------------------------------------- profile save */
+document.getElementById('profile-form').addEventListener('submit', async (e) => {
   e.preventDefault();
+  const profileAlert = document.getElementById('alert-profile');
   profileAlert.classList.add('hidden');
 
   const btn = document.getElementById('profile-save-btn');
@@ -107,12 +99,10 @@ profileForm.addEventListener('submit', async (e) => {
   loadUser();
 });
 
-// ----------------------------------------------------- change password
-const passwordForm = document.getElementById('password-form');
-const passwordAlert = document.getElementById('alert-password');
-
-passwordForm.addEventListener('submit', async (e) => {
+/* ----------------------------------------------------- change password */
+document.getElementById('password-form').addEventListener('submit', async (e) => {
   e.preventDefault();
+  const passwordAlert = document.getElementById('alert-password');
   passwordAlert.classList.add('hidden');
 
   const current = document.getElementById('current_password').value;
@@ -146,11 +136,11 @@ passwordForm.addEventListener('submit', async (e) => {
     return;
   }
 
-  passwordForm.reset();
+  document.getElementById('password-form').reset();
   toast('Password changed successfully 🔒');
 });
 
-// ---------------------------------------------------- device sessions
+/* ---------------------------------------------------- device sessions */
 async function loadSessions() {
   const list = document.getElementById('device-list');
   list.innerHTML = '<div class="text-muted text-sm">Loading sessions…</div>';
@@ -170,7 +160,7 @@ async function loadSessions() {
   list.innerHTML = sessions.map((s) => {
     const icon = s.device_name?.includes('Mobile') || s.os === 'Android' || s.os === 'iOS' ? '📱' : '💻';
     return `
-      <div class="device" data-id="${escapeHtml(s.id)}">
+      <div class="device">
         <div class="device-info">
           <div class="device-icon">${icon}</div>
           <div>
@@ -190,7 +180,6 @@ async function loadSessions() {
       </div>`;
   }).join('');
 
-  // Har "Sign out" button par listener
   list.querySelectorAll('.btn-revoke').forEach((btn) => {
     btn.addEventListener('click', async () => {
       setBusy(btn, true, '...');
@@ -206,7 +195,6 @@ async function loadSessions() {
   });
 }
 
-// "Sign out other devices"
 document.getElementById('btn-revoke-others').addEventListener('click', async (e) => {
   const btn = e.currentTarget;
   setBusy(btn, true, 'Signing out...');
@@ -220,7 +208,7 @@ document.getElementById('btn-revoke-others').addEventListener('click', async (e)
   }
 });
 
-// ------------------------------------------------- connected apps (OAuth)
+/* ------------------------------------------------- connected apps (OAuth) */
 const APP_ICONS = { mail: '📧', 'hard-drive': '☁️', 'message-circle': '💬', 'file-text': '📝', calendar: '📅', compass: '🌐' };
 
 async function loadConnectedApps() {
@@ -235,7 +223,6 @@ async function loadConnectedApps() {
 
   const { connected = [], apps = [] } = res.data;
 
-  // Connected grants
   if (connected.length === 0) {
     connectedList.innerHTML = `
       <div class="text-sm text-muted" style="padding:8px 2px;">
@@ -272,7 +259,6 @@ async function loadConnectedApps() {
     });
   }
 
-  // All apps grid
   appsGrid.innerHTML = apps.map((a) => {
     const isConnected = connected.some((c) => c.app_id === a.id);
     return `
@@ -287,5 +273,4 @@ async function loadConnectedApps() {
   }).join('');
 }
 
-// Apps tab pehli baar open hone par load (aur tab click par refresh)
 loadConnectedApps();
