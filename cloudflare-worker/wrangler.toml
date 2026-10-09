@@ -5,7 +5,10 @@
 # Local:   npx wrangler dev        (http://127.0.0.1:8787)
 # =============================================================================
 
-name = "gothwad-auth"
+# ⚠️ Yeh naam Cloudflare dashboard mein bane Worker ke naam se MATCH hona chahiye
+# (Workers & Pages → "accounts"). Git se auto-deploy (Workers Builds) isi naam par
+# deploy karta hai — naam alag hua to build fail hoga.
+name = "accounts"
 main = "src/index.ts"
 compatibility_date = "2024-11-01"
 
@@ -21,7 +24,7 @@ APP_DOMAIN = "gothwadtech.com"
 AUTH_HUB_URL = "https://accounts.gothwadtech.com"
 
 # Apne Supabase project ka URL (Supabase Dashboard → Settings → API)
-SUPABASE_URL = "https://YOUR_PROJECT_ID.supabase.co"
+SUPABASE_URL = "https://ruqauxozsawzjfwoonfz.supabase.co"
 
 # Resend se bhejne wali emails ka "From" address
 # (jab tak custom domain Resend mein verify nahi hota, Resend ka onboarding@resend.dev use karo)
@@ -52,9 +55,13 @@ DEV_MODE = "true"
 # -----------------------------------------------------------------------------
 
 # -----------------------------------------------------------------------------
-# ROUTES — Worker ko apne domain par lagane ke liye (Cloudflare Dashboard
-# mein bhi kar sakte ho: Workers → your worker → Settings → Domains & Routes)
+# ROUTES — Worker ko domain par lagane ke liye. RECOMMENDED tareeka: dashboard
+# mein Worker → Settings → Domains & Routes → Add Route:
+#     accounts.gothwadtech.com/api/*
+# Isse frontend + API ek hi origin par (same-origin, CORS ki zaroorat nahi).
+# Yeh route yahan comment mein rakha hai taaki config = dashboard hamesha match ho.
+# Alternative: api.gothwadtech.com custom domain (docs/SETUP.md Step 2e).
 # -----------------------------------------------------------------------------
 # [routes]
-# pattern = "api.gothwadtech.com/*"
+# pattern = "accounts.gothwadtech.com/api/*"
 # zone_name = "gothwadtech.com"

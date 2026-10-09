@@ -648,7 +648,10 @@ function consentPageHtml(
     const btn = document.getElementById(approved ? 'allow' : 'deny');
     btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> ' + (approved ? 'Authorizing…' : 'Denying…');
     try {
-      const res = await fetch('/oauth/decision', {
+      // Absolute path use karo "/api/oauth/decision" — "/oauth/decision" bina /api ke
+      // Worker tak nahi pahunchta jab Worker sirf accounts.gothwadtech.com/api/* par ho.
+      // Router "/api" prefix strip kar deta hai, isliye yeh api.* domain par bhi chalta hai.
+      const res = await fetch('/api/oauth/decision', {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ approved, ...data }),

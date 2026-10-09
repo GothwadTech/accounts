@@ -43,9 +43,16 @@
 
 ## 📌 Endpoints
 
-Base URL: aapka Worker (e.g. `https://api.gothwadtech.com`)
-(Frontend `https://accounts.gothwadtech.com` par hosted hai. Dono ke liye
-`/oauth/*` aur `/api/oauth/*` dono paths kaam karte hain.)
+Base URL: aapka Worker ka public URL. Recommended setup (Worker route
+`accounts.gothwadtech.com/api/*`, see docs/SETUP.md Step 2D):
+
+- **Base URL = `https://accounts.gothwadtech.com/api`**
+  → endpoints: `/api/oauth/authorize`, `/api/oauth/token`, `/api/oauth/userinfo`
+- Agar custom domain `api.gothwadtech.com` use kiya ho: base = `https://api.gothwadtech.com`
+  → endpoints: `/oauth/authorize`, `/oauth/token`, ...
+
+⚠️ Route `/api/*` par hai, isliye `accounts.gothwadtech.com/oauth/...` (bina `/api`)
+Worker tak NAHI pahunchta — hamesha `/api` prefix wala base use karo.
 
 ### 1. `GET /oauth/authorize` — Authorization endpoint
 
@@ -192,7 +199,7 @@ Apni app ke login page mein yeh button + JS copy karo (koi library nahi chahiye)
 
 <script type="module">
   // ⚙️ CONFIG — apni app ke hisaab se badlo
-  const GOTHWAD_AUTH_URL = 'https://accounts-api.gothwadtech.com'; // Worker URL
+  const GOTHWAD_AUTH_URL = 'https://accounts.gothwadtech.com/api'; // Worker base URL (route wala)
   const CLIENT_ID = 'gothwad-chat';
   const REDIRECT_URI = location.origin + '/auth/gothwad/callback'; // registered hona chahiye
   const SCOPES = 'profile email offline_access';
@@ -227,7 +234,7 @@ Callback page (`/auth/gothwad/callback`) par:
 
 ```html
 <script type="module">
-  const GOTHWAD_AUTH_URL = 'https://accounts-api.gothwadtech.com';
+  const GOTHWAD_AUTH_URL = 'https://accounts.gothwadtech.com/api';
   const CLIENT_ID = 'gothwad-chat';
   const p = new URLSearchParams(location.search);
 

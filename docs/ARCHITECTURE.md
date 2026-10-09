@@ -19,8 +19,8 @@
                │                 in prod: cross-origin, CORS + credentials)
 ┌──────────────▼───────────────┐
 │   CLOUDFLARE WORKER          │
-│   cloudflare-worker/         │        api.gothwadtech.com
-│   /api/auth/*  /oauth/*      │
+│   cloudflare-worker/         │        accounts.gothwadtech.com/api/*
+│   /api/auth/*  /api/oauth/*  │        (route; alt: api.gothwadtech.com)
 └──────────────┬───────────────┘
                │  REST (PostgREST) + Auth Admin API
 ┌──────────────▼───────────────┐
@@ -192,7 +192,8 @@ use karta hai; external OAuth apps `/oauth/*`).
 | Kahan | Kya | Kaise |
 |-------|-----|-------|
 | `accounts.gothwadtech.com` | Pages → `web/` folder | Connect Git, output=`web` |
-| `api.gothwadtech.com` | Worker route | wrangler.toml routes / Domains & Routes |
+| `accounts.gothwadtech.com/api/*` | Worker route `accounts` (recommended, same-origin) | Worker → Settings → Domains & Routes → Add Route |
+| `api.gothwadtech.com` | Worker custom domain (alternative) | Worker → Domains & Routes → Custom Domain |
 | Supabase | DB + Auth | schema.sql in SQL Editor |
 
 Dev mein: `tools/dev-server.js` (port 3000) `/api`+`/oauth` ko

@@ -7,7 +7,7 @@
 >
 > Rules & working style: [`AGENTS.md`](AGENTS.md) · Master plan: [`PLAN.md`](PLAN.md)
 
-**Last updated:** 2026-10-09 (Session 3)
+**Last updated:** 2026-10-09 (Session 6 — deployment fix)
 
 ---
 
@@ -26,6 +26,34 @@ banana hai + deploy karna hai (docs/SETUP.md), phir Step 3 (Mail) shuru.
 ---
 
 ## ✅ DONE (completed work — newest first)
+
+### Session 6 — 2026-10-09 — DEPLOYMENT FIX (phone/dashboard-only setup)
+- **Context:** user phone se kaam kar raha hai — terminal/wrangler CLI nahi. Cloudflare
+  Worker project dashboard mein already hai, naam **`accounts`** (delete/rename nahi).
+  Pages build pehle "Vite" auto-detect se fail hua tha.
+- **wrangler.toml:** `name = "gothwad-auth"` → **`name = "accounts"`** (Workers Builds
+  Git-deploy dashboard ke Worker naam se match karna zaroori). Routes ka recommended
+  pattern comment mein likha: `accounts.gothwadtech.com/api/*`.
+- **SUPABASE_URL:** wrangler.toml mein user ka real Project URL set kiya
+  (`https://ruqauxozsawzjfwoonfz.supabase.co`, public — secret nahi).
+- **Worker route approach (recommended):** frontend + API same origin
+  (`accounts.gothwadtech.com`), `web/js/config.js` `API_URL: ''` unchanged.
+  - **BUG PREVENTED:** consent screen (Worker-rendered HTML) `fetch('/oauth/decision')`
+    route `/api/*` ke saath Worker tak nahi pahunchta → ab `fetch('/api/oauth/decision')`
+    (router `/api` prefix strip karta hai, api.* domain par bhi chalta hai).
+  - OAuth base URL route ke saath = `https://accounts.gothwadtech.com/api` (docs/OAUTH.md updated).
+- **docs/SETUP.md rewrite (dashboard-first):** Workers Builds connect (root `cloudflare-worker`,
+  deploy `npx wrangler deploy`), secrets dashboard se (Type: Secret), Route add, Pages
+  settings (Framework None, build khaali, output `web`), troubleshooting
+  ("Missing script: build" fix), checklist. CLI sirf "Alternative" mein.
+- **Docs cleanup:** `gothwad-auth` naam hatao (SETUP), ARCHITECTURE topology table update.
+- **Tested:** `wrangler deploy --dry-run` → name `accounts` OK; local `wrangler dev` +
+  mock Supabase: `/api/health` 200, `/api/oauth/authorize` (no login) 302, login →
+  consent HTML ka fetch `/api/oauth/decision` → 200 redirect_url (code mila).
+  (Note: `.dev.vars.example` ka SUPABASE_URL placeholder hai, mock URL nahi — pre-existing;
+  local test ke liye manually `http://127.0.0.1:8788` daalna pada.)
+- **Pending (user ke dashboard steps):** Workers Builds connect · Variables → Secrets ·
+  Route `accounts.gothwadtech.com/api/*` · Pages Framework None + Retry · test `/api/health`.
 
 ### Session 5 — 2026-10-09 — BUG FIX #2: refresh-token rotation RACE (dashboard bounce)
 - **Bug report (user):** login ke baad header "My Account + Sign out" dikhata hai
@@ -121,13 +149,15 @@ banana hai + deploy karna hai (docs/SETUP.md), phir Step 3 (Mail) shuru.
 
 ## 🔜 NEXT UP (priority order)
 
-### 1. Supabase project + Deploy (USER ko karna hai — docs/SETUP.md)
-- [ ] Supabase free project banao → schema.sql run karo
-- [ ] Keys → wrangler secrets (SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, JWT_SECRET)
-- [ ] Worker deploy (api.gothwadtech.com) + Pages deploy (accounts.gothwadtech.com)
-- [ ] `web/js/config.js` mein production API_URL
+### 1. Deploy (USER ko dashboard se karna hai — docs/SETUP.md, phone-friendly)
+- [x] Supabase project + schema.sql run + keys mil gaye (Phase 1 DONE)
+- [x] `wrangler.toml` → `SUPABASE_URL` real Project URL set (Session 6)
+- [ ] Worker `accounts` → Settings → Builds → Git connect (root `cloudflare-worker`, deploy `npx wrangler deploy`)
+- [ ] Worker → Variables and Secrets: SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, JWT_SECRET (Type Secret)
+- [ ] Worker → Domains & Routes → Route `accounts.gothwadtech.com/api/*`
+- [ ] Pages: Framework None, build command khaali, output `web` → Retry deployment
+- [ ] Test: `/api/health` → `{"status":"ok"}` → signup → me → signout → login
 - [ ] DEV_MODE=false + Resend setup (password reset emails)
-- [ ] Live test: signup → me → reset → OAuth
 
 ### 2. STEP 3 — GOTHWAD MAIL 🔜 (agla major feature)
 - [ ] Cloudflare Email Routing: `*@gothwadtech.com` → Email Worker
@@ -186,12 +216,15 @@ banana hai + deploy karna hai (docs/SETUP.md), phir Step 3 (Mail) shuru.
 | 1 | 2026-10-09 | **Step 1 — Real auth from scratch.** Purana fake React demo review kiya; schema + worker + frontend banaya; 15/15 tests pass. |
 | 2 | 2026-10-09 | **Step 2 — OAuth 2.0 provider.** authorize/token/userinfo + PKCE + rotation + consent + scopes; E2E tested. |
 | 3 | 2026-10-09 | **Cleanup + 3-route UI.** User feedback par: sirf /signin /signup /me; real logo; brand blue; OAuth consent Worker-rendered; faltu files delete; continuity docs (yeh files). |
-| 4 | YYYY-MM-DD | _agli AI yahan likhegi..._ |
+| 4–5 | 2026-10-09 | **Bug fixes:** dashboard `/signin` bounce (hybrid auth: headers + cookies) · refresh-rotation race (single-flight refresh). |
+| 6 | 2026-10-09 | **Deployment fix (dashboard-only).** Worker name → `accounts`; Worker route `/api/*` (same-origin) recommended; consent `fetch` → `/api/oauth/decision`; SETUP.md dashboard-first rewrite; Pages build-fix docs; tested via wrangler dev. |
+| 7 | YYYY-MM-DD | _agli AI yahan likhegi..._ |
 
 ---
 
 > **Nayi AI ke liye 30-second summary:**
 > Gothwad Accounts = real auth system (Supabase + Cloudflare Worker + static
-> site). Step 1 & 2 done & tested. Ab user deploy karega (docs/SETUP.md),
+> site). Step 1 & 2 done & tested. Ab user deploy karega (docs/SETUP.md —
+> dashboard-only, phone se; terminal/wrangler CLI user ko mat bolna),
 > phir **Step 3 = Gothwad Mail** banana hai. Rules `AGENTS.md` mein hain,
 > plan `PLAN.md` mein. Yeh file session end par update karna MAT BHULNA.
