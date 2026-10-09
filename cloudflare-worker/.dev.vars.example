@@ -1,0 +1,33 @@
+# =============================================================================
+# GOTHWAD WORKER — LOCAL DEV SECRETS TEMPLATE
+# =============================================================================
+# Copy this file to `.dev.vars` (git-ignored) and fill in real values.
+# `npx wrangler dev` automatically reads .dev.vars
+#
+#   cp .dev.vars.example .dev.vars
+# =============================================================================
+
+# --- Option A: REAL Supabase (recommended — real auth testing) ---
+# Supabase Dashboard → Settings → API
+SUPABASE_URL=https://YOUR_PROJECT_ID.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+
+# --- Option B: OFFLINE MOCK (tools/mock-supabase.js) ---
+# Agar real Supabase nahi banana abhi, to neeche wali 3 lines use karo
+# aur pehle 3 lines comment kar do. Terminal mein: node tools/mock-supabase.js
+# SUPABASE_URL=http://127.0.0.1:8788
+# SUPABASE_ANON_KEY=mock-anon-key
+# SUPABASE_SERVICE_ROLE_KEY=mock-service-key
+
+# Local dev settings (values wrangler.toml [vars] ko override karti hain)
+APP_DOMAIN=gothwadtech.com
+AUTH_HUB_URL=http://localhost:3000
+DEV_MODE=true
+
+# Frontend dev-server ke liye CORS allow
+ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+
+# Optional — password reset emails (resend.com)
+# RESEND_API_KEY=re_xxxxxxxx
+# RESEND_FROM=Gothwad Accounts <onboarding@resend.dev>

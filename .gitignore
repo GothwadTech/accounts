@@ -6,3 +6,10 @@ coverage/
 *.log
 .env*
 !.env.example
+# Wrangler local secrets (real keys — never commit!)
+.dev.vars
+# Local test harness data
+tools/.mock-data.json
+
+# Wrangler build artifacts
+.wrangler/
