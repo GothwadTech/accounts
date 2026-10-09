@@ -87,8 +87,15 @@ Dashboard → **Workers & Pages** → **`accounts`** → **Settings** →
 | Name | Value kahan se | Type |
 |------|----------------|------|
 | `SUPABASE_ANON_KEY` | Supabase → Settings → API → **anon public** | **Secret** |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Settings → API → **service_role** | **Secret** ⚠️ |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Settings → **API Keys** → **New secret key** (`sb_secret_...`) | **Secret** ⚠️ |
 | `JWT_SECRET` | Koi lambi random string (40+ characters) — password manager ka generator use karo | **Secret** |
+
+> 🔑 **`SUPABASE_SERVICE_ROLE_KEY` — naya format:** Supabase ab **"secret keys"**
+> (`sb_secret_...`) deta hai (Settings → API Keys → New secret key). **Yahi naya
+> format use karo** — purani `eyJ...` wali legacy `service_role` key purane
+> projects mein hi chalti hai. Naya `sb_secret_` key Worker mein sirf `apikey`
+> header mein jaati hai (code iske hisaab se bana hai). Agar purani `eyJ` key daal
+> di to dono headers bheji jaati hain — dono chalti hain.
 
 > 💡 `SUPABASE_URL`, `APP_DOMAIN`, `AUTH_HUB_URL`, `DEV_MODE` **public** values hain —
 > ye `wrangler.toml` ke `[vars]` mein already hain (Text). Inhe dashboard mein
@@ -268,6 +275,34 @@ Poora guide: **[docs/OAUTH.md](OAUTH.md)**
 **Login ke baad dashboard par "redirect loop"**
 → `AUTH_HUB_URL` aur Pages ka actual URL match karte hain?
 → Browser console mein error check karo.
+
+**Username check hamesha "taken" dikhata hai (naya username bhi)**
+→ Pehle yeh confirm karo: `https://accounts.gothwadtech.com/api/auth/check-username?username=zzrandomtest9`
+  mein `"available":true` aata hai ya nahi. Agar `"error":"Server database error"`
+  (503) aata hai to **service key galat hai**:
+→ Supabase → **Settings → API Keys** → **New secret key** banao (`sb_secret_...`
+  format) → Reveal → Copy.
+→ Cloudflare → Worker `accounts` → Settings → Variables and Secrets →
+  `SUPABASE_SERVICE_ROLE_KEY` ko **Edit** karo — purana value **poora delete** karke
+  naya `sb_secret_` value paste karo (Type: **Secret**, koi extra space/newline nahi).
+→ Git push ho gaya (ya Deployments → **Retry deployment**) — green tick ka wait karo.
+→ Phir upar wala username check URL dobara test karo — `"available":true` aana chahiye.
+
+> 🔑 **Key note:** Supabase ke naye `sb_secret_` keys JWT nahi hote — ye sirf
+> `apikey` header mein jaati hain. Code (Session 7) iske hisaab se bana hai: `eyJ`
+> wali purani key dono headers bhejta hai, `sb_secret_` wali sirf `apikey`.
+> Agar `Authorization: Bearer sb_secret_...` bheja to Supabase **"Invalid API key"**
+> dekar reject karta hai — aur phir har username "taken" dikhta hai.
+
+**Root `/` ya `/signin` (bina slash) par `{"error":"Endpoint not found"}` dikhta hai**
+→ Iska matlab Worker `accounts.gothwadtech.com` ke **poore domain** par route ho gaya
+  hai aur Pages ke HTML pages ki jagah Worker ka JSON aa raha hai.
+→ Cloudflare → Workers & Pages → `accounts` → Settings → **Domains & Routes**:
+  koi **Custom Domain** (`accounts.gothwadtech.com`) ya wildcard route
+  (`accounts.gothwadtech.com/*`) lagi hui hai to **Delete** karo.
+→ **Sirf yeh ek route rehni chahiye:** `accounts.gothwadtech.com/api/*`
+→ Iske baad `/` → `/signin` redirect aur `/signin`, `/signup`, `/me` Pages se serve
+  hone lagenge.
 
 **Username check hamesha "taken" ya "available"**
 → Schema sahi run hua? (Supabase → Table Editor → `profiles` table dikhni chahiye)
