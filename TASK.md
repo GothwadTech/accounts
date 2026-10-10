@@ -7,7 +7,7 @@
 >
 > Rules & working style: [`AGENTS.md`](AGENTS.md) · Master plan: [`PLAN.md`](PLAN.md)
 
-**Last updated:** 2026-10-09 (Session 7 — sb_secret_ service key fix)
+**Last updated:** 2026-10-10 (Session 8 — service-key diagnostic landed)
 
 ---
 
@@ -21,12 +21,21 @@
 | 4 | Cross-app SSO (ClashDrive, GrixChat integration) | 📋 Planned |
 
 **Current state in one line:** LIVE on accounts.gothwadtech.com (health OK,
-pages serving, login Supabase se connect hai); ek bug fix deploy ho gaya —
-user ko naya `sb_secret_` service key daalna hai, phir Step 3 (Mail) shuru.
+pages serving, login Supabase se connect hai); Worker ko runtime mein
+`SUPABASE_SERVICE_ROLE_KEY` khaali mil rahi hai (logs se prove) — user ko purani
+exposed key revoke karke NAYI `sb_secret_` key Worker secret mein dobara daalni
+hai, phir check-username verify → full test → Step 3 (Mail).
 
 ---
 
 ## ✅ DONE (completed work — newest first)
+
+### Session 8 — 2026-10-10 — Landed sb_secret_ follow-up + service-key diagnostic (live debugging)
+- Live bug: signup "No API key found in request"; check-username 503. Logs proved Worker's SUPABASE_SERVICE_ROLE_KEY empty at runtime.
+- SECURITY: user pasted sb_secret_ key in old chat → exposed → told to revoke + rotate. Never repeat keys in chat.
+- Code: (1) adminFetch 401→Bearer retry fallback; (2) 503 response now has debug.supabase_status + debug.supabase_error; (3) DIAGNOSTIC log: `[check-username] service key status -> present: <bool>, length: <N>` (value never logged).
+- Verified: wrangler deploy --dry-run PASS. Local wrangler dev + fake Supabase: empty key → `No API key found in request` + `present: false, length: 0` (exactly live bug); wrong key → `Invalid API key` + `present: true`; right key → `available: true`.
+- Interpretation: present:false → secret entry missing/misnamed/wrong project/env; present:true + "Invalid API key" → value wrong → new key; available:true → FIXED.
 
 ### Session 7 — 2026-10-09 — FIX: sb_secret_ service key (username check "taken" bug)
 - **Bug (live verified):** `/api/auth/check-username?username=zzrandomtest9` →
@@ -176,21 +185,27 @@ user ko naya `sb_secret_` service key daalna hai, phir Step 3 (Mail) shuru.
 
 ## 🔜 NEXT UP (priority order)
 
-### 1. Deploy (LIVE ✅ — bas ek key fix pending, USER dashboard se — docs/SETUP.md)
+### 1. Deploy (LIVE ✅ — sirf service key fix pending, USER dashboard se — docs/SETUP.md)
 - [x] Supabase project + schema.sql run + keys mil gaye (Phase 1 DONE)
 - [x] `wrangler.toml` → `SUPABASE_URL` real Project URL set (Session 6)
 - [x] Worker `accounts` → Builds → Git connect + live (health OK — Session 6/7)
 - [x] Secrets: SUPABASE_ANON_KEY ✅ (login test confirm), JWT_SECRET ✅
 - [x] Route `accounts.gothwadtech.com/api/*` + Pages (Framework None, output `web`) ✅ live
 - [x] `/api/health` → OK · `/signin` `/signup` `/me` Pages se serve ho rahe hain
-- [ ] **USER ACTION (Session 7 fix):** Worker → Variables and Secrets →
-      `SUPABASE_SERVICE_ROLE_KEY` mein **naya `sb_secret_` key** daalo (Supabase →
-      Settings → API Keys → New secret key). Purana value poora delete karke paste.
+- [x] Session 8: diagnostic code (debug info + `service key status` log line) — push → auto deploy
+- [ ] **USER ACTION (SECURITY):** Supabase → Settings → API Keys → Secret keys →
+      purani (chat mein exposed) key **Revoke** → **New secret key** banao. Value kabhi chat mein nahi.
+- [ ] **USER ACTION:** Worker `accounts` (Worker, Pages nahi) → Settings → Variables and Secrets →
+      (Production) → `SUPABASE_SERVICE_ROLE_KEY` **Delete** → **Add** (exact name, Type Secret,
+      naya key; Save se pehle value field khaali na ho) → Save → list mein dikhe
 - [ ] **USER ACTION:** Domains & Routes mein extra Custom Domain / `accounts.gothwadtech.com/*`
       wali entry **delete** karo — sirf `/api/*` route rehni chahiye
-- [ ] Deploy green hone ka wait (Workers Builds — push se auto deploy hua hai)
+- [ ] Deploy green ✅ (Workers Builds → Deployments)
 - [ ] Verify: `/api/auth/check-username?username=zzrandomtest9` → `"available":true`
+      (agar 503: `debug.supabase_error` + Worker log `service key status` line dekho —
+      Session 8 entry ka "Interpretation" use karo)
 - [ ] Full test: signup (fresh username) → /me → signout → login
+- [ ] Fix confirm hone ke baad (optional): 503 response se `debug` field hata sakte hain
 - [ ] DEV_MODE=false + Resend setup (password reset emails)
 
 ### 2. STEP 3 — GOTHWAD MAIL 🔜 (agla major feature)
@@ -253,14 +268,15 @@ user ko naya `sb_secret_` service key daalna hai, phir Step 3 (Mail) shuru.
 | 4–5 | 2026-10-09 | **Bug fixes:** dashboard `/signin` bounce (hybrid auth: headers + cookies) · refresh-rotation race (single-flight refresh). |
 | 6 | 2026-10-09 | **Deployment fix (dashboard-only).** Worker name → `accounts`; Worker route `/api/*` (same-origin) recommended; consent `fetch` → `/api/oauth/decision`; SETUP.md dashboard-first rewrite; Pages build-fix docs; tested via wrangler dev. |
 | 7 | 2026-10-09 | **sb_secret_ service key fix.** Live bug: check-username har naam "taken" dikhata tha (purana code naye `sb_secret_` key ko `Authorization: Bearer` mein bhej raha tha → Supabase reject). Fix: `serviceKeyHeaders()` helper (eyJ → dono headers, sb_secret_ → sirf apikey), adminFetch `.trim()`, check-username `!res.ok` → 503 "Server database error". Dry-run deploy PASS. SETUP.md: key-format note + 2 troubleshooting entries. **Pending user:** naya sb_secret_ key Worker secret mein daalna + extra routes delete + verify. |
+| 8 | 2026-10-10 | **Service-key diagnostic (live debugging).** Logs se prove: Worker ka `SUPABASE_SERVICE_ROLE_KEY` runtime mein khaali. Code: adminFetch 401→Bearer retry, check-username 503 mein `debug.supabase_status/supabase_error`, log line `service key status -> present/length` (value kabhi nahi). Dry-run PASS + local 3-case test. SECURITY: exposed key revoke + rotate bola. **Pending user:** naya key Worker secret mein re-add → verify → full test. |
 
 ---
 
 > **Nayi AI ke liye 30-second summary:**
 > Gothwad Accounts = real auth system (Supabase + Cloudflare Worker + static
 > site). Step 1 & 2 done & tested. **Site LIVE hai** (accounts.gothwadtech.com);
-> Session 7 ka code fix push ho gaya — user ko sirf naya `sb_secret_` key
-> Worker secret mein daalna hai (docs/SETUP.md — dashboard-only, phone se;
+> Session 7+8 ka code push ho gaya (Session 8 = diagnostic) — user ko purani exposed
+> key revoke karke naya `sb_secret_` key Worker secret mein daalna hai (docs/SETUP.md — dashboard-only, phone se;
 > terminal/wrangler CLI user ko mat bolna), phir verify + **Step 3 = Gothwad
 > Mail** banana hai. Rules `AGENTS.md` mein hain, plan `PLAN.md` mein.
 > Yeh file session end par update karna MAT BHULNA.
