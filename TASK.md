@@ -192,7 +192,8 @@ hai, phir check-username verify → full test → Step 3 (Mail).
 - [x] Secrets: SUPABASE_ANON_KEY ✅ (login test confirm), JWT_SECRET ✅
 - [x] Route `accounts.gothwadtech.com/api/*` + Pages (Framework None, output `web`) ✅ live
 - [x] `/api/health` → OK · `/signin` `/signup` `/me` Pages se serve ho rahe hain
-- [x] Session 8: diagnostic code (debug info + `service key status` log line) — push → auto deploy
+- [x] Session 8: diagnostic code (debug info + `service key status` log line) — PR #5
+- [ ] **USER ACTION:** GitHub par PR #5 **merge** karo (main par aate hi Workers Builds production deploy karega)
 - [ ] **USER ACTION (SECURITY):** Supabase → Settings → API Keys → Secret keys →
       purani (chat mein exposed) key **Revoke** → **New secret key** banao. Value kabhi chat mein nahi.
 - [ ] **USER ACTION:** Worker `accounts` (Worker, Pages nahi) → Settings → Variables and Secrets →
