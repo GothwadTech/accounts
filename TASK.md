@@ -7,7 +7,7 @@
 >
 > Rules & working style: [`AGENTS.md`](AGENTS.md) · Master plan: [`PLAN.md`](PLAN.md)
 
-**Last updated:** 2026-10-10 (Session 19 — Latest UI sync, root-page recovery, preview cache hardening)
+**Last updated:** 2026-10-10 (Session 23 — Gothwad Services vs products; Mail still next)
 
 ---
 
@@ -26,6 +26,33 @@ pages serving, login Supabase se connect hai); All CSS modules, including the ro
 ---
 
 ## ✅ DONE (completed work — newest first)
+
+### Session 23 — 2026-10-10 — Gothwad Services (no revoke) vs other products
+- Dashboard Connected apps: **Gothwad Services** (Meet, Mail, Store, Drive, Notes, Calendar, Contacts) hamesha connected, **Disconnect nahi**. Worker `/oauth/revoke` in IDs par 403.
+- **Other products** (Tube/PlusTube, GrixChat, Indogram): optional, Disconnect allowed.
+- Catalog: `web/js/gothwad-apps.js`. Schema seed updated. Calendar URL user-specified `calender.gothwadtech.com`.
+
+### Session 22 — 2026-10-10 — Google-style account chooser (max 15)
+- Device par **max 15** Gothwad Accounts. 16th add → clear error, sign out one pehle.
+- `/signin` par saved accounts → Google jaisa chooser (name, email, Add another, Use another account).
+- **Sign in with Gothwad** (`/oauth/authorize`) login na ho to `choose=1` se chooser; consent par **Use another account**.
+- Ek account se **Sign out** → baaki saved mein se next live session auto-switch (`switchToNextAvailable`, dead skip).
+- Files: `web/js/accounts.js`, `web/js/common.js`, `web/signin/js/modules/account-chooser.js`, consent HTML, `web/css/auth.css`.
+
+### Session 21 — 2026-10-10 — Multiple accounts on one device
+- Google-style: kai Gothwad Accounts ek browser par login, topbar avatar se switch.
+- **Add another account** → `/signin?add=1` (already logged-in user ko bounce nahi).
+- Sign out = sirf current; baaki saved hon to unpe auto-switch. **Sign out all** bhi menu mein.
+- Tokens per account `localStorage` (`gothwad_accounts`); switch `/auth/refresh` se cookies overwrite.
+- Files: `web/js/accounts.js`, `web/js/common.js`, signin/signup remember, `web/css/base.css` + bundle.
+
+### Session 20 — 2026-10-10 — Sign-in identifier exists check + separate password error
+- **Bug:** Sign-in Next kisi bhi username/email par password step khol deta tha. Account exist na ho to bhi user password daalta tha, phir generic “Invalid username or password”.
+- **Fix:**
+  - New API `GET/POST /auth/check-identifier` — username, `@gothwadtech.com` email, ya phone DB mein milta hai ya nahi.
+  - Sign-in Next pehle yeh check karta hai. Account nahi mila → password step NAHI khulta; red note: `This username doesn't exist...` (phone: isn't registered).
+  - Password galat ho to alag message: `Incorrect password. Try again or use Forgot password.`
+- **Files:** `cloudflare-worker/src/index.ts`, `web/signin/js/modules/signin-form.js`
 
 ### Session 19 — 2026-10-10 — Latest UI sync, root recovery & preview hardening
 - **Latest code synced first:** `origin/main` ka user ka final CSS commit `69a0e3a` (`build: bundle CSS and update UI error messages`) Arena branch par rebase kiya. Isme proper single bundled `web/css/styles.css` build already hai; bundled output ko `npm run build` se deterministic verify kiya.

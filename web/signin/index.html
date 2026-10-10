@@ -37,6 +37,18 @@
             <a href="/signup" class="auth-tab-btn">Sign Up</a>
           </div>
 
+          <!-- Google-style: device par saved accounts -->
+          <section id="mode-chooser" class="hidden" style="width:100%;">
+            <div id="chooser-list" class="chooser-list"></div>
+            <button type="button" class="chooser-row chooser-add" id="chooser-add">
+              <span class="acct-plus">+</span>
+              <span>Add another account</span>
+            </button>
+            <button type="button" class="btn-secondary-auth" id="chooser-other">
+              <span>Use another account</span>
+            </button>
+          </section>
+
           <!-- ─────── MODE 1: SIGN IN ─────── -->
           <section id="mode-signin" style="width: 100%;">
             <form id="signin-form" novalidate style="width: 100%;">

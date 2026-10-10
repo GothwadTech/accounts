@@ -81,6 +81,78 @@ function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+function identifierLooksLikePhone(raw: string): boolean {
+  const digitsOnly = raw.replace(/[\s\-()]/g, '');
+  return /^(\+)?[0-9]{7,15}$/.test(digitsOnly);
+}
+
+function usernameFromIdentifier(raw: string, appDomain: string): string {
+  const lower = raw.toLowerCase().trim();
+  if (lower.includes('@')) {
+    return lower.split('@')[0] || '';
+  }
+  return lower;
+}
+
+/**
+ * Sign-in Next step: username/email/phone exist karta hai ya nahi.
+ * Password step tabhi khulega jab account mil jaye.
+ */
+async function lookupAccount(env: Env, rawIdentifier: string): Promise<{
+  exists: boolean;
+  email: string;
+  kind: 'phone' | 'username';
+}> {
+  const appDomain = (env.APP_DOMAIN || 'gothwadtech.com').toLowerCase();
+  const trimmed = String(rawIdentifier || '').trim();
+  if (!trimmed) return { exists: false, email: '', kind: 'username' };
+
+  if (identifierLooksLikePhone(trimmed)) {
+    const digitsOnly = trimmed.replace(/[\s\-()]/g, '');
+    const phoneQuery = encodeURIComponent(trimmed);
+    const profRes = await SB.adminFetch(
+      env,
+      `/rest/v1/profiles?phone_number=eq.${phoneQuery}&select=id,username`,
+    );
+    const profRows = (await profRes.json()) as Record<string, any>[];
+    if (Array.isArray(profRows) && profRows.length > 0 && profRows[0].username) {
+      return {
+        exists: true,
+        email: `${profRows[0].username}@${appDomain}`,
+        kind: 'phone',
+      };
+    }
+    const cleanDigits = digitsOnly.replace(/^\+/, '');
+    const fallbackRes = await SB.adminFetch(
+      env,
+      `/rest/v1/profiles?phone_number=ilike.*${encodeURIComponent(cleanDigits)}*&select=id,username`,
+    );
+    const fallbackRows = (await fallbackRes.json()) as Record<string, any>[];
+    if (Array.isArray(fallbackRows) && fallbackRows.length > 0 && fallbackRows[0].username) {
+      return {
+        exists: true,
+        email: `${fallbackRows[0].username}@${appDomain}`,
+        kind: 'phone',
+      };
+    }
+    return { exists: false, email: '', kind: 'phone' };
+  }
+
+  const username = usernameFromIdentifier(trimmed, appDomain);
+  if (!username) return { exists: false, email: '', kind: 'username' };
+  const res = await SB.adminFetch(
+    env,
+    `/rest/v1/profiles?username=eq.${encodeURIComponent(username)}&select=id,username`,
+  );
+  const rows = (await res.json()) as Record<string, any>[];
+  const exists = Array.isArray(rows) && rows.length > 0 && !!rows[0].username;
+  return {
+    exists,
+    email: exists ? `${rows[0].username}@${appDomain}` : `${username}@${appDomain}`,
+    kind: 'username',
+  };
+}
+
 /** Usernames jo system ke liye reserved hain (inhe koi le nahi sakta). */
 const RESERVED_USERNAMES = new Set([
   'admin', 'administrator', 'api', 'app', 'assets', 'mail', 'email', 'smtp', 'imap', 'pop',
@@ -89,6 +161,12 @@ const RESERVED_USERNAMES = new Set([
   'cdn', 'static', 'status', 'dev', 'test', 'staging', 'gothwad', 'gothwadtech',
   'login', 'signin', 'signup', 'logout', 'account', 'accounts', 'auth', 'oauth',
   'me', 'everyone', 'team', 'official', 'pay', 'payments', 'wallet', 'store', 'shop',
+]);
+
+/** Built-in Gothwad Services — user revoke nahi kar sakta (account ke saath hamesha). */
+const CORE_GOTHWAD_SERVICES = new Set([
+  'gothwad-meet', 'gothwad-mail', 'gothwad-store', 'gothwad-drive',
+  'gothwad-notes', 'gothwad-calendar', 'gothwad-contacts',
 ]);
 
 // -----------------------------------------------------------------------------
@@ -561,6 +639,7 @@ function consentPageHtml(
   authUser: Record<string, any>,
   profile: Record<string, any> | null,
   params: URLSearchParams,
+  authorizeUrl?: string,
 ): Response {
   const esc = (s: any) => String(s ?? '').replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
@@ -652,6 +731,10 @@ function consentPageHtml(
       <div><div class="n">${esc(displayName)}</div>
       <div class="e">${esc(username)}@${esc(env.APP_DOMAIN)}</div></div>
     </div>
+    <p class="sub" style="margin-top:-10px;margin-bottom:16px;">
+      <a href="${esc(env.AUTH_HUB_URL)}/signin?choose=1&amp;next=${encodeURIComponent(authorizeUrl || '')}"
+         style="color:#4da3ff;text-decoration:none;font-weight:600;">Use another account</a>
+    </p>
 
     <div class="label">This will allow the app to:</div>
     ${scopeItems}
@@ -802,6 +885,35 @@ export default {
         return withCors(json({ available, valid: true, username, email: `${username}@${env.APP_DOMAIN}` }));
       }
 
+      // ------------------------------------------- check-identifier (GET/POST)
+      // Sign-in Next: account exist karta hai? Password step isi ke baad.
+      if (route === '/auth/check-identifier' && (request.method === 'GET' || request.method === 'POST')) {
+        let raw = (url.searchParams.get('identifier') || '').trim();
+        if (request.method === 'POST') {
+          const body = await readJson(request);
+          raw = String(body.identifier || raw || '').trim();
+        }
+        if (!raw) {
+          return withCors(apiError('Please enter your username, email or phone number.', 400));
+        }
+        const appDomain = (env.APP_DOMAIN || 'gothwadtech.com').toLowerCase();
+        if (!identifierLooksLikePhone(raw) && raw.includes('@') && !raw.toLowerCase().endsWith(`@${appDomain}`)) {
+          return withCors(json({
+            exists: false,
+            error: `Only @${appDomain} suffix is allowed.`,
+            isThirdParty: true,
+          }, 400));
+        }
+        const found = await lookupAccount(env, raw);
+        if (!found.exists) {
+          const msg = found.kind === 'phone'
+            ? "This phone number isn't registered with Gothwad Accounts."
+            : "This username doesn't exist. Check the spelling, or create a new account.";
+          return withCors(json({ exists: false, error: msg }));
+        }
+        return withCors(json({ exists: true, kind: found.kind }));
+      }
+
       // ---------------------------------------------------------- signup
       // Naya Gothwad Account banao.
       // Flow: validate → username free? → Supabase auth user banao (email_confirm
@@ -926,43 +1038,20 @@ export default {
 
         if (!rawIdentifier || !password) return withCors(apiError('Username, email or phone and password are required'));
 
-        let email = '';
-        const digitsOnly = rawIdentifier.replace(/[\s\-()]/g, '');
-        const isPhone = /^(\+)?[0-9]{7,15}$/.test(digitsOnly);
-
-        if (isPhone) {
-          // Phone number: profiles table mein dhundo
-          const phoneQuery = encodeURIComponent(rawIdentifier);
-          const profRes = await SB.adminFetch(
-            env,
-            `/rest/v1/profiles?phone_number=eq.${phoneQuery}&select=id,username`,
-          );
-          const profRows = (await profRes.json()) as Record<string, any>[];
-          if (Array.isArray(profRows) && profRows.length > 0 && profRows[0].username) {
-            email = `${profRows[0].username}@${env.APP_DOMAIN}`;
-          } else {
-            // Agar + prefix na ho ya ho, digits match try karo
-            const cleanDigits = digitsOnly.replace(/^\+/, '');
-            const fallbackRes = await SB.adminFetch(
-              env,
-              `/rest/v1/profiles?phone_number=ilike.*${cleanDigits}*&select=id,username`,
-            );
-            const fallbackRows = (await fallbackRes.json()) as Record<string, any>[];
-            if (Array.isArray(fallbackRows) && fallbackRows.length > 0 && fallbackRows[0].username) {
-              email = `${fallbackRows[0].username}@${env.APP_DOMAIN}`;
-            } else {
-              return withCors(apiError('Invalid phone number or password', 401));
-            }
-          }
-        } else {
-          const lower = rawIdentifier.toLowerCase();
-          const appDomain = (env.APP_DOMAIN || 'gothwadtech.com').toLowerCase();
-          if (lower.includes('@') && !lower.endsWith(`@${appDomain}`)) {
-            return withCors(apiError(`Only @${appDomain} suffix is allowed.`, 400));
-          }
-          // "pawan" → "pawan@APP_DOMAIN"; "pawan@APP_DOMAIN" → waise hi rehne do
-          email = lower.includes('@') ? lower : `${lower}@${env.APP_DOMAIN}`;
+        const appDomain = (env.APP_DOMAIN || 'gothwadtech.com').toLowerCase();
+        if (!identifierLooksLikePhone(rawIdentifier) && rawIdentifier.includes('@') && !rawIdentifier.toLowerCase().endsWith(`@${appDomain}`)) {
+          return withCors(apiError(`Only @${appDomain} suffix is allowed.`, 400));
         }
+
+        const found = await lookupAccount(env, rawIdentifier);
+        if (!found.exists) {
+          const msg = found.kind === 'phone'
+            ? "This phone number isn't registered with Gothwad Accounts."
+            : "This username doesn't exist. Check the spelling, or create a new account.";
+          return withCors(apiError(msg, 404));
+        }
+
+        const email = found.email;
 
         const authRes = await fetch(SB.authUrl(env, '/token?grant_type=password'), {
           method: 'POST',
@@ -972,7 +1061,7 @@ export default {
         const auth = (await authRes.json()) as Record<string, any>;
 
         if (!authRes.ok) {
-          return withCors(apiError('Invalid username or password', 401));
+          return withCors(apiError('Incorrect password. Try again or use Forgot password.', 401));
         }
 
         // Device session row banao
@@ -1348,17 +1437,17 @@ export default {
           return withCors(apiError('PKCE required: pass code_challenge (S256)', 400));
         }
 
-        // Logged-in nahi? → signin page par bhejo, login ke baad wapas yahin
+        // Logged-in nahi? → account chooser / signin, phir wapas yahin (OAuth)
         const session = await resolveSession(request, env);
         if (!session.ok) {
-          const loginUrl = `${env.AUTH_HUB_URL}/signin?next=${encodeURIComponent(url.toString())}`;
+          const loginUrl = `${env.AUTH_HUB_URL}/signin?choose=1&next=${encodeURIComponent(url.toString())}`;
           return withCors(new Response(null, { status: 302, headers: { Location: loginUrl } }));
         }
 
         // Logged-in → consent screen (Worker khud HTML render karta hai —
         // site par koi extra route/page nahi chahiye!)
         const profile = await fetchProfile(env, session.authUser!.id);
-        return withCors(consentPageHtml(env, client, session.authUser!, profile, url.searchParams));
+        return withCors(consentPageHtml(env, client, session.authUser!, profile, url.searchParams, url.toString()));
       }
 
       // ---------------------------------------------- /oauth/decision (POST)
@@ -1628,9 +1717,18 @@ export default {
             scopes: g.scopes || [],
             granted_at: g.granted_at,
             last_used_at: g.last_used_at,
+            core: CORE_GOTHWAD_SERVICES.has(g.app_id),
           };
         });
-        return withCors(json({ ok: true, connected, apps: (apps || []).map((a) => ({ id: a.id, name: a.name, icon: a.icon, description: a.description })) }));
+        const catalog = (apps || []).map((a) => ({
+          id: a.id,
+          name: a.name,
+          icon: a.icon,
+          description: a.description,
+          core: CORE_GOTHWAD_SERVICES.has(a.id) || a.is_core === true,
+          homepage: a.homepage_url || null,
+        }));
+        return withCors(json({ ok: true, connected, apps: catalog }));
       }
 
       // ------------------------------------- /api/oauth/revoke (POST, session)
@@ -1642,6 +1740,9 @@ export default {
         const body = await readJson(request);
         const appId = String(body.app_id || '');
         if (!appId) return withCors(apiError('app_id is required'));
+        if (CORE_GOTHWAD_SERVICES.has(appId)) {
+          return withCors(apiError('Gothwad Services stay connected to your account and cannot be disconnected.', 403));
+        }
         const uid = session.authUser!.id;
 
         await SB.adminFetch(
