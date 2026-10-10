@@ -97,7 +97,12 @@ const server = http.createServer(async (req, res) => {
   }
 
   const ext = path.extname(filePath).toLowerCase();
-  res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
+  // Arena/AI Studio previews reuse identical asset URLs while code changes.
+  // No-store here avoids an old stylesheet making the preview look unstyled.
+  res.writeHead(200, {
+    'Content-Type': MIME[ext] || 'application/octet-stream',
+    'Cache-Control': 'no-store, max-age=0',
+  });
   fs.createReadStream(filePath).pipe(res);
 });
 

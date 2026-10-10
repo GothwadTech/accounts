@@ -20,6 +20,7 @@ const MODULES = [
   'auth.css',
   'dashboard.css',
   'legal.css',
+  'root.css',
 ];
 
 const header = `/* =============================================================================

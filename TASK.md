@@ -7,7 +7,7 @@
 >
 > Rules & working style: [`AGENTS.md`](AGENTS.md) · Master plan: [`PLAN.md`](PLAN.md)
 
-**Last updated:** 2026-10-10 (Session 10 — CSS bundling fix, direct stylesheet links, Cloudflare Pages unstyled layout fix)
+**Last updated:** 2026-10-10 (Session 19 — Latest UI sync, root-page recovery, preview cache hardening)
 
 ---
 
@@ -21,11 +21,18 @@
 | 4 | Cross-app SSO (ClashDrive, GrixChat integration) | 📋 Planned |
 
 **Current state in one line:** LIVE on accounts.gothwadtech.com (health OK,
-pages serving, login Supabase se connect hai); All CSS modules bundled directly into web/css/styles.css without nested @import chains; direct links added to HTML head; build bundler script added.
+pages serving, login Supabase se connect hai); All CSS modules, including the root splash, bundle directly into web/css/styles.css without nested @import chains; root no longer contains an AI Studio cookie wrapper; the dev preview uses no-store asset headers.
 
 ---
 
 ## ✅ DONE (completed work — newest first)
+
+### Session 19 — 2026-10-10 — Latest UI sync, root recovery & preview hardening
+- **Latest code synced first:** `origin/main` ka user ka final CSS commit `69a0e3a` (`build: bundle CSS and update UI error messages`) Arena branch par rebase kiya. Isme proper single bundled `web/css/styles.css` build already hai; bundled output ko `npm run build` se deterministic verify kiya.
+- **Root-page recovery:** `web/index.html` me committed Google AI Studio `Cookie check` wrapper tha. Normal Accounts root par `return_url` nahi hota tha, isliye wrapper app hand-off nahi kar sakta. Ab root logo-only Gothwad splash hai, existing session → `/me`, otherwise → `/signin`; API unavailable hone par 1.2s safe fallback.
+- **CSS polish:** root splash CSS ko bundler modules me add kiya; Sign In/Sign Up/Dashboard page CSS se redundant `@import` hata diye (global bundle already direct link hai); `/me` ka animation stylesheet explicitly link kiya.
+- **Preview cache hardening:** `server.js` static assets par `Cache-Control: no-store, max-age=0` deta hai, taaki Arena/AI Studio preview same URL par purani CSS cache karke plain-text UI na dikhaye. Yeh only local preview server behavior hai, Cloudflare Pages caching unchanged hai.
+- **Verified:** `npm run build` PASS (6 modules, 36,630 bytes); bundled/page CSS me zero `@import`; root me zero AI Studio wrapper marker; all frontend JS + server/bundler `node --check` PASS; `git diff --check` PASS.
 
 ### Session 10 — 2026-10-10 — CSS bundling & Cloudflare Pages unstyled layout fix
 - **Root cause identified:**
@@ -297,6 +304,7 @@ pages serving, login Supabase se connect hai); All CSS modules bundled directly 
 | 8 | 2026-10-10 | **Service-key diagnostic (live debugging).** Logs se prove: Worker ka `SUPABASE_SERVICE_ROLE_KEY` runtime mein khaali. Code: adminFetch 401→Bearer retry, check-username 503 mein `debug.supabase_status/supabase_error`, log line `service key status -> present/length` (value kabhi nahi). Dry-run PASS + local 3-case test. SECURITY: exposed key revoke + rotate bola. **Pending user:** naya key Worker secret mein re-add → verify → full test. |
 | 9 | 2026-10-10 | **AI Studio Dev Server Setup.** Root `server.js` + `package.json` dev script (`node --experimental-strip-types server.js`) banaya jo `web/` static files (`/signin`, `/signup`, `/me`) port 3000 par serve karta hai pretty URLs ke saath, aur in-process Worker mount karta hai. Dev server live & green. |
 | 10 | 2026-10-10 | **Modern UI Layout Redesign (Signin & Signup).** User ke diye gaye modern design pattern ke hisaab se UI update kiya: rounded Header Card (logo box + title + subtitle), segmented switch tabs (Sign In / Sign Up), inputs with inline left icons (mail, lock, user, phone), prominent brand action button, aur bottom Atmanirbhar Bharat branding card. Backend aur JS logic (`signin.js`, `signup.js`, element IDs) 100% intact rakha. |
+| 19 | 2026-10-10 | **Latest UI sync + root recovery.** User final CSS commit `69a0e3a` ko Arena branch par rebase karke first sync kiya. Stale AI Studio `Cookie check` root wrapper hata kar branded session-aware root redirect restore; root CSS bundle me; page CSS redundant imports removed; `/me` page style linked; preview no-store headers. Build, CSS import audit, JS syntax and diff checks PASS. |
 | 11 | 2026-10-10 | **Modular Architecture Breakdown (CSS & Routes).** Files ki length break ki: (1) CSS: `styles.css` ko 4 modular files mein split kiya (`variables.css`, `base.css`, `auth.css`, `dashboard.css`); (2) Sign In: `web/signin/js/modules/` (`signin-form.js`, `forgot-password.js`, `reset-password.js`) + `signin.css`; (3) Sign Up: `web/signup/js/modules/` (`username-check.js`, `password-strength.js`, `signup-submit.js`) + `signup.css`; (4) Dashboard: `web/me/js/tabs/` (`overview.js`, `profile.js`, `security.js`, `apps.js`) + `me.css`. Saari logic, APIs, aur route URLs 100% intact. |
 | 12 | 2026-10-10 | **Auth Header/Footer Cleanup + #212121 Theme & Font Refinement.** (1) Signin & Signup se topbar header aur bottom footer completely remove kiya (sirf central modern auth card visible); (2) Dark theme base background ko `#212121` kiya aur light theme ko `#ffffff` shades kiya; (3) Bottom branding card mein Atmanirbhar text aur terms text ka font size (11px), color, aur line-height identical match kiya. |
 | 13 | 2026-10-10 | **Google-style Two-Step Auth + Maskable Logo + External Button.** (1) Header title ko "Gothwad Accounts" kiya; (2) Maskable round logo (`/icon-192-maskable.png`) 50% border radius box ke saath use kiya; (3) Action buttons (Next/Sign In/Create Account) card ke bahar place kiye; (4) Google-style two-step flow implement kiya (pehle identifier input + "Next", phir user chip badge + password input + "Sign In"); (5) "Remember me" checkbox UI se hata diya (session default `remember: true`). |

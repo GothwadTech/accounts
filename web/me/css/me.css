@@ -2,8 +2,6 @@
    DASHBOARD (/me) STYLES
    ============================================================================= */
 
-@import "../../css/styles.css";
-
 /* Page-specific refinements for dashboard */
 .dash-header {
   animation: fadeIn 0.25s ease-out;
