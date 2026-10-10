@@ -2,7 +2,7 @@
    SIGN UP PAGE STYLES
    ============================================================================= */
 
-@import "../../css/styles.css";
+@import "/css/styles.css";
 
 /* Page-specific refinements for sign up */
 .auth-container-modern {

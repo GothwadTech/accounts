@@ -7,7 +7,7 @@
 >
 > Rules & working style: [`AGENTS.md`](AGENTS.md) · Master plan: [`PLAN.md`](PLAN.md)
 
-**Last updated:** 2026-10-10 (Session 9 — Identifier UI refinements, third-party email block, brand logo fix)
+**Last updated:** 2026-10-10 (Session 10 — CSS bundling fix, direct stylesheet links, Cloudflare Pages unstyled layout fix)
 
 ---
 
@@ -21,19 +21,31 @@
 | 4 | Cross-app SSO (ClashDrive, GrixChat integration) | 📋 Planned |
 
 **Current state in one line:** LIVE on accounts.gothwadtech.com (health OK,
-pages serving, login Supabase se connect hai); Frontend + Backend identifier auto-detection & strict third-party email validation landed; logo box updated to vivid curved square (#0494f4).
+pages serving, login Supabase se connect hai); All CSS modules bundled directly into web/css/styles.css without nested @import chains; direct links added to HTML head; build bundler script added.
 
 ---
 
 ## ✅ DONE (completed work — newest first)
+
+### Session 10 — 2026-10-10 — CSS bundling & Cloudflare Pages unstyled layout fix
+- **Root cause identified:**
+  - `web/signin/index.html` aur `signup/index.html` me sirf `signin.css` linked tha jo nested `@import "../../css/styles.css"` mangata tha, aur `styles.css` 5 aur files (`variables.css`, `base.css`, `auth.css`, `dashboard.css`, `legal.css`) mangata tha.
+  - Cloudflare Pages / mobile CDN me nested relative `@import` fail ya delay hone se browser bina kisi style ke plain raw HTML ("bina css ke phaila hua text") render kar raha tha.
+  - Root `/` par purana template (`Cookie check`) Cloudflare par chal raha tha jab tak GitHub PR merge nahi hota.
+- **Fixes applied:**
+  - `tools/bundle-css.js` create kiya jo saare CSS modules (`variables.css`, `base.css`, `auth.css`, `dashboard.css`, `legal.css`) ko directly `web/css/styles.css` me compile karta hai bina kisi `@import` ke.
+  - `package.json` me `"build": "node tools/bundle-css.js"` configure kiya.
+  - `web/signin/index.html` aur `web/signup/index.html` ke `<head>` me `<link rel="stylesheet" href="/css/styles.css" />` direct link kiya.
+  - `signin.css` aur `signup.css` me import path root-relative `/css/styles.css` kiya.
+- **Compilation:** `compile_applet` PASS (success).
 
 ### Session 9 — 2026-10-10 — Identifier auto-detection, third-party email validation note, brand logo fix
 - **Identifier auto-detection & formatting:**
   - Jab user username daalta hai (e.g. `pawan`), Step 2 chip par auto-append hokar `pawan@gothwadtech.com` dikhta hai.
   - Mobile number (e.g. `9876543210`, `+91...`) auto-detect hokar direct phone flow me jata hai.
 - **Third-party email block & red note line:**
-  - Agar user third-party email daalta hai (e.g. `pawan@gmail.com`), input field ke theek neeche red line note dikhta hai:
-    `Sirf @gothwadtech.com suffix ke saath hi email daal sakte hain, koi third-party email nahi.`
+  - Agar user third-party email daalta hai (e.g. `pawan@gmail.com`), input field ke theek neeche crisp professional red note dikhta hai:
+    `Only @gothwadtech.com suffix is allowed.`
   - Next click aur typing par live check laga diya gaya hai, box highlight hota hai red border ke sath.
   - Backend worker `/api/auth/signin` me bhi third-party emails par 400 rejection add kiya gaya hai.
 - **Brand Logo & Redirecting landing:**

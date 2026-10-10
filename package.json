@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node --experimental-strip-types server.js",
-    "build": "node -e \"console.log('Build complete')\"",
+    "build": "node tools/bundle-css.js",
     "start": "node --experimental-strip-types server.js"
   },
   "devDependencies": {

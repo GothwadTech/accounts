@@ -958,7 +958,7 @@ export default {
           const lower = rawIdentifier.toLowerCase();
           const appDomain = (env.APP_DOMAIN || 'gothwadtech.com').toLowerCase();
           if (lower.includes('@') && !lower.endsWith(`@${appDomain}`)) {
-            return withCors(apiError(`Sirf @${appDomain} suffix ke saath hi email daal sakte hain, koi third-party email nahi.`, 400));
+            return withCors(apiError(`Only @${appDomain} suffix is allowed.`, 400));
           }
           // "pawan" → "pawan@APP_DOMAIN"; "pawan@APP_DOMAIN" → waise hi rehne do
           email = lower.includes('@') ? lower : `${lower}@${env.APP_DOMAIN}`;

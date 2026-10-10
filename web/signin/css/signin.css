@@ -2,7 +2,7 @@
    SIGN IN PAGE STYLES
    ============================================================================= */
 
-@import "../../css/styles.css";
+@import "/css/styles.css";
 
 /* Page-specific refinements for sign in */
 .auth-container-modern {

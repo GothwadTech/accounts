@@ -35,7 +35,7 @@ export function validateIdentifier(raw) {
     if (domainPart !== appDomain) {
       return {
         ok: false,
-        error: `Sirf @${appDomain} suffix ke saath hi email daal sakte hain, koi third-party email nahi.`,
+        error: `Only @${appDomain} suffix is allowed.`,
         isThirdParty: true,
       };
     }
@@ -144,10 +144,10 @@ export function initSigninForm(showAlert, hideAlert) {
         const domain = parts[1] || '';
         // If domain has a dot and is not appDomain, or clearly non-matching
         if (domain && domain.includes('.') && domain !== appDomain) {
-          setFieldError(`Sirf @${appDomain} suffix ke saath hi email daal sakte hain, koi third-party email nahi.`);
+          setFieldError(`Only @${appDomain} suffix is allowed.`);
           return;
         } else if (domain && !appDomain.startsWith(domain)) {
-          setFieldError(`Sirf @${appDomain} suffix ke saath hi email daal sakte hain, koi third-party email nahi.`);
+          setFieldError(`Only @${appDomain} suffix is allowed.`);
           return;
         }
       }
