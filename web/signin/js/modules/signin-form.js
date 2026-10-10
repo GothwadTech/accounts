@@ -1,6 +1,7 @@
 import { api } from '../../../js/api.js';
 import { setBusy, toast } from '../../../js/common.js';
 import { GOTHWAD_CONFIG } from '../../../js/config.js';
+import { rememberAccount, canAddAccount } from '../../../js/accounts.js';
 
 /**
  * Validates and formats user identifier:
@@ -101,7 +102,7 @@ export function initSigninForm(showAlert, hideAlert) {
     if (identifierInput) identifierInput.focus();
   }
 
-  function goToPasswordStep() {
+  async function goToPasswordStep() {
     const rawIdentifier = identifierInput?.value.trim();
     const val = validateIdentifier(rawIdentifier);
 
@@ -113,6 +114,21 @@ export function initSigninForm(showAlert, hideAlert) {
         setFieldError(null);
         showAlert('alert-signin', val.error);
       }
+      identifierInput?.focus();
+      return;
+    }
+
+    setBusy(btn, true, 'Checking...');
+    const lookup = await api.post('/auth/check-identifier', { identifier: val.identifier });
+    setBusy(btn, false);
+
+    if (!lookup.ok || (lookup.data && lookup.data.exists === false)) {
+      const msg =
+        (lookup.data && lookup.data.error) ||
+        lookup.error ||
+        "This username doesn't exist. Check the spelling, or create a new account.";
+      setFieldError(msg);
+      hideAlert('alert-signin');
       identifierInput?.focus();
       return;
     }
@@ -168,7 +184,7 @@ export function initSigninForm(showAlert, hideAlert) {
     hideAlert('alert-signin');
 
     if (currentStep === 'identifier') {
-      goToPasswordStep();
+      await goToPasswordStep();
       return;
     }
 
@@ -184,15 +200,32 @@ export function initSigninForm(showAlert, hideAlert) {
       return showAlert('alert-signin', 'Please enter your password.');
     }
 
+    const maybeUser = String(identifier || '').toLowerCase().split('@')[0];
+    const preGate = canAddAccount(maybeUser);
+    if (!preGate.ok) {
+      return showAlert('alert-signin', preGate.error);
+    }
+
     setBusy(btn, true, 'Signing in...');
 
     const res = await api.post('/auth/signin', { identifier, password, remember });
     setBusy(btn, false);
 
     if (!res.ok) {
-      return showAlert('alert-signin', res.error || 'Invalid username or password.');
+      const msg = res.error || 'Incorrect password. Try again or use Forgot password.';
+      if (/username doesn't exist|isn't registered|doesn't exist/i.test(msg)) {
+        goToIdentifierStep();
+        setFieldError(msg);
+        return;
+      }
+      return showAlert('alert-signin', msg);
     }
 
+    rememberAccount(res.data.user, {
+      access_token: res.data.access_token,
+      refresh_token: res.data.refresh_token,
+      session_id: res.data.session_id,
+    });
     toast(`Welcome back, ${res.data.user.first_name || res.data.user.username}!`);
 
     const params = new URLSearchParams(location.search);

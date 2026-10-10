@@ -91,12 +91,16 @@ CREATE TABLE IF NOT EXISTS public.ecosystem_apps (
 --     SET redirect_uris = ARRAY['https://mail.' || 'YOUR-DOMAIN' || '/auth/callback']
 --     WHERE id = 'gothwad-mail';
 INSERT INTO public.ecosystem_apps (id, name, description, icon) VALUES
-  ('gothwad-mail',    'Gothwad Mail',    'Custom email address with webmail inbox',            'mail'),
-  ('gothwad-drive',   'Gothwad Drive',   'Unlimited cloud storage powered by Telegram',        'hard-drive'),
-  ('gothwad-chat',    'Gothwad Chat',    'Fast messaging for teams and friends',               'message-circle'),
-  ('gothwad-notes',   'Gothwad Notes',   'Synced notes, lists and voice memos',                'file-text'),
-  ('gothwad-calendar','Gothwad Calendar','Events, reminders and shared calendars',             'calendar'),
-  ('gothwad-browser', 'Gothwad Browser', 'Private browser with cloud-synced tabs & bookmarks', 'compass')
+  ('gothwad-meet',     'Gothwad Meet',              'Video meetings for your Gothwad Account',     'video'),
+  ('gothwad-mail',     'Gothwad Mail',              'username@gothwadtech.com inbox',              'mail'),
+  ('gothwad-store',    'Gothwad Store',             'Apps and add-ons for Gothwad',                'store'),
+  ('gothwad-drive',    'Gothwad Drive',             'Files and folders on your account',           'hard-drive'),
+  ('gothwad-notes',    'Gothwad Notes',             'Notes and lists, synced',                     'file-text'),
+  ('gothwad-calendar', 'Gothwad Calendar',          'Events and reminders',                        'calendar'),
+  ('gothwad-contacts', 'Gothwad Contacts',          'People and addresses',                        'users'),
+  ('gothwad-tube',     'Gothwad Tube (PlusTube)',   'Video — PlusTube',                            'play'),
+  ('gothwad-chat',     'GrixChat (Gothwad Chat)',   'Messaging',                                   'message-circle'),
+  ('gothwad-indogram', 'Indogram',                  'Telegram-style chat',                         'send')
 ON CONFLICT (id) DO NOTHING;
 
 

@@ -157,6 +157,8 @@
 .app-tile {
   display: flex;
   align-items: center;
+  text-decoration: none;
+  color: inherit;
   gap: 13px;
   padding: 16px 18px;
   background: var(--bg-panel);

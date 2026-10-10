@@ -6,6 +6,18 @@
  */
 
 import { api, clearTokens, getTokens } from './api.js';
+import {
+  rememberAccount,
+  listAccounts,
+  removeAccount,
+  clearAllAccounts,
+  switchToAccount,
+  switchToNextAvailable,
+  initialsFor,
+  canAddAccount,
+  MAX_ACCOUNTS,
+  safeNextUrl,
+} from './accounts.js';
 
 /* ----------------------------------------------------------------- toasts */
 /** toast('Saved!', 'success') ya toast('Something went wrong', 'error') */
@@ -53,6 +65,7 @@ export function setBusy(btn, busy, busyText = 'Please wait...') {
 export async function getSession() {
   const res = await api.get('/auth/me');
   if (res.ok && res.data && res.data.authenticated) {
+    rememberAccount(res.data.user);
     return { authenticated: true, user: res.data.user };
   }
   return { authenticated: false, user: null };
@@ -74,22 +87,56 @@ export async function requireAuth() {
 
 /** /signin, /signup: pehle se logged-in hai to /me par bhej do. */
 export async function redirectIfAuthed() {
+  const params = new URLSearchParams(location.search);
+  const add = params.get('add') === '1';
+  const form = params.get('form') === '1';
+  const choose = params.get('choose') === '1';
+  const next = params.get('next') || '';
+  const isOAuth = /\/oauth\/authorize/i.test(next);
+  const saved = listAccounts();
+
+  // Form: add account / use another account — picker skip
+  if (add || form) return { authenticated: false, user: null, showChooser: false };
+
+  // Google-style chooser: saved accounts (OAuth ya 1+ accounts)
+  if (saved.length >= 1 && (choose || isOAuth || saved.length >= 1)) {
+    return { authenticated: false, user: null, showChooser: true };
+  }
+
   const session = await getSession();
   if (session.authenticated) {
-    const params = new URLSearchParams(location.search);
-    const next = params.get('next');
-    // Sirf relative ya apne hi origin ke URLs allow (open-redirect se bachav)
-    const safeNext = next && (next.startsWith('/') || next.startsWith(location.origin)) ? next : '/me';
-    location.href = safeNext;
+    location.href = safeNextUrl(next, '/me');
   }
   return session;
 }
 
-/** Sign out + /signin par redirect. */
-export async function signOut() {
-  // session_id body mein: taaki device row bhi delete ho (header-auth case)
-  await api.post('/auth/signout', { session_id: getTokens().session_id || null });
-  clearTokens(); // sessionStorage se tokens hatao (hybrid auth)
+/** Sign out current account. Agar doosra saved hai to uspe switch. */
+export async function signOut({ all = false } = {}) {
+  if (all) {
+    const list = listAccounts();
+    for (const a of list) {
+      await api.post('/auth/signout', { session_id: a.session_id || null });
+    }
+    clearAllAccounts();
+    clearTokens();
+    location.href = '/signin';
+    return;
+  }
+
+  const tokens = getTokens();
+  await api.post('/auth/signout', { session_id: tokens.session_id || null });
+  const current = listAccounts().find(
+    (a) => a.session_id === tokens.session_id || a.refresh_token === tokens.refresh_token,
+  );
+  const except = [current?.id, current?.username, tokens.session_id].filter(Boolean);
+  if (current) removeAccount(current.id);
+  clearTokens();
+
+  const sw = await switchToNextAvailable(except);
+  if (sw.ok) {
+    location.href = '/me';
+    return;
+  }
   location.href = '/signin';
 }
 
@@ -107,6 +154,10 @@ export async function renderTopbar(existingSession = null) {
   const session = existingSession || (await getSession());
   const authed = session.authenticated;
 
+  const accounts = listAccounts();
+  const user = session.user || {};
+  const ini = initialsFor(user);
+
   el.innerHTML = `
     <div class="container topbar-inner">
       <a class="brand" href="${authed ? '/me' : '/signin'}">
@@ -116,7 +167,33 @@ export async function renderTopbar(existingSession = null) {
       <nav class="nav">
         ${authed ? `
           <a class="nav-link hide-mobile" href="/me">My Account</a>
-          <button class="btn btn-ghost" id="btn-signout" style="padding:8px 14px;">Sign out</button>
+          <div class="acct-switch" id="acct-switch">
+            <button type="button" class="acct-switch-btn" id="acct-switch-btn" aria-label="Switch account">
+              <span class="avatar sm">${escapeHtml(ini)}</span>
+            </button>
+            <div class="acct-menu hidden" id="acct-menu" role="menu">
+              <div class="acct-menu-head">
+                <div class="acct-menu-name">${escapeHtml(`${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username || 'Account')}</div>
+                <div class="acct-menu-email mono">${escapeHtml(user.email || '')}</div>
+              </div>
+              ${accounts.map((a) => `
+                <button type="button" class="acct-menu-item" data-switch="${escapeHtml(a.id)}" role="menuitem">
+                  <span class="avatar sm">${escapeHtml(initialsFor(a))}</span>
+                  <span>
+                    <span class="acct-item-name">${escapeHtml(`${a.first_name || ''} ${a.last_name || ''}`.trim() || a.username)}</span>
+                    <span class="acct-item-email mono">${escapeHtml(a.email || a.username)}</span>
+                  </span>
+                  ${a.username === user.username ? '<span class="acct-check">✓</span>' : ''}
+                </button>
+              `).join('')}
+              <a class="acct-menu-item" id="link-add-account" href="/signin?add=1">
+                <span class="acct-plus">+</span>
+                <span>Add another account</span>
+              </a>
+              <button type="button" class="acct-menu-item" id="btn-signout-one">Sign out</button>
+              ${accounts.length > 1 ? '<button type="button" class="acct-menu-item danger" id="btn-signout-all">Sign out all accounts</button>' : ''}
+            </div>
+          </div>
         ` : `
           <a class="nav-link" href="/signin">Sign in</a>
           <a class="btn btn-primary" href="/signup" style="padding:8px 16px;">Create account</a>
@@ -124,10 +201,53 @@ export async function renderTopbar(existingSession = null) {
       </nav>
     </div>`;
 
-  const signoutBtn = document.getElementById('btn-signout');
-  if (signoutBtn) {
-    signoutBtn.addEventListener('click', () => signOut());
+  bindAccountMenu(accounts, user);
+}
+
+function bindAccountMenu(accounts, user) {
+  const btn = document.getElementById('acct-switch-btn');
+  const menu = document.getElementById('acct-menu');
+  if (btn && menu) {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      menu.classList.toggle('hidden');
+    });
+    document.addEventListener('click', () => menu.classList.add('hidden'));
+    menu.addEventListener('click', (e) => e.stopPropagation());
   }
+
+  menu?.querySelectorAll('[data-switch]').forEach((el) => {
+    el.addEventListener('click', async () => {
+      const id = el.getAttribute('data-switch');
+      const acc = accounts.find((a) => a.id === id);
+      if (!acc || acc.username === user.username) {
+        menu.classList.add('hidden');
+        return;
+      }
+      const sw = await switchToAccount(acc);
+      if (!sw.ok) {
+        toast(sw.error || 'Could not switch account', 'error');
+        return;
+      }
+      location.reload();
+    });
+  });
+
+  const addLink = document.getElementById('link-add-account');
+  if (addLink) {
+    addLink.addEventListener('click', (e) => {
+      const gate = canAddAccount();
+      if (!gate.ok) {
+        e.preventDefault();
+        toast(gate.error, 'error');
+      }
+    });
+  }
+
+  const one = document.getElementById('btn-signout-one');
+  if (one) one.addEventListener('click', () => signOut());
+  const all = document.getElementById('btn-signout-all');
+  if (all) all.addEventListener('click', () => signOut({ all: true }));
 }
 
 /* ---------------------------------------------------------------- format */

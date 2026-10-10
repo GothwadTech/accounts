@@ -447,6 +447,38 @@ img { max-width: 100%; }
 .gap-2 { gap: 8px; } .gap-3 { gap: 12px; }
 .hidden { display: none !important; }
 
+.acct-switch { position: relative; }
+.acct-switch-btn {
+  background: none; border: none; padding: 0; cursor: pointer;
+  display: flex; align-items: center;
+}
+.acct-switch-btn .avatar.sm { width: 34px; height: 34px; font-size: 12px; }
+.acct-menu {
+  position: absolute; right: 0; top: calc(100% + 8px);
+  width: 280px; background: var(--bg-panel);
+  border: 1px solid var(--border); border-radius: 14px;
+  box-shadow: var(--shadow); padding: 8px; z-index: 80;
+}
+.acct-menu-head { padding: 10px 12px 12px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+.acct-menu-name { font-weight: 700; font-size: 14px; }
+.acct-menu-email { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.acct-menu-item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  background: none; border: none; color: var(--text);
+  text-align: left; padding: 9px 10px; border-radius: 10px;
+  font-family: inherit; font-size: 13px; cursor: pointer; text-decoration: none;
+}
+.acct-menu-item:hover { background: var(--bg-hover); }
+.acct-menu-item.danger { color: var(--danger); }
+.acct-item-name { display: block; font-weight: 600; }
+.acct-item-email { display: block; font-size: 11.5px; color: var(--text-muted); }
+.acct-check { margin-left: auto; color: var(--success); font-weight: 700; }
+.acct-plus {
+  width: 36px; height: 36px; border-radius: 11px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-hover); font-size: 20px; font-weight: 600;
+}
+
 @media (max-width: 640px) {
   .main { padding: 24px 0 48px; }
   .card { padding: 22px 18px; }

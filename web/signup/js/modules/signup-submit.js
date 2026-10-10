@@ -1,5 +1,6 @@
 import { api } from '../../../js/api.js';
 import { setBusy, toast } from '../../../js/common.js';
+import { rememberAccount, canAddAccount } from '../../../js/accounts.js';
 
 export function initSignupSubmit(form, submitBtn, showError, clearError) {
   if (!form || !submitBtn) return;
@@ -47,6 +48,13 @@ export function initSignupSubmit(form, submitBtn, showError, clearError) {
       return showError(res.error || 'Could not create account. Please try again.');
     }
 
+    if (res.data && res.data.user) {
+      rememberAccount(res.data.user, {
+        access_token: res.data.access_token,
+        refresh_token: res.data.refresh_token,
+        session_id: res.data.session_id,
+      });
+    }
     toast(`Account created! Welcome to Gothwad, ${firstName}!`);
 
     setTimeout(() => {

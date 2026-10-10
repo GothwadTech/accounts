@@ -2,6 +2,48 @@
    GOTHWAD DESIGN SYSTEM — AUTH SCREENS & COMPONENTS
    ============================================================================= */
 
+.chooser-list {
+  width: 100%;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+.chooser-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  color: var(--text);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+.chooser-list .chooser-row {
+  border: none;
+  border-radius: 0;
+  border-bottom: 1px solid var(--border);
+  margin: 0;
+}
+.chooser-list .chooser-row:last-child { border-bottom: none; }
+.chooser-row:hover { background: var(--bg-hover); }
+.chooser-row.chooser-add { margin-top: 4px; }
+.acct-plus {
+  width: 36px; height: 36px; border-radius: 11px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-hover); font-size: 20px; font-weight: 600; flex-shrink: 0;
+}
+.chooser-row.is-disabled { opacity: 0.5; cursor: not-allowed; }
+.chooser-meta { display: flex; flex-direction: column; min-width: 0; }
+.chooser-name { font-weight: 650; font-size: 14px; }
+.chooser-email { font-size: 12px; color: var(--text-muted); }
+
 .auth-wrap {
   display: flex;
   align-items: center;

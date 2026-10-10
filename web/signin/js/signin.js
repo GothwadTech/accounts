@@ -7,9 +7,21 @@ import { GOTHWAD_CONFIG } from '../../js/config.js';
 import { initSigninForm } from './modules/signin-form.js';
 import { initForgotPassword } from './modules/forgot-password.js';
 import { extractResetToken, initResetPassword } from './modules/reset-password.js';
+import { initAccountChooser } from './modules/account-chooser.js';
 
 setupPasswordEyes();
-redirectIfAuthed();
+
+const resetTokenEarly = extractResetToken();
+if (!resetTokenEarly) {
+  redirectIfAuthed().then((state) => {
+    if (state && state.showChooser) initAccountChooser();
+  });
+}
+
+if (new URLSearchParams(location.search).get('add') === '1') {
+  const sub = document.getElementById('auth-header-sub');
+  if (sub) sub.textContent = 'Add another Gothwad Account on this device.';
+}
 
 // Domain suffix inputs
 const suffixText = `@${GOTHWAD_CONFIG.APP_DOMAIN}`;
@@ -22,6 +34,7 @@ const modes = {
   signin: document.getElementById('mode-signin'),
   forgot: document.getElementById('mode-forgot'),
   reset: document.getElementById('mode-reset'),
+  chooser: document.getElementById('mode-chooser'),
 };
 
 export function showMode(name) {
