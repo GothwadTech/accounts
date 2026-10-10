@@ -218,14 +218,22 @@ const SB = {
   /** service_role se call — RLS bypass, sirf Worker ke liye! */
   async adminFetch(env: Env, path: string, init: RequestInit = {}): Promise<Response> {
     const key = (env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
-    return fetch(`${env.SUPABASE_URL}${path}`, {
-      ...init,
-      headers: {
-        'Content-Type': 'application/json',
-        ...serviceKeyHeaders(key),
-        ...(init.headers || {}),
-      },
-    });
+    const headers = {
+      'Content-Type': 'application/json',
+      ...serviceKeyHeaders(key),
+      ...(init.headers || {}),
+    };
+    let res = await fetch(`${env.SUPABASE_URL}${path}`, { ...init, headers });
+    // Safety net: agar apikey-only se 401 aaya (kuch gateway Bearer maangte hain),
+    // to Bearer ke saath ek baar retry. 401 = request process nahi hui, retry safe hai.
+    // (Supabase ka official client dono headers bhejta hai — dono accepted hain.)
+    if (res.status === 401 && !key.startsWith('eyJ')) {
+      res = await fetch(`${env.SUPABASE_URL}${path}`, {
+        ...init,
+        headers: { ...headers, Authorization: `Bearer ${key}` },
+      });
+    }
+    return res;
   },
 
   /** User ke apne access_token se call — RLS laagu hoti hai. */
@@ -771,7 +779,22 @@ export default {
         if (!res.ok) {
           const errBody = await res.text().catch(() => '');
           console.error(`[check-username] Supabase admin call failed: ${res.status} ${errBody.slice(0, 300)}`);
-          return withCors(json({ available: false, valid: true, error: 'Server database error' }, 503));
+          // DIAGNOSTIC: Worker ko service key dikh rahi hai ya nahi? (sirf length — value kabhi log nahi hoti)
+          const skLen = (env.SUPABASE_SERVICE_ROLE_KEY || '').trim().length;
+          console.error(`[check-username] service key status -> present: ${skLen > 0}, length: ${skLen}`);
+          // Phone-debug ke liye: response mein bhi Supabase ka status + short message.
+          // (Ye generic auth error hai — koi secret nahi, safe to show.)
+          let supaMsg = errBody.slice(0, 150);
+          try {
+            const parsed = JSON.parse(errBody);
+            if (parsed && typeof parsed.message === 'string') supaMsg = parsed.message.slice(0, 150);
+          } catch { /* body JSON nahi thi — raw text hi dikhayenge */ }
+          return withCors(json({
+            available: false,
+            valid: true,
+            error: 'Server database error',
+            debug: { supabase_status: res.status, supabase_error: supaMsg },
+          }, 503));
         }
         const rows = (await res.json()) as Record<string, any>[];
         const available = Array.isArray(rows) && rows.length === 0;
