@@ -22,7 +22,7 @@
           <!-- ═══════════════ HEADER CARD ═══════════════ -->
           <div class="auth-header-card">
             <div class="auth-logo-box">
-              <img src="/icon-192.png" alt="Gothwad Accounts" class="auth-logo-img" />
+              <img src="/icon-192-maskable.png" alt="Gothwad Accounts" class="auth-logo-img" />
             </div>
             <h1 class="auth-header-title">Gothwad Accounts</h1>
             <p class="auth-header-desc" id="auth-header-sub">
@@ -45,11 +45,12 @@
               <div id="step-identifier">
                 <div class="auth-field-group">
                   <label class="auth-field-label" for="identifier">Email, Phone or Username</label>
-                  <div class="btn-field-box">
+                  <div class="btn-field-box" id="identifier-box">
                     <input class="input mono" id="identifier" type="text"
                            placeholder="username@gothwadtech.com"
                            autocomplete="username" required autofocus />
                   </div>
+                  <div id="identifier-error-note" class="auth-field-error-note hidden"></div>
                 </div>
               </div>
 
@@ -79,7 +80,7 @@
 
               <!-- Button 2 (Secondary, non-confusing bg): Forgot Password -->
               <button type="button" class="btn-secondary-auth" id="btn-forgot-action">
-                <span>Forgot password ?</span>
+                <span>Forgot password&nbsp;?</span>
               </button>
             </form>
           </section>

@@ -7,7 +7,7 @@
 >
 > Rules & working style: [`AGENTS.md`](AGENTS.md) · Master plan: [`PLAN.md`](PLAN.md)
 
-**Last updated:** 2026-10-10 (Session 8 — service-key diagnostic landed)
+**Last updated:** 2026-10-10 (Session 9 — Identifier UI refinements, third-party email block, brand logo fix)
 
 ---
 
@@ -21,14 +21,27 @@
 | 4 | Cross-app SSO (ClashDrive, GrixChat integration) | 📋 Planned |
 
 **Current state in one line:** LIVE on accounts.gothwadtech.com (health OK,
-pages serving, login Supabase se connect hai); Worker ko runtime mein
-`SUPABASE_SERVICE_ROLE_KEY` khaali mil rahi hai (logs se prove) — user ko purani
-exposed key revoke karke NAYI `sb_secret_` key Worker secret mein dobara daalni
-hai, phir check-username verify → full test → Step 3 (Mail).
+pages serving, login Supabase se connect hai); Frontend + Backend identifier auto-detection & strict third-party email validation landed; logo box updated to vivid curved square (#0494f4).
 
 ---
 
 ## ✅ DONE (completed work — newest first)
+
+### Session 9 — 2026-10-10 — Identifier auto-detection, third-party email validation note, brand logo fix
+- **Identifier auto-detection & formatting:**
+  - Jab user username daalta hai (e.g. `pawan`), Step 2 chip par auto-append hokar `pawan@gothwadtech.com` dikhta hai.
+  - Mobile number (e.g. `9876543210`, `+91...`) auto-detect hokar direct phone flow me jata hai.
+- **Third-party email block & red note line:**
+  - Agar user third-party email daalta hai (e.g. `pawan@gmail.com`), input field ke theek neeche red line note dikhta hai:
+    `Sirf @gothwadtech.com suffix ke saath hi email daal sakte hain, koi third-party email nahi.`
+  - Next click aur typing par live check laga diya gaya hai, box highlight hota hai red border ke sath.
+  - Backend worker `/api/auth/signin` me bhi third-party emails par 400 rejection add kiya gaya hai.
+- **Brand Logo & Redirecting landing:**
+  - Logo box square curved corner (`border-radius: 18px`), solid `#0494f4` vivid blue background ke sath set kiya gaya hai.
+  - Image `/icon-192-maskable.png` with `object-fit: cover` use ki gayi hai taaki white box na aaye aur snowflake center me crisp dikhe.
+  - Root landing page `/` se "redirecting to gothwad accounts" hata kar center se thoda upar centered pulsating brand logo box laga diya gaya hai.
+  - "Forgot password&nbsp;?" button me question mark ke sath non-breaking space clean kar diya gaya hai.
+- **Compilation:** `compile_applet` PASS (success).
 
 ### Session 8 — 2026-10-10 — Landed sb_secret_ follow-up + service-key diagnostic (live debugging)
 - Live bug: signup "No API key found in request"; check-username 503. Logs proved Worker's SUPABASE_SERVICE_ROLE_KEY empty at runtime.

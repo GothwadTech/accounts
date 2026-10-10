@@ -3,30 +3,59 @@ import { setBusy, toast } from '../../../js/common.js';
 import { GOTHWAD_CONFIG } from '../../../js/config.js';
 
 /**
- * Format user identifier for chip display and submit:
- * - Pure digits / phone (+91..., 9876543210, etc.) -> format clean phone
- * - Contains @ (user typed full email or custom email) -> preserve full email
- * - Username only (letters, letters + numbers like "pawan", "user123") -> auto-append @APP_DOMAIN
+ * Validates and formats user identifier:
+ * 1. Empty check
+ * 2. Phone detection: pure numbers (+91, 10-digit, etc.) -> valid phone
+ * 3. Email check: if contains '@':
+ *    - MUST end with @APP_DOMAIN (e.g. @gothwadtech.com)
+ *    - If third-party email like @gmail.com -> return isThirdParty: true with custom red note
+ * 4. Pure username (letters or letters+numbers like "pawan", "user123"):
+ *    - Auto-append @APP_DOMAIN -> "pawan@gothwadtech.com"
  */
-export function formatDisplayIdentifier(raw) {
+export function validateIdentifier(raw) {
   const trimmed = String(raw || '').trim();
-  if (!trimmed) return '';
+  if (!trimmed) {
+    return { ok: false, error: 'Please enter your username, email or phone number.', isThirdParty: false };
+  }
 
-  // Phone number detection: e.g. +91 9876543210, 9876543210, etc. (digits, +, -, spaces only, at least 7 digits)
+  const appDomain = (GOTHWAD_CONFIG.APP_DOMAIN || 'gothwadtech.com').toLowerCase();
+
+  // Phone number detection: e.g. +91 9876543210, 9876543210, etc. (digits, +, -, spaces only, 7-15 digits)
   const digitsOnly = trimmed.replace(/[\s\-()]/g, '');
   const isPhone = /^(\+)?[0-9]{7,15}$/.test(digitsOnly);
   if (isPhone) {
-    return trimmed;
+    return { ok: true, type: 'phone', identifier: trimmed, display: trimmed };
   }
 
-  // If user already typed an email (contains @)
+  // If user typed an email (contains @)
   if (trimmed.includes('@')) {
-    return trimmed.toLowerCase();
+    const lower = trimmed.toLowerCase();
+    const parts = lower.split('@');
+    const domainPart = parts[1] || '';
+    if (domainPart !== appDomain) {
+      return {
+        ok: false,
+        error: `Sirf @${appDomain} suffix ke saath hi email daal sakte hain, koi third-party email nahi.`,
+        isThirdParty: true,
+      };
+    }
+    return { ok: true, type: 'email', identifier: lower, display: lower };
   }
 
-  // Pure username (or username with letters + numbers): auto append @APP_DOMAIN
-  const appDomain = GOTHWAD_CONFIG.APP_DOMAIN || 'gothwadtech.com';
-  return `${trimmed.toLowerCase()}@${appDomain}`;
+  // Pure username (letters, or letters + numbers): auto-append @APP_DOMAIN
+  const cleanUsername = trimmed.toLowerCase();
+  const fullEmail = `${cleanUsername}@${appDomain}`;
+  return {
+    ok: true,
+    type: 'username',
+    identifier: fullEmail,
+    display: fullEmail,
+  };
+}
+
+export function formatDisplayIdentifier(raw) {
+  const res = validateIdentifier(raw);
+  return res.display || String(raw || '').trim();
 }
 
 export function initSigninForm(showAlert, hideAlert) {
@@ -38,15 +67,34 @@ export function initSigninForm(showAlert, hideAlert) {
   const userChip = document.getElementById('btn-back-to-identifier');
   const chipUserText = document.getElementById('chip-user-text');
   const identifierInput = document.getElementById('identifier');
+  const identifierBox = document.getElementById('identifier-box');
+  const identifierNote = document.getElementById('identifier-error-note');
   const passwordInput = document.getElementById('password');
   const btn = document.getElementById('signin-btn');
   const btnText = btn?.querySelector('span') || btn;
 
   let currentStep = 'identifier';
+  let verifiedIdentifier = '';
+
+  function setFieldError(msg) {
+    if (identifierNote) {
+      if (msg) {
+        identifierNote.textContent = msg;
+        identifierNote.classList.remove('hidden');
+      } else {
+        identifierNote.textContent = '';
+        identifierNote.classList.add('hidden');
+      }
+    }
+    if (identifierBox) {
+      identifierBox.classList.toggle('box-error', !!msg);
+    }
+  }
 
   function goToIdentifierStep() {
     currentStep = 'identifier';
     hideAlert('alert-signin');
+    setFieldError(null);
     if (identifierStep) identifierStep.classList.remove('hidden');
     if (passwordStep) passwordStep.classList.add('hidden');
     if (btnText) btnText.textContent = 'Next';
@@ -55,15 +103,27 @@ export function initSigninForm(showAlert, hideAlert) {
 
   function goToPasswordStep() {
     const rawIdentifier = identifierInput?.value.trim();
-    if (!rawIdentifier) {
-      return showAlert('alert-signin', 'Please enter your username, email or phone number.');
+    const val = validateIdentifier(rawIdentifier);
+
+    if (!val.ok) {
+      if (val.isThirdParty) {
+        setFieldError(val.error);
+        hideAlert('alert-signin');
+      } else {
+        setFieldError(null);
+        showAlert('alert-signin', val.error);
+      }
+      identifierInput?.focus();
+      return;
     }
+
+    setFieldError(null);
     hideAlert('alert-signin');
     currentStep = 'password';
+    verifiedIdentifier = val.identifier;
 
-    // Auto-detect & format display identifier
-    const displayIdentifier = formatDisplayIdentifier(rawIdentifier);
-    if (chipUserText) chipUserText.textContent = displayIdentifier;
+    // Display formatted identifier (e.g. pawan@gothwadtech.com or phone)
+    if (chipUserText) chipUserText.textContent = val.display;
 
     if (identifierStep) identifierStep.classList.add('hidden');
     if (passwordStep) passwordStep.classList.remove('hidden');
@@ -71,6 +131,30 @@ export function initSigninForm(showAlert, hideAlert) {
     if (passwordInput) {
       passwordInput.focus();
     }
+  }
+
+  // Live input error check when user types
+  if (identifierInput) {
+    identifierInput.addEventListener('input', () => {
+      const val = identifierInput.value.trim().toLowerCase();
+      const appDomain = (GOTHWAD_CONFIG.APP_DOMAIN || 'gothwadtech.com').toLowerCase();
+
+      if (val.includes('@')) {
+        const parts = val.split('@');
+        const domain = parts[1] || '';
+        // If domain has a dot and is not appDomain, or clearly non-matching
+        if (domain && domain.includes('.') && domain !== appDomain) {
+          setFieldError(`Sirf @${appDomain} suffix ke saath hi email daal sakte hain, koi third-party email nahi.`);
+          return;
+        } else if (domain && !appDomain.startsWith(domain)) {
+          setFieldError(`Sirf @${appDomain} suffix ke saath hi email daal sakte hain, koi third-party email nahi.`);
+          return;
+        }
+      }
+      // If typing normally or username or matching domain, clear red error
+      setFieldError(null);
+      hideAlert('alert-signin');
+    });
   }
 
   if (userChip) {
@@ -88,7 +172,7 @@ export function initSigninForm(showAlert, hideAlert) {
       return;
     }
 
-    const identifier = identifierInput?.value.trim();
+    const identifier = verifiedIdentifier || identifierInput?.value.trim();
     const password = passwordInput?.value;
     const remember = true; // Always remember session
 

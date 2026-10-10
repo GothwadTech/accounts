@@ -956,7 +956,11 @@ export default {
           }
         } else {
           const lower = rawIdentifier.toLowerCase();
-          // "pawan" → "pawan@APP_DOMAIN"; "pawan@xyz.com" → waise hi rehne do
+          const appDomain = (env.APP_DOMAIN || 'gothwadtech.com').toLowerCase();
+          if (lower.includes('@') && !lower.endsWith(`@${appDomain}`)) {
+            return withCors(apiError(`Sirf @${appDomain} suffix ke saath hi email daal sakte hain, koi third-party email nahi.`, 400));
+          }
+          // "pawan" → "pawan@APP_DOMAIN"; "pawan@APP_DOMAIN" → waise hi rehne do
           email = lower.includes('@') ? lower : `${lower}@${env.APP_DOMAIN}`;
         }
 
