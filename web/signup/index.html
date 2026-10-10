@@ -10,117 +10,172 @@
   <link rel="manifest" href="/manifest.json" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/css/styles.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/signup/css/signup.css" />
 </head>
 <body>
   <div class="page">
-    <header id="topbar" class="topbar"></header>
-
-    <main class="main">
+    <main class="main" style="padding:0;">
       <div class="auth-wrap">
-        <div class="card auth-card" style="max-width:520px;">
+        <div class="auth-container-modern" style="max-width:440px;">
 
-          <!-- Brand: real Gothwad logo -->
-          <div class="brand brand-center">
-            <img class="brand-logo" src="/icon-192.png" alt="Gothwad" />
-            <span class="brand-name">Gothwad</span>
+          <!-- ═══════════════ HEADER CARD ═══════════════ -->
+          <div class="auth-header-card">
+            <div class="auth-logo-box">
+              <img src="/icon-192.png" alt="Gothwad Accounts" class="auth-logo-img" />
+            </div>
+            <h1 class="auth-header-title">Gothwad Accounts</h1>
+            <p class="auth-header-desc" id="signup-header-desc">
+              Basic information — enter your name and date of birth.
+            </p>
           </div>
 
-          <h1 class="auth-heading">Create your Gothwad Account</h1>
-          <p class="auth-subheading">One identity for Mail, Drive, Chat, Notes &amp; more</p>
+          <!-- ═══════════════ AUTH SWITCHER TABS ═══════════════ -->
+          <div class="auth-nav-tabs">
+            <a href="/signin" class="auth-tab-btn">Sign In</a>
+            <a href="/signup" class="auth-tab-btn active">Sign Up</a>
+          </div>
 
-          <div id="alert-signup" class="alert alert-error hidden"></div>
+          <!-- ═══════════════ MULTI-STEP FORM ═══════════════ -->
+          <form id="signup-form" novalidate style="width: 100%;">
+            <div id="alert-signup" class="alert alert-error hidden" style="margin-bottom: 14px;"></div>
 
-          <form id="signup-form" novalidate>
-            <!-- Name -->
-            <div class="row-2">
-              <div class="field">
-                <label class="label" for="first_name">First name</label>
-                <input class="input" id="first_name" type="text" placeholder="Pawan" required autofocus />
+            <!-- ─── STEP 1: Basic Info (3 separate button-styled fields) ─── -->
+            <div id="signup-step-1">
+              <!-- Field 1: First name -->
+              <div class="auth-field-group">
+                <label class="auth-field-label" for="first_name">First name</label>
+                <div class="btn-field-box">
+                  <input class="input" id="first_name" type="text" placeholder="First name" required autofocus />
+                </div>
               </div>
-              <div class="field">
-                <label class="label" for="last_name">Last name</label>
-                <input class="input" id="last_name" type="text" placeholder="Gothwad" required />
+
+              <!-- Field 2: Last name -->
+              <div class="auth-field-group">
+                <label class="auth-field-label" for="last_name">Last name</label>
+                <div class="btn-field-box">
+                  <input class="input" id="last_name" type="text" placeholder="Last name" required />
+                </div>
+              </div>
+
+              <!-- Field 3: Date of birth -->
+              <div class="auth-field-group">
+                <label class="auth-field-label" for="dob">Date of birth</label>
+                <div class="btn-field-box">
+                  <input class="input" id="dob" type="date" placeholder="Date of birth" required />
+                </div>
               </div>
             </div>
 
-            <!-- Username (becomes your Gothwad email) -->
-            <div class="field">
-              <label class="label" for="username">Choose your Gothwad username</label>
-              <div class="input-group">
-                <input class="input mono" id="username" type="text" placeholder="yourname"
-                       autocomplete="username" required maxlength="24" />
-                <span class="suffix" id="domain-suffix"></span>
+            <!-- ─── STEP 2: Choose Username / Email ─── -->
+            <div id="signup-step-2" class="hidden">
+              <div class="auth-field-group">
+                <label class="auth-field-label" for="username">Email or Username</label>
+                <div class="btn-field-box">
+                  <input class="input mono" id="username" type="text"
+                         placeholder="username@gothwadtech.com"
+                         autocomplete="username" required maxlength="24" />
+                </div>
+                <div class="hint" id="username-hint" style="margin-top: 8px;">3–24 characters: a-z, 0-9, dot (.), dash (-), underscore (_)</div>
               </div>
-              <div class="hint" id="username-hint">3–24 characters: a-z, 0-9, dot (.), dash (-), underscore (_)</div>
             </div>
 
-            <!-- Password -->
-            <div class="row-2">
-              <div class="field">
-                <label class="label" for="password">Password</label>
-                <div class="input-wrap">
-                  <input class="input" id="password" type="password" placeholder="Min. 8 characters"
+            <!-- ─── STEP 3: Password ─── -->
+            <div id="signup-step-3" class="hidden">
+              <div class="auth-field-group">
+                <label class="auth-field-label" for="password">Password</label>
+                <div class="btn-field-box">
+                  <input class="input" id="password" type="password"
+                         placeholder="Create a password (min. 8 characters)"
                          autocomplete="new-password" required />
                   <button type="button" class="input-eye" data-eye="password" aria-label="Show password">👁️</button>
                 </div>
               </div>
-              <div class="field">
-                <label class="label" for="confirm_password">Confirm password</label>
-                <input class="input" id="confirm_password" type="password" placeholder="Repeat password"
-                       autocomplete="new-password" required />
-              </div>
-            </div>
 
-            <!-- Password strength -->
-            <div class="field" style="margin-top:-6px;">
-              <div class="storage-bar" style="margin:2px 0 6px;">
-                <div class="storage-fill" id="strength-fill" style="width:0%;background:#6a7686;"></div>
+              <div class="auth-field-group">
+                <label class="auth-field-label" for="confirm_password">Confirm password</label>
+                <div class="btn-field-box">
+                  <input class="input" id="confirm_password" type="password"
+                         placeholder="Confirm password"
+                         autocomplete="new-password" required />
+                </div>
+              </div>
+
+              <div class="storage-bar" style="margin: 4px 0 6px;">
+                <div class="storage-fill" id="strength-fill" style="width: 0%; background: #6a7686;"></div>
               </div>
               <div class="hint" id="strength-text">Use 8+ characters with mixed case, numbers &amp; symbols.</div>
             </div>
 
-            <!-- Recovery email -->
-            <div class="field">
-              <label class="label" for="recovery_email">Recovery email</label>
-              <input class="input" id="recovery_email" type="email" placeholder="you@gmail.com" required />
-              <div class="hint">Password reset link isi email par jaayega — apna personal email daalo.</div>
+            <!-- ─── STEP 4: Recovery Email & Phone ─── -->
+            <div id="signup-step-4" class="hidden">
+              <div class="auth-field-group">
+                <label class="auth-field-label" for="recovery_email">Recovery email</label>
+                <div class="btn-field-box">
+                  <input class="input" id="recovery_email" type="email" placeholder="yourname@gmail.com" required />
+                </div>
+                <div class="hint" style="margin-top: 6px;">Password reset link will be sent to this email.</div>
+              </div>
+
+              <div class="auth-field-group">
+                <label class="auth-field-label" for="phone_number">Phone number (optional)</label>
+                <div class="btn-field-box">
+                  <input class="input" id="phone_number" type="tel" placeholder="+91 9876543210" />
+                </div>
+              </div>
             </div>
 
-            <!-- Phone (optional) -->
-            <div class="field">
-              <label class="label" for="phone_number">Phone number <span class="text-faint">(optional)</span></label>
-              <input class="input" id="phone_number" type="tel" placeholder="+91 98765 43210" />
+            <!-- Buttons OUTSIDE the card (context-aware per step) -->
+            <div id="signup-step-1-actions">
+              <button type="button" class="btn btn-primary btn-block btn-lg auth-btn-outside" id="btn-step-1-next">
+                <span>Next</span>
+              </button>
             </div>
 
-            <div class="alert alert-info" style="margin-top:6px;">
-              By creating an account you agree to the Gothwad Terms of Service &amp; Privacy Policy.
+            <div id="signup-step-2-actions" class="hidden">
+              <button type="button" class="btn btn-primary btn-block btn-lg auth-btn-outside" id="btn-step-2-next">
+                <span>Next</span>
+              </button>
+              <button type="button" class="btn-secondary-auth" id="btn-step-2-back">
+                <span>Back</span>
+              </button>
             </div>
 
-            <button type="submit" class="btn btn-primary btn-block" id="signup-btn">Create account</button>
+            <div id="signup-step-3-actions" class="hidden">
+              <button type="button" class="btn btn-primary btn-block btn-lg auth-btn-outside" id="btn-step-3-next">
+                <span>Next</span>
+              </button>
+              <button type="button" class="btn-secondary-auth" id="btn-step-3-back">
+                <span>Back</span>
+              </button>
+            </div>
+
+            <div id="signup-step-4-actions" class="hidden">
+              <button type="submit" class="btn btn-primary btn-block btn-lg auth-btn-outside" id="signup-btn">
+                <span>Create account</span>
+              </button>
+              <button type="button" class="btn-secondary-auth" id="btn-step-4-back">
+                <span>Back</span>
+              </button>
+            </div>
           </form>
 
-          <p class="auth-footer">
-            Already have an account? <a href="/signin">Sign in</a>
-          </p>
+          <!-- ═══════════════ BOTTOM BRANDING CARD ═══════════════ -->
+          <div class="auth-info-card">
+            <p class="auth-terms-text">
+              By using <a href="https://gothwadtech.com" target="_blank" rel="noopener noreferrer" class="accent-link">Gothwad Accounts</a>, you agree to our <a href="/terms" class="accent-link">Terms of Service</a> &amp; <a href="/privacy" class="accent-link">Privacy Policy</a>.
+            </p>
+            <div class="auth-divider-line"></div>
+            <div class="auth-atmanirbhar-text">
+              <a href="https://gothwadtech.com" target="_blank" rel="noopener noreferrer" class="accent-link">Gothwad Accounts</a> is proudly developed and managed by <a href="https://gothwadtech.com" target="_blank" rel="noopener noreferrer" class="accent-link">Gothwad Tech</a> in support of India's Atmanirbhar Bharat initiative. If you have any concerns, please <a href="mailto:support@gothwadtech.com" class="accent-link">contact us</a>.
+            </div>
+          </div>
+
         </div>
       </div>
     </main>
-
-    <footer class="footer">
-      <div class="container footer-inner">
-        <div class="flex items-center gap-2">
-          <img src="/icon-192.png" alt="" style="width:16px;height:16px;border-radius:4px;" />
-          <span>© 2026 Gothwad Tech</span>
-        </div>
-        <div class="footer-links">
-          <a href="/signin">Sign in</a>
-        </div>
-      </div>
-    </footer>
   </div>
 
-  <script type="module" src="/js/signup.js"></script>
+  <script type="module" src="/signup/js/signup.js"></script>
 </body>
 </html>

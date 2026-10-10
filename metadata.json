@@ -1,0 +1,7 @@
+{
+  "name": "Gothwad Accounts",
+  "description": "Central auth system & unified identity provider for the Gothwad ecosystem.",
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

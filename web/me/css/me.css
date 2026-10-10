@@ -1,0 +1,15 @@
+/* =============================================================================
+   DASHBOARD (/me) STYLES
+   ============================================================================= */
+
+@import "../../css/styles.css";
+
+/* Page-specific refinements for dashboard */
+.dash-header {
+  animation: fadeIn 0.25s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}

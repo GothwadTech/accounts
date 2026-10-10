@@ -6,15 +6,54 @@
   <title>Gothwad Accounts</title>
   <link rel="icon" href="/favicon.ico" sizes="any" />
   <style>
-    body { background: #0d1117; color: #8b98a9; font-family: system-ui, sans-serif;
-           display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #212121;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+      overflow: hidden;
+    }
+    .splash-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      transform: translateY(-28px);
+    }
+    .splash-logo-box {
+      width: 72px;
+      height: 72px;
+      background: #0494f4;
+      border-radius: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 10px 28px rgba(4, 148, 244, 0.4);
+      animation: pulse 1.8s ease-in-out infinite;
+      overflow: hidden;
+    }
+    .splash-logo-img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.05); opacity: 0.9; }
+    }
   </style>
 </head>
 <body>
-  <div>Redirecting to Gothwad Accounts…</div>
+  <div class="splash-container">
+    <div class="splash-logo-box">
+      <img src="/icon-192.png" alt="Gothwad Accounts" class="splash-logo-img" />
+    </div>
+  </div>
   <script type="module">
-    // Root koi page nahi hai — sirf smart redirect:
-    // logged-in → /me, warna → /signin  (site ke sirf 3 routes hain)
     import { getSession } from '/js/common.js';
     const session = await getSession();
     location.replace(session.authenticated ? '/me' : '/signin');

@@ -1,6 +1,7 @@
 {
   "name": "gothwad-auth-worker",
   "private": true,
+  "type": "module",
   "version": "1.0.0",
   "description": "Gothwad Accounts auth API — Cloudflare Worker",
   "scripts": {

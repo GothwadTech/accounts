@@ -10,134 +10,154 @@
   <link rel="manifest" href="/manifest.json" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/css/styles.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/signin/css/signin.css" />
 </head>
 <body>
   <div class="page">
-    <header id="topbar" class="topbar"></header>
-
-    <main class="main">
+    <main class="main" style="padding:0;">
       <div class="auth-wrap">
-        <div class="card auth-card">
+        <div class="auth-container-modern">
 
-          <!-- Brand: real Gothwad logo -->
-          <div class="brand brand-center">
-            <img class="brand-logo" src="/icon-192.png" alt="Gothwad" />
-            <span class="brand-name">Gothwad</span>
+          <!-- ═══════════════ HEADER CARD ═══════════════ -->
+          <div class="auth-header-card">
+            <div class="auth-logo-box">
+              <img src="/icon-192.png" alt="Gothwad Accounts" class="auth-logo-img" />
+            </div>
+            <h1 class="auth-header-title">Gothwad Accounts</h1>
+            <p class="auth-header-desc" id="auth-header-sub">
+              Connecting you to your world, one identity for Mail, Drive, Chat, Notes &amp; more.
+            </p>
           </div>
 
-          <!-- ═══════════════ MODE 1: SIGN IN ═══════════════ -->
-          <section id="mode-signin">
-            <h1 class="auth-heading">Sign in</h1>
-            <p class="auth-subheading">Use your Gothwad Account to continue</p>
+          <!-- ═══════════════ AUTH SWITCHER TABS ═══════════════ -->
+          <div class="auth-nav-tabs" id="auth-switcher-tabs">
+            <a href="/signin" class="auth-tab-btn active">Sign In</a>
+            <a href="/signup" class="auth-tab-btn">Sign Up</a>
+          </div>
 
-            <div id="alert-signin" class="alert alert-error hidden"></div>
+          <!-- ─────── MODE 1: SIGN IN ─────── -->
+          <section id="mode-signin" style="width: 100%;">
+            <form id="signin-form" novalidate style="width: 100%;">
+              <div id="alert-signin" class="alert alert-error hidden" style="margin-bottom: 14px;"></div>
 
-            <form id="signin-form" novalidate>
-              <div class="field">
-                <label class="label" for="identifier">Username or email</label>
-                <div class="input-group">
-                  <input class="input mono" id="identifier" type="text" placeholder="yourname"
-                         autocomplete="username" required autofocus />
-                  <span class="suffix" id="domain-suffix"></span>
+              <!-- Google-style Step 1: Identifier -->
+              <div id="step-identifier">
+                <div class="auth-field-group">
+                  <label class="auth-field-label" for="identifier">Email, Phone or Username</label>
+                  <div class="btn-field-box">
+                    <input class="input mono" id="identifier" type="text"
+                           placeholder="username@gothwadtech.com"
+                           autocomplete="username" required autofocus />
+                  </div>
                 </div>
               </div>
 
-              <div class="field">
-                <label class="label" for="password">Password</label>
-                <div class="input-wrap">
-                  <input class="input" id="password" type="password" placeholder="Your password"
-                         autocomplete="current-password" required />
-                  <button type="button" class="input-eye" data-eye="password" aria-label="Show password">👁️</button>
+              <!-- Google-style Step 2: Password (hidden initially) -->
+              <div id="step-password" class="hidden">
+                <div style="display: flex; justify-content: center; margin-bottom: 14px;">
+                  <button type="button" id="btn-back-to-identifier" class="auth-user-chip" title="Change identifier">
+                    <span class="auth-user-chip-text" id="chip-user-text">user</span>
+                    <span style="font-size: 11px; color: var(--accent); margin-left: 6px; font-weight: 700;">Edit</span>
+                  </button>
+                </div>
+                <div class="auth-field-group">
+                  <label class="auth-field-label" for="password">Password</label>
+                  <div class="btn-field-box">
+                    <input class="input" id="password" type="password"
+                           placeholder="Enter your password"
+                           autocomplete="current-password" required />
+                    <button type="button" class="input-eye" data-eye="password" aria-label="Show password">👁️</button>
+                  </div>
                 </div>
               </div>
 
-              <div class="form-row-between" style="margin:4px 0 20px;">
-                <label class="checkbox">
-                  <input type="checkbox" id="remember" checked />
-                  <span>Remember me</span>
-                </label>
-                <button type="button" id="link-forgot" class="link-btn">Forgot password?</button>
-              </div>
+              <!-- Button 1 (Primary): Next / Sign In -->
+              <button type="submit" class="btn btn-primary btn-block btn-lg auth-btn-outside" id="signin-btn">
+                <span>Next</span>
+              </button>
 
-              <button type="submit" class="btn btn-primary btn-block" id="signin-btn">Sign in</button>
+              <!-- Button 2 (Secondary, non-confusing bg): Forgot Password -->
+              <button type="button" class="btn-secondary-auth" id="btn-forgot-action">
+                <span>Forgot password ?</span>
+              </button>
             </form>
-
-            <p class="auth-footer">
-              New to Gothwad? <a href="/signup">Create an account</a>
-            </p>
           </section>
 
-          <!-- ═══════════════ MODE 2: FORGOT PASSWORD ═══════════════ -->
-          <section id="mode-forgot" class="hidden">
-            <h1 class="auth-heading">Forgot password?</h1>
-            <p class="auth-subheading">
-              Apna username daalo — reset link aapki <b>recovery email</b> par jaayega.
-            </p>
+          <!-- ─────── MODE 2: FORGOT PASSWORD ─────── -->
+          <section id="mode-forgot" class="hidden" style="width: 100%;">
+            <form id="forgot-form" novalidate style="width: 100%;">
+              <div id="alert-forgot" class="alert alert-error hidden" style="margin-bottom: 14px;"></div>
+              <div id="done-forgot" class="alert alert-success hidden" style="margin-bottom: 14px;"></div>
 
-            <div id="alert-forgot" class="alert alert-error hidden"></div>
-            <div id="done-forgot" class="alert alert-success hidden"></div>
-
-            <form id="forgot-form" novalidate>
-              <div class="field">
-                <label class="label" for="forgot-username">Gothwad username</label>
-                <div class="input-group">
-                  <input class="input mono" id="forgot-username" type="text" placeholder="yourname"
+              <div class="auth-field-group">
+                <label class="auth-field-label" for="forgot-username">Email, Phone or Username</label>
+                <div class="btn-field-box">
+                  <input class="input mono" id="forgot-username" type="text"
+                         placeholder="username@gothwadtech.com"
                          autocomplete="username" required autofocus />
-                  <span class="suffix suffix-copy"></span>
                 </div>
+                <div class="hint" style="margin-top: 6px;">Reset link will be sent to your recovery email.</div>
               </div>
-              <button type="submit" class="btn btn-primary btn-block" id="forgot-btn">Send reset link</button>
-            </form>
 
-            <p class="auth-footer">
-              <button type="button" class="link-btn" data-goto="signin">← Back to sign in</button>
-            </p>
+              <!-- Button OUTSIDE the card -->
+              <button type="submit" class="btn btn-primary btn-block btn-lg auth-btn-outside" id="forgot-btn">
+                <span>Send reset link</span>
+              </button>
+
+              <button type="button" class="btn-secondary-auth" data-goto="signin">
+                <span>Back to sign in</span>
+              </button>
+            </form>
           </section>
 
-          <!-- ═══════════════ MODE 3: SET NEW PASSWORD (email link se) ═══════════════ -->
-          <section id="mode-reset" class="hidden">
-            <h1 class="auth-heading">Set a new password</h1>
-            <p class="auth-subheading">Aapka reset link verified hai. Naya password choose karo.</p>
+          <!-- ─────── MODE 3: SET NEW PASSWORD ─────── -->
+          <section id="mode-reset" class="hidden" style="width: 100%;">
+            <form id="reset-form" novalidate style="width: 100%;">
+              <div id="alert-reset" class="alert alert-error hidden" style="margin-bottom: 14px;"></div>
 
-            <div id="alert-reset" class="alert alert-error hidden"></div>
-
-            <form id="reset-form" novalidate>
-              <div class="field">
-                <label class="label" for="new-password">New password</label>
-                <div class="input-wrap">
-                  <input class="input" id="new-password" type="password" placeholder="Min. 8 characters"
+              <div class="auth-field-group">
+                <label class="auth-field-label" for="new-password">New password</label>
+                <div class="btn-field-box">
+                  <input class="input" id="new-password" type="password"
+                         placeholder="New password (min. 8 characters)"
                          autocomplete="new-password" required autofocus />
                   <button type="button" class="input-eye" data-eye="new-password" aria-label="Show password">👁️</button>
                 </div>
               </div>
-              <div class="field">
-                <label class="label" for="confirm-password">Confirm new password</label>
-                <input class="input" id="confirm-password" type="password" placeholder="Repeat password"
-                       autocomplete="new-password" required />
+
+              <div class="auth-field-group">
+                <label class="auth-field-label" for="confirm-password">Confirm new password</label>
+                <div class="btn-field-box">
+                  <input class="input" id="confirm-password" type="password"
+                         placeholder="Repeat new password"
+                         autocomplete="new-password" required />
+                </div>
               </div>
-              <button type="submit" class="btn btn-primary btn-block" id="reset-btn">Update password</button>
+
+              <!-- Button OUTSIDE the card -->
+              <button type="submit" class="btn btn-primary btn-block btn-lg auth-btn-outside" id="reset-btn">
+                <span>Update password</span>
+              </button>
             </form>
           </section>
+
+          <!-- ═══════════════ BOTTOM BRANDING CARD ═══════════════ -->
+          <div class="auth-info-card">
+            <p class="auth-terms-text">
+              By using <a href="https://gothwadtech.com" target="_blank" rel="noopener noreferrer" class="accent-link">Gothwad Accounts</a>, you agree to our <a href="/terms" class="accent-link">Terms of Service</a> &amp; <a href="/privacy" class="accent-link">Privacy Policy</a>.
+            </p>
+            <div class="auth-divider-line"></div>
+            <div class="auth-atmanirbhar-text">
+              <a href="https://gothwadtech.com" target="_blank" rel="noopener noreferrer" class="accent-link">Gothwad Accounts</a> is proudly developed and managed by <a href="https://gothwadtech.com" target="_blank" rel="noopener noreferrer" class="accent-link">Gothwad Tech</a> in support of India's Atmanirbhar Bharat initiative. If you have any concerns, please <a href="mailto:support@gothwadtech.com" class="accent-link">contact us</a>.
+            </div>
+          </div>
 
         </div>
       </div>
     </main>
-
-    <footer class="footer">
-      <div class="container footer-inner">
-        <div class="flex items-center gap-2">
-          <img src="/icon-192.png" alt="" style="width:16px;height:16px;border-radius:4px;" />
-          <span>© 2026 Gothwad Tech</span>
-        </div>
-        <div class="footer-links">
-          <a href="/signup">Create account</a>
-        </div>
-      </div>
-    </footer>
   </div>
 
-  <script type="module" src="/js/signin.js"></script>
+  <script type="module" src="/signin/js/signin.js"></script>
 </body>
 </html>

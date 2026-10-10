@@ -1,0 +1,63 @@
+/* =============================================================================
+   GOTHWAD DESIGN SYSTEM — VARIABLES & TOKENS
+   ============================================================================= */
+
+:root {
+  /* Dark Theme (Default) - requested #212121 base */
+  --bg: #212121;
+  --bg-panel: #292929;
+  --bg-elevated: #333333;
+  --bg-input: #191919;
+  --bg-hover: #3a3a3a;
+
+  /* Borders */
+  --border: #383838;
+  --border-strong: #4d4d4d;
+
+  /* Text */
+  --text: #f5f5f5;
+  --text-muted: #a3a3a3;
+  --text-faint: #737373;
+
+  /* Brand accent — Gothwad vivid blue */
+  --accent: #0494f4;
+  --accent-hover: #29a4f6;
+  --accent-soft: rgba(4, 148, 244, 0.16);
+  --accent-border: rgba(4, 148, 244, 0.45);
+
+  /* Status colors */
+  --success: #2ea86e;
+  --success-soft: rgba(46, 168, 110, 0.14);
+  --danger: #f04747;
+  --danger-soft: rgba(240, 71, 71, 0.12);
+  --warning: #d4a72c;
+
+  /* Shape */
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-lg: 18px;
+  --shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+
+  --font: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+/* Light Theme support — pure FFFFFF shades */
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #ffffff;
+    --bg-panel: #f8f8fa;
+    --bg-elevated: #f0f0f3;
+    --bg-input: #ffffff;
+    --bg-hover: #eaeaea;
+
+    --border: #e3e3e7;
+    --border-strong: #cfcfd4;
+
+    --text: #1a1a1a;
+    --text-muted: #666666;
+    --text-faint: #999999;
+
+    --shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "gothwad-accounts",
+  "version": "1.0.0",
+  "description": "Gothwad Accounts — central auth and unified identity provider for the Gothwad ecosystem",
+  "type": "module",
+  "scripts": {
+    "dev": "node --experimental-strip-types server.js",
+    "build": "node -e \"console.log('Build complete')\"",
+    "start": "node --experimental-strip-types server.js"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

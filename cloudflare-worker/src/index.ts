@@ -917,17 +917,48 @@ export default {
       }
 
       // ---------------------------------------------------------- signin
-      // Identifier = username ya full email, dono chalte hain.
+      // Identifier = username, full email, ya phone number, sab chalte hain.
       if (route === '/auth/signin' && request.method === 'POST') {
         const body = await readJson(request);
-        const identifier = String(body.identifier || '').trim().toLowerCase();
+        const rawIdentifier = String(body.identifier || '').trim();
         const password = String(body.password || '');
         const remember = body.remember === true;
 
-        if (!identifier || !password) return withCors(apiError('Username and password are required'));
+        if (!rawIdentifier || !password) return withCors(apiError('Username, email or phone and password are required'));
 
-        // "pawan" → "pawan@APP_DOMAIN"; "pawan@xyz.com" → waise hi rehne do
-        const email = identifier.includes('@') ? identifier : `${identifier}@${env.APP_DOMAIN}`;
+        let email = '';
+        const digitsOnly = rawIdentifier.replace(/[\s\-()]/g, '');
+        const isPhone = /^(\+)?[0-9]{7,15}$/.test(digitsOnly);
+
+        if (isPhone) {
+          // Phone number: profiles table mein dhundo
+          const phoneQuery = encodeURIComponent(rawIdentifier);
+          const profRes = await SB.adminFetch(
+            env,
+            `/rest/v1/profiles?phone_number=eq.${phoneQuery}&select=id,username`,
+          );
+          const profRows = (await profRes.json()) as Record<string, any>[];
+          if (Array.isArray(profRows) && profRows.length > 0 && profRows[0].username) {
+            email = `${profRows[0].username}@${env.APP_DOMAIN}`;
+          } else {
+            // Agar + prefix na ho ya ho, digits match try karo
+            const cleanDigits = digitsOnly.replace(/^\+/, '');
+            const fallbackRes = await SB.adminFetch(
+              env,
+              `/rest/v1/profiles?phone_number=ilike.*${cleanDigits}*&select=id,username`,
+            );
+            const fallbackRows = (await fallbackRes.json()) as Record<string, any>[];
+            if (Array.isArray(fallbackRows) && fallbackRows.length > 0 && fallbackRows[0].username) {
+              email = `${fallbackRows[0].username}@${env.APP_DOMAIN}`;
+            } else {
+              return withCors(apiError('Invalid phone number or password', 401));
+            }
+          }
+        } else {
+          const lower = rawIdentifier.toLowerCase();
+          // "pawan" → "pawan@APP_DOMAIN"; "pawan@xyz.com" → waise hi rehne do
+          email = lower.includes('@') ? lower : `${lower}@${env.APP_DOMAIN}`;
+        }
 
         const authRes = await fetch(SB.authUrl(env, '/token?grant_type=password'), {
           method: 'POST',

@@ -1,0 +1,15 @@
+/* =============================================================================
+   SIGN IN PAGE STYLES
+   ============================================================================= */
+
+@import "../../css/styles.css";
+
+/* Page-specific refinements for sign in */
+.auth-container-modern {
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
