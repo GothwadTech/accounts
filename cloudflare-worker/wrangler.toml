@@ -83,3 +83,9 @@ DEV_MODE = "true"
 # [routes]
 # pattern = "accounts.gothwadtech.com/api/*"
 # zone_name = "gothwadtech.com"
+
+# -----------------------------------------------------------------------------
+# PREVIEWS — Workers Builds branch deploys run `npx wrangler preview`, which
+# requires this block (empty is fine). Production `wrangler deploy` ignores it.
+# -----------------------------------------------------------------------------
+[previews]
