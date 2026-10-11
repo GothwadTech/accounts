@@ -31,6 +31,11 @@ JWT_SECRET=dev-only-jwt-secret-change-me
 # Frontend dev-server ke liye CORS allow
 ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 
+# Internal Mail → Accounts lookup (server-to-server)
+# Generate a strong random token (e.g. `openssl rand -hex 32`) and set the same value
+# in BOTH Accounts Worker (wrangler secret put MAIL_INTERNAL_TOKEN) and Mail Worker env.
+MAIL_INTERNAL_TOKEN=REPLACE_ME
+
 # Optional — password reset emails (resend.com)
 # RESEND_API_KEY=re_xxxxxxxx
 # RESEND_FROM=Gothwad Accounts <onboarding@resend.dev>

@@ -44,6 +44,8 @@ export interface Env {
   ALLOWED_ORIGINS?: string;
   /** Secret for signing OAuth access tokens (JWT HS256). `wrangler secret put JWT_SECRET` */
   JWT_SECRET?: string;
+  /** Shared secret for Mail → Accounts internal lookup. `wrangler secret put MAIL_INTERNAL_TOKEN` */
+  MAIL_INTERNAL_TOKEN?: string;
 }
 
 // -----------------------------------------------------------------------------
@@ -60,6 +62,42 @@ function json(data: unknown, status = 200, extraHeaders?: HeadersInit): Response
 /** Standard error shape: { error: "human readable message" } */
 function apiError(message: string, status = 400, extraHeaders?: HeadersInit): Response {
   return json({ error: message }, status, extraHeaders);
+}
+
+/**
+ * Internal endpoint helpers — NO CORS, no cookies, Cache-Control: no-store.
+ * Used for server-to-server calls like Mail → Accounts username existence check.
+ */
+function internalJson(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+    },
+  });
+}
+
+/**
+ * Constant-time token compare via SHA-256 digests.
+ * Prevents timing side-channel when checking MAIL_INTERNAL_TOKEN.
+ */
+async function timingSafeEqual(a: string, b: string): Promise<boolean> {
+  const enc = new TextEncoder();
+  const [hashA, hashB] = await Promise.all([
+    crypto.subtle.digest('SHA-256', enc.encode(a)),
+    crypto.subtle.digest('SHA-256', enc.encode(b)),
+  ]);
+  const arrA = new Uint8Array(hashA);
+  const arrB = new Uint8Array(hashB);
+  // Both SHA-256 digests are 32 bytes — compare in constant time.
+  let diff = 0;
+  for (let i = 0; i < arrA.length; i++) {
+    diff |= arrA[i] ^ arrB[i];
+  }
+  // Also ensure original lengths match (defense against hash collision edge, though negligible).
+  // Length check is not timing-sensitive after hash compare.
+  return diff === 0 && a.length === b.length;
 }
 
 /** Body se JSON padho, galat JSON par friendly error. */
@@ -819,6 +857,97 @@ async function sendResetEmail(env: Env, toEmail: string, resetLink: string): Pro
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    const pathname = url.pathname;
+    const route = pathname.startsWith('/api') ? pathname.slice(4) : pathname;
+
+    // =========================================================================
+    // INTERNAL ENDPOINT — server-to-server only (Mail → Accounts)
+    // GET /api/internal/usernames/:username  (route = /internal/usernames/:username)
+    // No CORS, no cookies, Cache-Control: no-store, constant-time auth.
+    // =========================================================================
+    if (route.startsWith('/internal/usernames/')) {
+      // Only GET allowed — cheap 405 for other methods, no CORS, no cookies.
+      if (request.method !== 'GET') {
+        console.log('[internal/usernames] status=405');
+        return internalJson({ error: 'method_not_allowed' }, 405);
+      }
+
+      // --- Auth: Authorization: Bearer <MAIL_INTERNAL_TOKEN> ---
+      const authHeader = request.headers.get('Authorization') || '';
+      const bearerPrefix = 'Bearer ';
+      let providedToken = '';
+      if (authHeader.startsWith(bearerPrefix)) {
+        providedToken = authHeader.slice(bearerPrefix.length).trim();
+      }
+
+      if (!env.MAIL_INTERNAL_TOKEN) {
+        console.error('[internal/usernames] MAIL_INTERNAL_TOKEN not configured');
+        return internalJson({ error: 'server_not_configured' }, 500);
+      }
+
+      if (!providedToken) {
+        console.log('[internal/usernames] status=401 (missing token)');
+        return internalJson({ error: 'unauthorized' }, 401);
+      }
+
+      let authorized = false;
+      try {
+        authorized = await timingSafeEqual(providedToken, env.MAIL_INTERNAL_TOKEN);
+      } catch {
+        authorized = false;
+      }
+
+      if (!authorized) {
+        console.log('[internal/usernames] status=401 (bad token)');
+        return internalJson({ error: 'unauthorized' }, 401);
+      }
+
+      // --- Extract and normalise username ---
+      const prefix = '/internal/usernames/';
+      let rawUsername = route.slice(prefix.length);
+
+      // If there is an extra slash (e.g. /internal/usernames/foo/bar), treat as bad_username
+      // Username regex does not allow '/', so we check before decode for simplicity.
+      // But we still decode first to handle encoded chars.
+      try {
+        rawUsername = decodeURIComponent(rawUsername);
+      } catch {
+        console.log('[internal/usernames] status=400 (bad encoding)');
+        return internalJson({ error: 'bad_username' }, 400);
+      }
+
+      // Normalise: trim() + toLowerCase() — usernames are stored lowercase.
+      const normalised = rawUsername.trim().toLowerCase();
+
+      // Validate format BEFORE any DB call — allowed: ^[a-z0-9][a-z0-9._-]{0,63}$
+      const INTERNAL_USERNAME_REGEX = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+      if (!INTERNAL_USERNAME_REGEX.test(normalised)) {
+        console.log('[internal/usernames] status=400');
+        return internalJson({ error: 'bad_username' }, 400);
+      }
+
+      // --- DB check: does profiles row exist? ---
+      try {
+        const res = await SB.adminFetch(
+          env,
+          `/rest/v1/profiles?username=eq.${encodeURIComponent(normalised)}&select=id`,
+        );
+        if (!res.ok) {
+          const errBody = await res.text().catch(() => '');
+          console.error(`[internal/usernames] DB error: ${res.status} ${errBody.slice(0, 200)}`);
+          return internalJson({ error: 'internal_error' }, 500);
+        }
+        const rows = (await res.json()) as unknown[];
+        const exists = Array.isArray(rows) && rows.length > 0;
+        // Do not log username — only status and counts (per spec).
+        console.log(`[internal/usernames] status=200 exists=${exists}`);
+        return internalJson({ exists }, 200);
+      } catch (e) {
+        console.error('[internal/usernames] exception', e);
+        return internalJson({ error: 'internal_error' }, 500);
+      }
+    }
+
     const corsHeaders = buildCorsHeaders(request, env);
 
     // CORS preflight
@@ -833,9 +962,6 @@ export default {
     };
 
     try {
-      const pathname = url.pathname;
-    const route = pathname.startsWith('/api') ? pathname.slice(4) : pathname;
-
       // -------------------------------------------------------------- health
       if (route === '/health' && request.method === 'GET') {
         return withCors(json({ status: 'ok', service: 'gothwad-auth-api', time: new Date().toISOString() }));

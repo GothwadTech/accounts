@@ -4,6 +4,13 @@
 > Woh chat **Mail repo** se connect honi chahiye (Accounts nahi).  
 > Secrets/API keys is prompt mein mat daalna.
 
+> **⚠️ UPDATE 2026-10-11 — This file's old plan is SUPERSEDED.**
+> Mail now uses its **OWN Supabase project** and does **NOT** read Accounts DB.
+> Inbound validation is via Accounts internal endpoint `GET /api/internal/usernames/:username`
+> (Bearer `MAIL_INTERNAL_TOKEN`). See `docs/MAIL_INTERNAL.md` in Accounts repo.
+> The section below still says "Same Supabase project as Accounts" — that line is outdated.
+> New Mail prompt should mention own Supabase + internal lookup.
+
 ---
 
 ## PROMPT START (yahan se copy)
@@ -25,9 +32,9 @@ Turn the existing **webmail UI** into a real app:
 1. **Remove all demo/mock inbox/sent/contacts data.** Empty states when DB empty.
 2. **Auth = Gothwad Accounts** (SSO). User already has `username@gothwadtech.com` as a **derived** email (DB stores **username only**, no email column).
 3. **Backend in THIS repo:** Cloudflare Worker(s) — REST for list/read/send/star/trash + **Email Worker** for inbound.
-4. **Same Supabase project as Accounts** (user will paste URL + keys in wrangler secrets / `.env.example` placeholders only — **never commit real keys**, never echo secrets in chat).
+4. **OWN Supabase project (NEW PLAN 2026-10-11 — supersedes old shared DB plan):** Mail uses its OWN Supabase project (user will paste URL + keys in wrangler secrets / `.env.example` placeholders only — **never commit real keys**, never echo secrets in chat). Accounts data stays in Accounts Supabase. For inbound mail validation, Mail calls Accounts internal endpoint `GET /api/internal/usernames/:username` with `Authorization: Bearer MAIL_INTERNAL_TOKEN` → `{"exists": bool}`. See Accounts `docs/MAIL_INTERNAL.md`.
 5. **Outbound mail: Resend** (free 3000/month). From: `{username}@{APP_DOMAIN}`.
-6. **Inbound: Cloudflare Email Routing** catch-all `*@gothwadtech.com` → Email Worker → `mail_messages`.
+6. **Inbound: Cloudflare Email Routing** catch-all `*@gothwadtech.com` → Email Worker → `mail_messages` (in Mail's OWN Supabase) after validating username via Accounts internal lookup.
 7. Write living docs: `AGENTS.md`, `PLAN.md`, `TASK.md`, `docs/SETUP.md`, `docs/MAIL.md`. Update TASK every session.
 
 ### What Gothwad Accounts already has (DO NOT rebuild)
