@@ -135,7 +135,7 @@ Standard **Authorization Code + PKCE (S256)**:
 refresh rotation, hashes-only in DB, exact redirect match, anti-enumeration
 forgot-password, reserved usernames.
 
-## 6. Database Schema (supabase/schema.sql)
+## 6. Database Schema (sql/ folder — numbered, idempotent)
 
 | Table | Purpose | RLS |
 |-------|---------|-----|
@@ -145,9 +145,15 @@ forgot-password, reserved usernames.
 | `app_authorizations` | User ↔ app grants + scopes | own rows |
 | `oauth_auth_codes` | One-time auth codes | **none** (worker-only) |
 | `oauth_refresh_tokens` | Hashed refresh tokens | **none** (worker-only) |
+| `account_activity` | Recent activity feed (sql/02) | select own only |
+| `storage.buckets[avatars]` | Profile photo bucket (sql/03) | public read, worker write |
 
-- **Trigger:** `on_auth_user_created` → profile auto-create (SECURITY DEFINER)
-- **Helpers:** `is_username_available()` (anon-callable), `get_my_app_grants()`
+- **Trigger:** `on_auth_user_created` → profile auto-create (SECURITY DEFINER,
+  DOB + gender bhi user_metadata se leta hai)
+- **Helpers:** `is_username_available()` (anon-callable), `get_my_app_grants()`,
+  `cleanup_old_activity()` (100 events per user limit)
+- **Files:** `sql/01_core_schema.sql` → `sql/02_account_activity.sql` →
+  `sql/03_avatars_storage.sql` (number-wise; idempotent — re-run safe)
 - Username CHECK regex: `^[a-z0-9](?:[a-z0-9._-]{1,22}[a-z0-9])?$`
 
 ## 7. API Endpoints (Worker)
@@ -158,6 +164,10 @@ forgot-password, reserved usernames.
 | GET | `/api/auth/check-username` | — | Username availability |
 | POST | `/api/auth/signup` | — | Create account + auto-login |
 | POST | `/api/auth/signin` | — | Login (remember me) |
+| GET | `/api/auth/activity` | session | Recent activity feed (30 events) |
+| POST | `/api/auth/avatar` | session | Profile photo upload (256×256 → Storage) |
+| GET | `/api/auth/export` | session | Poora account data JSON download |
+| POST | `/api/auth/delete-account` | session + password | Account permanently delete |
 | POST | `/api/auth/signout` | cookie | Logout + revoke |
 | GET | `/api/auth/me` | cookie | Current session (auto-refresh) |
 | POST | `/api/auth/forgot-password` | — | Reset link → recovery email |

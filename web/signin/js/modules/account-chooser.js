@@ -19,6 +19,7 @@ export function initAccountChooser() {
   const tabs = document.getElementById('auth-switcher-tabs');
   const listEl = document.getElementById('chooser-list');
   const sub = document.getElementById('auth-header-sub');
+  const title = document.getElementById('auth-header-title');
   if (!chooser || !listEl) return false;
 
   const accounts = listAccounts();
@@ -29,17 +30,21 @@ export function initAccountChooser() {
   chooser.classList.remove('hidden');
   if (signin) signin.classList.add('hidden');
   if (tabs) tabs.classList.add('hidden');
+  if (title) title.textContent = 'Choose an account';
   if (sub) {
     sub.textContent = params.get('next')
-      ? 'Choose a Gothwad Account to continue'
-      : 'Choose an account';
+      ? 'to continue to Gothwad Accounts'
+      : 'to continue to Gothwad Accounts';
   }
 
   listEl.innerHTML = accounts.map((a) => {
     const name = `${a.first_name || ''} ${a.last_name || ''}`.trim() || a.username;
+    const avatarInner = a.avatar_url
+      ? `<img src="${escapeAttr(a.avatar_url)}" alt="" />`
+      : escapeAttr(initialsFor(a));
     return `
       <button type="button" class="chooser-row" data-id="${escapeAttr(a.id)}">
-        <span class="avatar sm">${escapeAttr(initialsFor(a))}</span>
+        <span class="avatar">${avatarInner}</span>
         <span class="chooser-meta">
           <span class="chooser-name">${escapeAttr(name)}</span>
           <span class="chooser-email mono">${escapeAttr(a.email || a.username)}</span>
@@ -98,6 +103,8 @@ function showSigninForm() {
   document.getElementById('mode-chooser')?.classList.add('hidden');
   document.getElementById('mode-signin')?.classList.remove('hidden');
   document.getElementById('auth-switcher-tabs')?.classList.remove('hidden');
+  const title = document.getElementById('auth-header-title');
+  if (title) title.textContent = 'Sign in';
 }
 
 function escapeAttr(str) {

@@ -33,7 +33,7 @@ Har Gothwad app mein user ek baar "Gothwad Account" banayega aur ek hi
 login se sab apps use karega (SSO). Jaise Google: Gmail + Drive + YouTube
 ek account se.
 
-## 3. 📍 CURRENT STATUS (last updated: 2026-10-09)
+## 3. 📍 CURRENT STATUS (last updated: 2026-10-11)
 
 | Step | Kya | Status |
 |------|-----|--------|
@@ -46,10 +46,13 @@ ek account se.
 
 ### Kya ban chuka hai (summary)
 
-**Website (`web/`) — sirf 3 routes:**
-- `/signin` — login + forgot password + reset password (3 modes, ek page)
-- `/signup` — account creation (live username check, password strength)
-- `/me` — dashboard (Overview · Profile · Security · Connected apps)
+**Website (`web/`) — sirf 3 routes (Google Account jaisi UI, light+dark):**
+- `/signin` — login + account chooser + forgot/reset password (ek page)
+- `/signup` — account creation (name → DOB+gender → username → password → recovery)
+- `/me` — Google-myaccount-style dashboard: app bar (search + avatar switcher),
+  sidebar nav, sections: Home · Personal info · Security · Data & privacy ·
+  People & sharing · Connected apps. Edit dialogs (modal) + photo upload +
+  activity feed + data export + account delete — sab fully working.
 - Root `/` sirf smart redirect hai. Koi aur page NAHI banana bina user ki
   permission ke.
 
@@ -60,10 +63,15 @@ ek account se.
   (authorization_code + PKCE + refresh rotation), userinfo, app-info,
   decision, authorizations, revoke
 
-**Database (`supabase/schema.sql`):**
-- `profiles` (username-only!), `user_sessions`, `ecosystem_apps`,
-  `app_authorizations`, `oauth_auth_codes`, `oauth_refresh_tokens`
+**Database (`sql/` folder — NUMBERED files, idempotent):**
+- `sql/01_core_schema.sql` — `profiles` (username-only!), `user_sessions`,
+  `ecosystem_apps`, `app_authorizations`, `oauth_auth_codes`, `oauth_refresh_tokens`
+- `sql/02_account_activity.sql` — recent activity feed (Google-style)
+- `sql/03_avatars_storage.sql` — profile photo bucket (Supabase Storage)
 - RLS ON everywhere. Profile auto-create trigger on auth.users.
+- **Files number-wise run hoti hain; dobara run par error NAHI aata**
+  (details: `sql/README.md`). Naya SQL = naya numbered file (600-1000 lines max).
+- **SIRF Accounts ke Supabase project ke liye** — GrixChat/Indogram/Mail alag hain!
 
 ## 4. 🛠️ TECH STACK (100% FREE TIER — ZERO BUDGET!)
 
@@ -96,10 +104,13 @@ ek account se.
 5. **3 routes only:** `/signin`, `/signup`, `/me`. Naya page/route bina user
    ke explicit kehne ke mat banao. (OAuth consent Worker-rendered hai isliye
    extra page nahi chahiye.)
-6. **Design system:** Dark theme (GitHub-style `#0d1117` bg), **brand blue
-   `#2f80ed`** accent (asli logo se match), font **Inter**, real logo
-   `web/icon-192.png` (blue snowflake). CSS variables `web/css/styles.css`
-   mein hain — naya color inline mat likho.
+6. **Design system:** **Google Account jaisa** — LIGHT default + dark toggle
+   (`web/js/theme.js`, localStorage `gothwad-theme`). Colors: light
+   `#ffffff`/`#1a73e8`, dark `#131314`/`#8ab4f8` (Google palette). Font
+   **Roboto** (Google Sans fallback), icons **Material Symbols Outlined**,
+   pill buttons + Material-You cards. CSS variables `web/css/styles.css`
+   mein hain (generated — `node tools/bundle-css.js`) — naya color inline
+   mat likho.
 7. **Simple code:** Vanilla JS modules (frontend, NO framework/build step),
    single-file TypeScript (worker). Comments simple English/Hinglish mein.
 8. **Clean repo:** Junk files, build artifacts (`.wrangler/`, `node_modules/`,
@@ -134,7 +145,9 @@ accounts/
 │   ├── wrangler.toml         ← config [vars] + secrets list
 │   └── .dev.vars.example     ← local dev secrets template
 │
-├── supabase/schema.sql       🗄️ Copy-paste in Supabase SQL Editor
+├── sql/                      🗄️ Numbered SQL files (01 → 02 → …) + README.md
+│                             Idempotent: re-run safe, first-run safe.
+│                             ⚠️ Sirf Accounts wale Supabase project ke liye!
 │
 ├── tools/                    🛠️ Local dev (NEVER deploy)
 │   ├── dev-server.js         ← static + /api + /oauth proxy (node tools/dev-server.js)

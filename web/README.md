@@ -5,17 +5,18 @@ this folder directly. **Site ke sirf 3 routes hain** (pretty URLs = folders):
 
 ```
 web/
-├── signin/index.html    → /signin   Login + forgot-password + reset-password
-├── signup/index.html    → /signup   Create account (live username check)
-├── me/index.html        → /me       Account dashboard (4 tabs)
+├── signin/index.html    → /signin   Login + chooser + forgot/reset password
+├── signup/index.html    → /signup   Create account (name → DOB+gender → email → pw)
+├── me/index.html        → /me       Google-style dashboard (6 sections + search)
 ├── index.html           → /         Smart redirect (/me ya /signin)
 │
-├── css/styles.css       Design system — CSS variables (dark + brand blue #2f80ed)
+├── css/styles.css       Design system — Google-style light + dark (Roboto, #1a73e8)
 ├── js/
 │   ├── config.js        ⚙️ THE 1 FILE to edit: API_URL + APP_DOMAIN (Rule #1)
 │   ├── api.js           fetch wrapper (credentials: include, JSON, errors)
+│   ├── theme.js         light/dark toggle (localStorage: gothwad-theme)
 │   ├── common.js        session (getSession/requireAuth/signOut), toasts,
-│   │                    topbar, formatBytes/formatDate, passwordStrength
+│   │                    formatBytes/formatDate, passwordStrength
 │   ├── signin.js        /signin logic (3 modes: login / forgot / reset)
 │   ├── signup.js        /signup logic (live check + strength meter)
 │   └── me.js            /me logic (profile, password, devices, connected apps)

@@ -380,7 +380,7 @@ async function fetchProfile(env: Env, userId: string): Promise<Record<string, an
  * Profile ke saath API-friendly user object banao.
  * YAHAN email calculate hota hai — database mein sirf username hai! (Rule #2)
  */
-function presentUser(profile: Record<string, any> | null, authUser: Record<string, any> | null, env: Env) {
+function presentUser(profile: Record<string, any> | null | undefined, authUser: Record<string, any> | null | undefined, env: Env) {
   if (!profile && !authUser) return null;
   const username = profile?.username || '';
   return {
@@ -392,12 +392,53 @@ function presentUser(profile: Record<string, any> | null, authUser: Record<strin
     recovery_email: profile?.recovery_email || '',
     phone_number: profile?.phone_number || '',
     avatar_url: profile?.avatar_url || null,
+    date_of_birth: profile?.date_of_birth || null,   // Google-style personal info
+    gender: profile?.gender || null,                 // 'Male'|'Female'|'Other'|'Rather not say'|null
     two_factor_enabled: !!profile?.two_factor_enabled,
     storage_used_bytes: Number(profile?.storage_used_bytes || 0),
     storage_limit_bytes: Number(profile?.storage_limit_bytes || 16106127360),
     created_at: profile?.created_at || null,
   };
 }
+
+/**
+ * Account activity log mein ek entry likho (Google-style "Recent activity").
+ *
+ * Yeh feed dashboard ke Security / Data & privacy sections mein dikhti hai.
+ * FAIL-SAFE hai: agar logging fail ho jaye to bhi main request succeed hoti
+ * hai (await nahi kiya jaata zaroori nahi — best effort).
+ *
+ * Types (sql/02_account_activity.sql mein documented):
+ *   signup | signin | signout | password_change | password_reset |
+ *   profile_update | avatar_update | session_revoked | app_authorized | app_revoked
+ */
+async function logActivity(
+  env: Env,
+  userId: string,
+  type: string,
+  title: string,
+  detail?: string,
+  request?: Request,
+): Promise<void> {
+  try {
+    await SB.adminFetch(env, '/rest/v1/account_activity', {
+      method: 'POST',
+      body: JSON.stringify({
+        user_id: userId,
+        type,
+        title,
+        detail: detail || null,
+        ip_address: request?.headers.get('CF-Connecting-IP') || null,
+        user_agent: request?.headers.get('User-Agent') || null,
+      }),
+    });
+  } catch {
+    // Activity log fail = user ka kaam fail NAHI hona chahiye. Ignore.
+  }
+}
+
+/** GENDER ke allowed values (sql/01_core_schema.sql CHECK constraint se match). */
+const GENDER_VALUES = ['Male', 'Female', 'Other', 'Rather not say'];
 
 /**
  * Request se session verify karo.
@@ -715,75 +756,85 @@ function consentPageHtml(
 <html lang="en"><head>
 <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Authorize — Gothwad</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet" />
 <style>
+  /* Google-style light consent screen (dark mode prefers-color-scheme se) */
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Inter', system-ui, sans-serif; background: #0d1117; color: #e6edf3;
+  :root {
+    --bg: #ffffff; --card: #ffffff; --text: #202124; --muted: #5f6368;
+    --border: #dadce0; --chip: #f8f9fa; --link: #1a73e8; --blue: #1a73e8;
+    --blue-hover: #1765cc; --shadow: 0 1px 3px rgba(60,64,67,.3), 0 4px 8px 3px rgba(60,64,67,.15);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #131314; --card: #1e1f20; --text: #e3e3e3; --muted: #9aa0a6;
+      --border: #444746; --chip: #131314; --link: #8ab4f8; --blue: #8ab4f8;
+      --blue-hover: #aecbfa; --shadow: 0 1px 3px rgba(0,0,0,.5);
+    }
+  }
+  body { font-family: 'Google Sans', Roboto, system-ui, sans-serif; background: var(--bg); color: var(--text);
          min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
-  body::before { content: ''; position: fixed; inset: 0 0 auto 0; height: 280px;
-    background: radial-gradient(ellipse 80% 100% at 50% -30%, rgba(47,128,237,0.16), transparent 70%); }
-  .card { background: #161b22; border: 1px solid #2a3140; border-radius: 18px; padding: 36px 30px;
-          max-width: 460px; width: 100%; box-shadow: 0 8px 30px rgba(0,0,0,0.45); position: relative; }
-  .brand { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-bottom: 20px; }
-  .brand img { width: 52px; height: 52px; border-radius: 15px; box-shadow: 0 4px 14px rgba(47,128,237,0.35); }
-  .brand span { font-size: 22px; font-weight: 700; background: linear-gradient(120deg,#4da3ff,#2980eb);
-    -webkit-background-clip: text; background-clip: text; color: transparent; }
-  h1 { font-size: 19px; font-weight: 700; text-align: center; letter-spacing: -0.01em; }
-  .sub { text-align: center; color: #8b98a9; font-size: 13px; margin: 6px 0 20px; }
-  .user { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: #1c2330;
-          border: 1px solid #2a3140; border-radius: 12px; margin-bottom: 18px; }
-  .user .av { width: 38px; height: 38px; border-radius: 12px; background: linear-gradient(135deg,#2f80ed,#1b5fc1);
-              color: #fff; font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center; }
-  .user .n { font-size: 13px; font-weight: 600; } .user .e { font-size: 11px; color: #8b98a9; font-family: monospace; }
-  .label { font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
-           color: #6a7686; margin-bottom: 10px; }
-  .scope { display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: #1c2330;
-           border: 1px solid #2a3140; border-radius: 10px; margin-bottom: 8px; }
-  .scope-icon { width: 34px; height: 34px; border-radius: 10px; background: #0f141b; display: flex;
-                align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }
-  .scope-name { font-size: 12.5px; font-weight: 600; } .scope-desc { font-size: 11px; color: #8b98a9; margin-top: 1px; }
-  .note { background: rgba(47,128,237,0.12); border: 1px solid rgba(47,128,237,0.35); color: #a8c7f5;
-          border-radius: 10px; padding: 11px 13px; font-size: 11.5px; line-height: 1.55; margin: 16px 0; }
-  .row { display: grid; grid-template-columns: 1fr 1.4fr; gap: 10px; margin-top: 4px; }
-  .btn { padding: 12px 18px; border-radius: 12px; border: none; font-size: 13.5px; font-weight: 700;
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 28px; padding: 40px 34px;
+          max-width: 450px; width: 100%; box-shadow: var(--shadow); position: relative; }
+  .brand { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 22px; }
+  .brand img { width: 48px; height: 48px; border-radius: 50%; }
+  .brand span { font-size: 22px; color: var(--muted); font-weight: 400; }
+  h1 { font-size: 22px; font-weight: 400; text-align: center; letter-spacing: 0; }
+  .sub { text-align: center; color: var(--muted); font-size: 14px; margin: 8px 0 22px; }
+  .user { display: flex; align-items: center; gap: 14px; padding: 14px 16px; background: var(--chip);
+          border: 1px solid var(--border); border-radius: 100px; margin-bottom: 12px; }
+  .user .av { width: 40px; height: 40px; border-radius: 50%; background: var(--blue);
+              color: var(--card); font-weight: 500; font-size: 15px; display: flex; align-items: center; justify-content: center; }
+  .user .n { font-size: 14px; font-weight: 500; } .user .e { font-size: 12px; color: var(--muted); }
+  .label { font-size: 13px; font-weight: 500; color: var(--text); margin: 14px 0 10px; }
+  .scope { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: var(--chip);
+           border: 1px solid var(--border); border-radius: 16px; margin-bottom: 8px; }
+  .scope-icon { width: 36px; height: 36px; border-radius: 50%; background: var(--card); border: 1px solid var(--border);
+                display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }
+  .scope-name { font-size: 13px; font-weight: 500; } .scope-desc { font-size: 12px; color: var(--muted); margin-top: 1px; }
+  .note { background: var(--chip); border: 1px solid var(--border); color: var(--muted);
+          border-radius: 16px; padding: 12px 14px; font-size: 12px; line-height: 1.55; margin: 16px 0; }
+  .err { background: rgba(217,48,37,0.08); border: 1px solid rgba(217,48,37,0.35); color: #d93025;
+         border-radius: 16px; padding: 11px 13px; font-size: 12px; margin-bottom: 14px; display: none; }
+  .row { display: grid; grid-template-columns: 1fr 1.4fr; gap: 10px; margin-top: 6px; }
+  .btn { padding: 12px 18px; border-radius: 100px; border: none; font-size: 14px; font-weight: 500;
          font-family: inherit; cursor: pointer; width: 100%; transition: background 0.15s; }
-  .btn-ghost { background: transparent; color: #e6edf3; border: 1px solid #2a3140; }
-  .btn-ghost:hover { background: #21283a; }
-  .btn-primary { background: #2f80ed; color: #fff; box-shadow: 0 4px 16px rgba(47,128,237,0.3); }
-  .btn-primary:hover { background: #4da3ff; }
+  .btn-ghost { background: transparent; color: var(--blue); border: 1px solid var(--border); }
+  .btn-ghost:hover { background: var(--chip); }
+  .btn-primary { background: var(--blue); color: #fff; }
+  .btn-primary:hover { background: var(--blue-hover); box-shadow: var(--shadow); }
   .btn:disabled { opacity: 0.55; cursor: not-allowed; }
-  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.25);
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.3);
              border-top-color: #fff; border-radius: 50%; animation: sp 0.7s linear infinite; vertical-align: -2px; }
   @keyframes sp { to { transform: rotate(360deg); } }
-  .err { background: rgba(240,71,71,0.12); border: 1px solid rgba(240,71,71,0.35); color: #ff8a8a;
-         border-radius: 10px; padding: 11px 13px; font-size: 12px; margin-bottom: 14px; display: none; }
+  @media (prefers-color-scheme: dark) { .btn-primary { color: #062e6f; } }
 </style></head>
 <body>
   <div class="card">
     <div class="brand"><img src="/favicon.ico" onerror="this.style.display='none'" alt="Gothwad" /><span>Gothwad</span></div>
-    <h1>${esc(client.name)} wants to access your account</h1>
-    <p class="sub">Gothwad Account se sign in kar rahe ho</p>
+    <h1>${esc(client.name)} wants access to your account</h1>
+    <p class="sub">Sign in with your Gothwad Account</p>
 
     <div class="user">
       <div class="av">${esc(initials)}</div>
       <div><div class="n">${esc(displayName)}</div>
       <div class="e">${esc(username)}@${esc(env.APP_DOMAIN)}</div></div>
     </div>
-    <p class="sub" style="margin-top:-10px;margin-bottom:16px;">
+    <p class="sub" style="margin-top:-8px;margin-bottom:14px;">
       <a href="${esc(env.AUTH_HUB_URL)}/signin?choose=1&amp;next=${encodeURIComponent(authorizeUrl || '')}"
-         style="color:#4da3ff;text-decoration:none;font-weight:600;">Use another account</a>
+         style="color:var(--link);text-decoration:none;font-weight:500;">Use another account</a>
     </p>
 
     <div class="label">This will allow the app to:</div>
     ${scopeItems}
 
-    <div class="note">🔒 Gothwad kabhi aapka password app ke saath share nahi karta.
-      Access kabhi bhi <b>/me → Connected apps</b> se hata sakte ho.</div>
+    <div class="note">Gothwad never shares your password with this app.
+      You can remove access anytime from <b>My Account → Security</b>.</div>
 
     <div class="err" id="err"></div>
     <div class="row">
-      <button class="btn btn-ghost" id="deny">Deny</button>
-      <button class="btn btn-primary" id="allow">Allow access</button>
+      <button class="btn btn-ghost" id="deny">Cancel</button>
+      <button class="btn btn-primary" id="allow">Continue</button>
     </div>
   </div>
 <script>
@@ -828,11 +879,23 @@ async function sendResetEmail(env: Env, toEmail: string, resetLink: string): Pro
 
   const from = env.RESEND_FROM || `Gothwad Accounts <no-reply@${env.APP_DOMAIN}>`;
   const html = `
-    <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;">
-      <h2 style="color:#e94560;">🔥 Gothwad Accounts</h2>
-      <p>Aapne password reset ka request kiya hai. Neeche button dabao aur 30 minute ke andar naya password set karo:</p>
-      <p><a href="${resetLink}" style="display:inline-block;background:#e94560;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:bold;">Reset my password</a></p>
-      <p style="color:#888;font-size:12px;">Agar aapne yeh request nahi kiya, to yeh email ignore kar do. Koi action nahi chahiye.</p>
+    <div style="font-family:Roboto,Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;color:#202124;">
+      <div style="text-align:center;margin-bottom:24px;">
+        <div style="font-size:22px;color:#5f6368;font-weight:400;">Gothwad Accounts</div>
+      </div>
+      <h2 style="font-size:20px;font-weight:400;margin:0 0 16px;">Reset your password</h2>
+      <p style="font-size:14px;line-height:1.6;color:#5f6368;margin:0 0 24px;">
+        Hi, we received a request to reset the password for your Gothwad Account.
+        Click the button below and set a new password within 30 minutes.
+      </p>
+      <p style="text-align:center;margin:0 0 24px;">
+        <a href="${resetLink}" style="display:inline-block;background:#1a73e8;color:#ffffff;padding:12px 28px;border-radius:100px;text-decoration:none;font-weight:500;font-size:14px;">Reset password</a>
+      </p>
+      <p style="font-size:12px;color:#5f6368;line-height:1.6;margin:0;">
+        If you didn't ask to reset your password, you can ignore this email — no action needed.
+      </p>
+      <hr style="border:none;border-top:1px solid #dadce0;margin:24px 0;" />
+      <p style="font-size:11px;color:#9aa0a6;margin:0;">Gothwad Tech · This is an automated security email.</p>
     </div>`;
 
   const res = await fetch('https://api.resend.com/emails', {
@@ -1053,6 +1116,9 @@ export default {
         const password = String(body.password || '');
         const recoveryEmail = String(body.recovery_email || '').toLowerCase().trim();
         const phoneNumber = String(body.phone_number || '').trim();
+        // Google-style personal info (optional):
+        const dobRaw = String(body.date_of_birth || '').trim();
+        const gender = String(body.gender || '').trim();
 
         if (!firstName || !lastName) return withCors(apiError('First and last name are required'));
         if (!isValidUsername(username)) {
@@ -1061,6 +1127,16 @@ export default {
         if (RESERVED_USERNAMES.has(username)) return withCors(apiError('This username is reserved'));
         if (password.length < 8) return withCors(apiError('Password must be at least 8 characters'));
         if (!isValidEmail(recoveryEmail)) return withCors(apiError('A valid recovery email is required'));
+        // DOB validation: 'YYYY-MM-DD' aur aaj se pehle ki date honi chahiye
+        let dobOk = true;
+        if (dobRaw) {
+          const d = new Date(dobRaw);
+          dobOk = /^\d{4}-\d{2}-\d{2}$/.test(dobRaw) && !isNaN(d.getTime()) && d < new Date();
+        }
+        if (!dobOk) return withCors(apiError('Date of birth must be a valid past date (YYYY-MM-DD)'));
+        if (gender && !GENDER_VALUES.includes(gender)) {
+          return withCors(apiError('Gender must be one of: ' + GENDER_VALUES.join(', ')));
+        }
 
         // Username pehle se liya hua hai?
         const existing = await SB.adminFetch(
@@ -1087,6 +1163,8 @@ export default {
               last_name: lastName,
               recovery_email: recoveryEmail,
               phone_number: phoneNumber || null,
+              date_of_birth: dobRaw || null,
+              gender: gender || null,
             },
           }),
         });
@@ -1129,6 +1207,7 @@ export default {
         const sessionId = sessRows?.[0]?.id || null;
 
         const profile = await fetchProfile(env, login.user.id);
+        await logActivity(env, login.user.id, 'signup', 'Account created', `Welcome to Gothwad, ${firstName}!`, request);
         const cookies = sessionCookies(request, env, {
           access_token: login.access_token,
           refresh_token: login.refresh_token,
@@ -1209,6 +1288,8 @@ export default {
         const sessionId = sessRows?.[0]?.id || null;
 
         const profile = await fetchProfile(env, auth.user.id);
+        // Activity feed: "Signed in — Chrome on Windows" (Google-style)
+        await logActivity(env, auth.user.id, 'signin', 'Signed in', `${ua.browser} on ${ua.os || 'unknown OS'}`, request);
         const cookies = sessionCookies(request, env, {
           access_token: auth.access_token,
           refresh_token: auth.refresh_token,
@@ -1245,6 +1326,8 @@ export default {
             method: 'POST',
             headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${session.accessToken}` },
           }).catch(() => undefined);
+          // Activity feed (best-effort)
+          await logActivity(env, session.authUser!.id, 'signout', 'Signed out', undefined, request);
         }
 
         // Device session row hatao (frontend body mein session_id bhejta hai,
@@ -1406,6 +1489,20 @@ export default {
         if (!res.ok) {
           return withCors(apiError('Reset link is invalid or expired. Please request a new one.', 400));
         }
+
+        // Activity feed (agar token se user ka pata chal sake — best effort)
+        try {
+          const who = await fetch(SB.authUrl(env, '/user'), {
+            headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
+          });
+          if (who.ok) {
+            const me = (await who.json()) as Record<string, any>;
+            if (me?.id) {
+              await logActivity(env, me.id, 'password_reset', 'Password reset', 'Password was reset using the email recovery link', request);
+            }
+          }
+        } catch { /* ignore */ }
+
         return withCors(json({ ok: true, message: 'Password updated! You can now sign in.' }));
       }
 
@@ -1440,6 +1537,8 @@ export default {
         });
         if (!res.ok) return withCors(apiError('Could not change password', 400));
 
+        await logActivity(env, session.authUser!.id, 'password_change', 'Password changed', 'Your account password was updated', request);
+
         return withCors(json({ ok: true, message: 'Password changed successfully' }));
       }
 
@@ -1460,6 +1559,30 @@ export default {
         if (typeof body.phone_number === 'string') patch.phone_number = body.phone_number.trim() || null;
         if (typeof body.avatar_url === 'string') patch.avatar_url = body.avatar_url.trim() || null;
 
+        // Google-style personal info:
+        if (typeof body.date_of_birth === 'string') {
+          const dob = body.date_of_birth.trim();
+          if (dob) {
+            const d = new Date(dob);
+            const valid = /^\d{4}-\d{2}-\d{2}$/.test(dob) && !isNaN(d.getTime()) && d < new Date();
+            if (!valid) return withCors(apiError('Date of birth must be a valid past date (YYYY-MM-DD)'));
+            patch.date_of_birth = dob;
+          } else {
+            patch.date_of_birth = null; // khaali = remove
+          }
+        }
+        if (typeof body.gender === 'string') {
+          const g = body.gender.trim();
+          if (g && !GENDER_VALUES.includes(g)) {
+            return withCors(apiError('Gender must be one of: ' + GENDER_VALUES.join(', ')));
+          }
+          patch.gender = g || null;
+        }
+
+        if (Object.keys(patch).length === 0) {
+          return withCors(apiError('Nothing to update'));
+        }
+
         const userId = session.authUser!.id;
         const res = await SB.adminFetch(
           env,
@@ -1467,6 +1590,8 @@ export default {
           { method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify(patch) },
         );
         if (!res.ok) return withCors(apiError('Could not update profile', 400));
+
+        await logActivity(env, userId, 'profile_update', 'Personal info updated', Object.keys(patch).join(', '), request);
 
         const rows = (await res.json()) as Record<string, any>[];
         return withCors(json({ ok: true, user: presentUser(rows[0], session.authUser, env) }));
@@ -1502,6 +1627,7 @@ export default {
           `/rest/v1/user_sessions?id=eq.${encodeURIComponent(sessionId)}&user_id=eq.${encodeURIComponent(session.authUser!.id)}`,
           { method: 'DELETE' },
         );
+        await logActivity(env, session.authUser!.id, 'session_revoked', 'Device signed out', 'A device was signed out from your account', request);
         return withCors(json({ ok: true, message: 'Device signed out' }));
       }
 
@@ -1516,7 +1642,187 @@ export default {
           `/rest/v1/user_sessions?user_id=eq.${encodeURIComponent(session.authUser!.id)}&id=neq.${encodeURIComponent(currentSid)}`,
           { method: 'DELETE' },
         );
+        await logActivity(env, session.authUser!.id, 'session_revoked', 'All other devices signed out', 'Every other device was signed out from your account', request);
         return withCors(json({ ok: true, message: 'All other devices signed out' }));
+      }
+
+      // ------------------------------------------------------- activity
+      // GET /auth/activity — user ki recent activity (Google-style feed).
+      // Security + Data & privacy sections isse use karte hain.
+      if (route === '/auth/activity' && request.method === 'GET') {
+        const session = await resolveSession(request, env);
+        if (!session.ok) return withCors(apiError('Please sign in first', 401));
+
+        const res = await SB.adminFetch(
+          env,
+          `/rest/v1/account_activity?user_id=eq.${encodeURIComponent(session.authUser!.id)}&order=created_at.desc&limit=30`,
+        );
+        if (!res.ok) return withCors(apiError('Could not load activity', 400));
+        const rows = (await res.json()) as Record<string, any>[];
+        return withCors(json({ ok: true, activity: rows || [] }));
+      }
+
+      // --------------------------------------------------------- avatar
+      // POST /auth/avatar — profile photo upload (Supabase Storage "avatars").
+      // Body: { image_base64: "data:image/jpeg;base64,..." | raw base64 }
+      // Client photo ko 256x256 JPEG mein resize karke bhejta hai (canvas).
+      // Bucket: sql/03_avatars_storage.sql se bana hota hai.
+      if (route === '/auth/avatar' && request.method === 'POST') {
+        const session = await resolveSession(request, env);
+        if (!session.ok) return withCors(apiError('Please sign in first', 401));
+
+        const body = await readJson(request);
+        const raw = String(body.image_base64 || '');
+        if (!raw) return withCors(apiError('image_base64 is required'));
+
+        // data URL prefix hatao + mime pakdo
+        let b64 = raw;
+        let mime = String(body.mime || 'image/jpeg');
+        const m = raw.match(/^data:(image\/(?:jpeg|png|webp));base64,(.*)$/s);
+        if (m) {
+          mime = m[1];
+          b64 = m[2];
+        }
+        if (!['image/jpeg', 'image/png', 'image/webp'].includes(mime)) {
+          return withCors(apiError('Only JPEG, PNG or WebP images are allowed'));
+        }
+
+        // Base64 → bytes (Workers mein atob available hai)
+        let bytes: Uint8Array;
+        try {
+          const bin = atob(b64.replace(/\s+/g, ''));
+          bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        } catch {
+          return withCors(apiError('Invalid base64 image data'));
+        }
+        // 2 MB limit (bucket ka limit bhi yahi hai — sql/03)
+        if (bytes.length > 2 * 1024 * 1024) {
+          return withCors(apiError('Photo is too large (max 2 MB after resize)'));
+        }
+
+        const userId = session.authUser!.id;
+        const ext = mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : 'jpg';
+        const objectPath = `${userId}/avatar.${ext}`;
+
+        // Storage mein upload (x-upsert = same path par overwrite)
+        const upRes = await SB.adminFetch(
+          env,
+          `/storage/v1/object/avatars/${objectPath}`,
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': mime, 'x-upsert': 'true' },
+            body: bytes as unknown as BodyInit,
+          },
+        );
+        if (!upRes.ok) {
+          const errBody = await upRes.text().catch(() => '');
+          console.error(`[avatar] storage upload failed: ${upRes.status} ${errBody.slice(0, 200)}`);
+          return withCors(apiError('Could not save the photo. Is the "avatars" bucket created? (sql/03_avatars_storage.sql)', 400));
+        }
+
+        // Purani photo alag extension wali ho to delete karo (best effort)
+        try {
+          const profileBefore = await fetchProfile(env, userId);
+          const oldUrl = profileBefore?.avatar_url || '';
+          if (oldUrl && !oldUrl.endsWith(`/avatars/${objectPath}`)) {
+            const oldPath = oldUrl.split('/storage/v1/object/public/avatars/')[1];
+            if (oldPath) {
+              await SB.adminFetch(env, `/storage/v1/object/avatars/${oldPath}`, { method: 'DELETE' }).catch(() => undefined);
+            }
+          }
+        } catch { /* ignore */ }
+
+        // Public URL + profile patch
+        const publicUrl = `${env.SUPABASE_URL}/storage/v1/object/public/avatars/${objectPath}`;
+        const patchRes = await SB.adminFetch(
+          env,
+          `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`,
+          { method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ avatar_url: publicUrl }) },
+        );
+        if (!patchRes.ok) return withCors(apiError('Could not update profile photo', 400));
+
+        await logActivity(env, userId, 'avatar_update', 'Profile photo changed', undefined, request);
+
+        const rows = (await patchRes.json()) as Record<string, any>[];
+        return withCors(json({ ok: true, avatar_url: publicUrl, user: presentUser(rows[0], session.authUser, env) }));
+      }
+
+      // ---------------------------------------------------------- export
+      // GET /auth/export — apna poora data JSON file mein download karo
+      // (Google-style "Export your data" — Data & privacy section).
+      if (route === '/auth/export' && request.method === 'GET') {
+        const session = await resolveSession(request, env);
+        if (!session.ok) return withCors(apiError('Please sign in first', 401));
+
+        const userId = session.authUser!.id;
+        const [profileRes, sessionsRes, authzRes, activityRes] = await Promise.all([
+          SB.adminFetch(env, `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=*`),
+          SB.adminFetch(env, `/rest/v1/user_sessions?user_id=eq.${encodeURIComponent(userId)}&order=created_at.desc`),
+          SB.adminFetch(env, `/rest/v1/app_authorizations?user_id=eq.${encodeURIComponent(userId)}&select=app_id,scopes,granted_at,last_used_at`),
+          SB.adminFetch(env, `/rest/v1/account_activity?user_id=eq.${encodeURIComponent(userId)}&order=created_at.desc&limit=100`),
+        ]);
+
+        const profile = ((await profileRes.json()) as Record<string, any>[])[0] || null;
+        const exportData = {
+          export: 'gothwad-accounts',
+          version: 1,
+          generated_at: new Date().toISOString(),
+          profile: profile ? presentUser(profile, session.authUser, env) : null,
+          sessions: (await sessionsRes.json()) || [],
+          connected_apps: (await authzRes.json()) || [],
+          recent_activity: (await activityRes.json()) || [],
+        };
+
+        return withCors(
+          new Response(JSON.stringify(exportData, null, 2), {
+            status: 200,
+            headers: {
+              'Content-Type': 'application/json',
+              'Content-Disposition': 'attachment; filename="gothwad-account-data.json"',
+              'Cache-Control': 'no-store',
+            },
+          }),
+        );
+      }
+
+      // --------------------------------------------------- delete-account
+      // POST /auth/delete-account — account permanently delete (Google-style
+      // "Delete your account" — Data & privacy ka danger zone).
+      // Password dobara maangte hain = accidental delete se bachav.
+      if (route === '/auth/delete-account' && request.method === 'POST') {
+        const session = await resolveSession(request, env);
+        if (!session.ok) return withCors(apiError('Please sign in first', 401));
+
+        const body = await readJson(request);
+        const password = String(body.password || '');
+        if (!password) return withCors(apiError('Password is required to delete your account'));
+
+        // Password verify (password grant se)
+        const email = session.authUser!.email;
+        const verifyRes = await fetch(SB.authUrl(env, '/token?grant_type=password'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', apikey: env.SUPABASE_ANON_KEY },
+          body: JSON.stringify({ email, password }),
+        });
+        if (!verifyRes.ok) return withCors(apiError('Incorrect password', 400));
+
+        const userId = session.authUser!.id;
+
+        // Supabase Auth user delete → profiles cascade → sessions, authorizations,
+        // activity, oauth tokens — sab FK cascade se delete ho jaate hain.
+        const delRes = await SB.adminFetch(env, `/auth/v1/admin/users/${encodeURIComponent(userId)}`, {
+          method: 'DELETE',
+        });
+        if (!delRes.ok && delRes.status !== 404) {
+          console.error(`[delete-account] supabase delete failed: ${delRes.status}`);
+          return withCors(apiError('Could not delete the account. Please try again.', 500));
+        }
+
+        // Sab cookies clear + bolo ki frontend local data bhi clear kare
+        return withCors(
+          json({ ok: true, message: 'Account deleted' }, 200, clearCookies(request, env).map((c) => ['Set-Cookie', c] as [string, string])),
+        );
       }
 
       // ================================================================
@@ -1645,6 +1951,9 @@ export default {
         } else {
           await SB.adminFetch(env, '/rest/v1/app_authorizations', { method: 'POST', body: JSON.stringify(grantBody) });
         }
+
+        // Activity feed: app connected
+        await logActivity(env, session.authUser!.id, 'app_authorized', `App connected: ${client.name}`, `Scopes: ${scopes.join(', ')}`, request);
 
         // App par wapas: code + state ke saath (standard OAuth redirect)
         const backUrl = `${redirectUri}?code=${encodeURIComponent(code)}${state ? `&state=${encodeURIComponent(state)}` : ''}`;
@@ -1881,6 +2190,7 @@ export default {
           `/rest/v1/oauth_refresh_tokens?user_id=eq.${encodeURIComponent(uid)}&client_id=eq.${encodeURIComponent(appId)}`,
           { method: 'PATCH', body: JSON.stringify({ revoked: true }) },
         );
+        await logActivity(env, uid, 'app_revoked', 'App disconnected', `Access removed for ${appId}`, request);
         return withCors(json({ ok: true, message: 'App disconnected' }));
       }
 

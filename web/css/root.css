@@ -1,5 +1,5 @@
 /* =============================================================================
-   GOTHWAD ACCOUNTS — ROOT REDIRECT SPLASH
+   GOTHWAD ACCOUNTS — ROOT REDIRECT SPLASH (Google style: light & clean)
    ============================================================================= */
 
 .root-splash {
@@ -16,7 +16,7 @@
   align-items: center;
   justify-content: center;
   transform: translateY(-7vh);
-  border-radius: 20px;
+  border-radius: 50%;
   line-height: 0;
   animation: root-brand-pulse 1.6s ease-in-out infinite;
 }
@@ -30,8 +30,7 @@
   width: 72px;
   height: 72px;
   display: block;
-  border-radius: 20px;
-  box-shadow: 0 12px 32px rgba(4, 148, 244, 0.34);
+  border-radius: 50%;
 }
 
 @keyframes root-brand-pulse {

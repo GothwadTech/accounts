@@ -19,17 +19,18 @@
  * =============================================================================
  */
 
-const http = require('http');
-const fs = require('fs');
-const path = require('path');
-const crypto = require('crypto');
+import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
 
 const PORT = Number(process.env.MOCK_SUPABASE_PORT || 8788);
-const DATA_FILE = path.join(__dirname, '.mock-data.json');
+const DATA_FILE = path.join(import.meta.dirname, '.mock-data.json');
 
 // ------------------------------------------------------------------ storage
 let db = { users: [], profiles: [], sessions: [], accessTokens: {}, refreshTokens: {}, tokenPairs: {},
-  ecosystem_apps: [], app_authorizations: [], oauth_auth_codes: [], oauth_refresh_tokens: [] };
+  ecosystem_apps: [], app_authorizations: [], oauth_auth_codes: [], oauth_refresh_tokens: [],
+  account_activity: [], storage_objects: {} };
 
 function seedApps() {
   // Real Supabase jaisa seed — schema.sql se
@@ -69,6 +70,8 @@ function loadDb() {
   db.oauth_auth_codes = db.oauth_auth_codes || [];
   db.oauth_refresh_tokens = db.oauth_refresh_tokens || [];
   db.tokenPairs = db.tokenPairs || {};
+  db.account_activity = db.account_activity || [];   // sql/02 — recent activity feed
+  db.storage_objects = db.storage_objects || {};      // sql/03 — avatars bucket mock
   seedApps();
 }
 function saveDb() {
@@ -170,11 +173,17 @@ const server = http.createServer((req, res) => {
 
   if (req.method === 'OPTIONS') return send(res, 204);
 
-  let rawBody = '';
-  req.on('data', (c) => { rawBody += c; });
+  // Binary body (image upload) bhi support karo — buffers collect karo,
+  // warna UTF-8 string banate hi image corrupt ho jaati hai.
+  const chunks = [];
+  req.on('data', (c) => { chunks.push(c); });
   req.on('end', () => {
+    const buffer = Buffer.concat(chunks);
+    const isImage = String(req.headers['content-type'] || '').startsWith('image/');
+    const rawBody = isImage ? '' : buffer.toString('utf8');
     let body = {};
     try { body = rawBody ? JSON.parse(rawBody) : {}; } catch { /* empty */ }
+    const binaryBody = isImage ? buffer : null;
 
     try {
       // ============================================================ AUTH API
@@ -203,6 +212,8 @@ const server = http.createServer((req, res) => {
           recovery_email: meta.recovery_email || null,
           phone_number: meta.phone_number || null,
           avatar_url: null,
+          date_of_birth: meta.date_of_birth || null,
+          gender: meta.gender || null,
           two_factor_enabled: false,
           storage_used_bytes: 0,
           storage_limit_bytes: 16106127360,
@@ -211,6 +222,23 @@ const server = http.createServer((req, res) => {
         });
         saveDb();
         return send(res, 200, publicUser(user));
+      }
+
+      // ---- Admin: delete user (account deletion — FK cascade mock) ----
+      const adminUserMatch = pathname.match(/^\/auth\/v1\/admin\/users\/([a-f0-9-]+)$/);
+      if (adminUserMatch && req.method === 'DELETE') {
+        const userId = adminUserMatch[1];
+        db.users = db.users.filter((u) => u.id !== userId);
+        db.profiles = db.profiles.filter((p) => p.id !== userId);
+        db.sessions = db.sessions.filter((s) => s.user_id !== userId);
+        db.app_authorizations = db.app_authorizations.filter((a) => a.user_id !== userId);
+        db.oauth_auth_codes = db.oauth_auth_codes.filter((c) => c.user_id !== userId);
+        db.oauth_refresh_tokens = db.oauth_refresh_tokens.filter((t) => t.user_id !== userId);
+        db.account_activity = db.account_activity.filter((a) => a.user_id !== userId);
+        for (const [k, v] of Object.entries(db.accessTokens)) if (v === userId) delete db.accessTokens[k];
+        for (const [k, v] of Object.entries(db.refreshTokens)) if (v === userId) delete db.refreshTokens[k];
+        saveDb();
+        return send(res, 200, {});
       }
 
       // ---- Password grant (login) ----
@@ -305,6 +333,37 @@ const server = http.createServer((req, res) => {
           email: user.email,
           recovery_token: recoveryToken,
         });
+      }
+
+      // ==================================================== STORAGE API (avatars)
+      // sql/03_avatars_storage.sql ka mock — upload/serve/delete.
+      const storagePut = pathname.match(/^\/storage\/v1\/object\/avatars\/(.+)$/);
+      const storagePublicGet = pathname.match(/^\/storage\/v1\/object\/public\/avatars\/(.+)$/);
+      if (storagePut && req.method === 'PUT') {
+        if (!binaryBody) return send(res, 400, { msg: 'Expected binary image body' });
+        db.storage_objects[storagePut[1]] = {
+          mime: req.headers['content-type'] || 'image/jpeg',
+          base64: binaryBody.toString('base64'),
+          updated_at: new Date().toISOString(),
+        };
+        saveDb();
+        return send(res, 200, { Key: storagePut[1] });
+      }
+      if (storagePut && req.method === 'DELETE') {
+        delete db.storage_objects[storagePut[1]];
+        saveDb();
+        return send(res, 200, {});
+      }
+      if (storagePublicGet && (req.method === 'GET' || req.method === 'HEAD')) {
+        const obj = db.storage_objects[storagePublicGet[1]];
+        if (!obj) return send(res, 404, { msg: 'Object not found' });
+        const buf = Buffer.from(obj.base64, 'base64');
+        res.writeHead(200, {
+          'Content-Type': obj.mime,
+          'Content-Length': buf.length,
+          'Cache-Control': 'public, max-age=60',
+        });
+        return res.end(buf);
       }
 
       // ============================================================= REST API

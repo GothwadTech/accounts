@@ -4,8 +4,10 @@
 Chat, Notes, Calendar sab mein sign-in. (Google Account jaisa, but Gothwad!)
 
 > Status: **Step 1 ✅ + Step 2 ✅** — real auth (Supabase), JWT sessions, remember-me,
-> password reset, device management, dark UI + **OAuth 2.0 provider**
+> password reset, device management + **OAuth 2.0 provider**
 > ("Sign in with Gothwad" — authorization/token/userinfo endpoints, PKCE, scopes).
+> UI ab **Google Account jaisi** hai (light + dark toggle) — profile photo upload,
+> recent activity, data export, account delete sab fully working.
 > Next: Step 3 = Gothwad Mail.
 
 ---
@@ -33,15 +35,20 @@ accounts/
 │   ├── signup/              /signup   — Create account (live username check)
 │   ├── me/                  /me       — Account dashboard (profile, security, devices, apps)
 │   ├── index.html           Root → smart redirect (/me ya /signin)
-│   ├── css/styles.css       Dark theme design system (brand blue #2f80ed)
-│   └── js/                  config.js (THE 1 file to edit), api.js, common.js + page scripts
+│   ├── css/                 Google-style design system (light + dark, Roboto)
+│   └── js/                  config.js (THE 1 file to edit), api.js, common.js,
+│                            theme.js (light/dark toggle) + page scripts
 │
 ├── cloudflare-worker/       ⚡ Auth + OAuth API (Cloudflare Worker)
 │   ├── src/index.ts         /api/auth/* + /oauth/* routes (well commented)
 │   ├── wrangler.toml        Config + env vars (APP_DOMAIN yahan badlo)
 │   └── .dev.vars.example    Local development secrets template
 │
-├── supabase/schema.sql      🗄️ Database schema + RLS (copy-paste in Supabase)
+├── sql/                      🗄️ Database — NUMBERED SQL files (01 → 02 → 03…)
+│   ├── 01_core_schema.sql    Tables + RLS + triggers + seeds (idempotent!)
+│   ├── 02_account_activity.sql  Recent activity feed
+│   ├── 03_avatars_storage.sql   Profile photo bucket
+│   └── README.md             Run order + rules (pehle yeh padho)
 │
 ├── tools/                   🛠️ Local dev helpers (never deploy!)
 │   ├── dev-server.js        Static server + /api + /oauth proxy (pretty URLs)
@@ -97,6 +104,8 @@ Full architecture & vision: [ROADMAP.md](ROADMAP.md)
 1. **Domain hardcode mat karo** — `APP_DOMAIN` env var use karo (Rule #1)
 2. **DB mein sirf username** — email = `username@APP_DOMAIN` calculate hota hai (Rule #2)
 3. `SUPABASE_SERVICE_ROLE_KEY` = sirf Worker (secret) — frontend mein kabhi nahi
-4. Har Supabase table par **RLS ON** (schema.sql already does this)
+4. Har Supabase table par **RLS ON** (sql/ folder already does this)
+5. **SQL sirf Gothwad Accounts ke Supabase project mein** — GrixChat / Indogram /
+   Gothwad Mail ke apne alag Supabase projects hain (sql/README.md dekho)
 
 © 2026 Gothwad Tech · Built with 🔥

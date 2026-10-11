@@ -1,214 +1,509 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>My Account — Gothwad</title>
-  <meta name="description" content="Manage your Gothwad Account — profile, security, devices and connected apps." />
+  <meta name="description" content="Manage your Gothwad Account — profile, security, data and connected apps." />
   <link rel="icon" href="/favicon.ico" sizes="any" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="manifest" href="/manifest.json" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('gothwad-theme');
+        document.documentElement.setAttribute('data-theme', t === 'dark' ? 'dark' : 'light');
+      } catch (e) { /* light default */ }
+    })();
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=block" rel="stylesheet" />
   <link rel="stylesheet" href="/css/styles.css" />
   <link rel="stylesheet" href="/me/css/me.css" />
 </head>
 <body>
-  <div class="page">
-    <header id="topbar" class="topbar"></header>
 
-    <main class="main">
-      <!-- Auth check hone tak loading (taaki dashboard flash na ho) -->
-      <div id="auth-loading" class="container text-center" style="padding:70px 0;">
-        <span class="spinner dark" style="width:28px;height:28px;"></span>
-        <p class="text-sm text-muted mt-4">Loading your account…</p>
-      </div>
+  <!-- Auth check hone tak loader (dashboard flash na ho) -->
+  <div id="auth-loading" class="me-loading">
+    <span class="spinner" style="width:28px;height:28px;"></span>
+    <p>Loading your account…</p>
+  </div>
 
-      <div class="container hidden" id="dash-content">
+  <div id="dash-root" class="hidden">
 
-        <!-- ═══════════════════ WELCOME HEADER ═══════════════════ -->
-        <div class="dash-header">
-          <div class="avatar" id="user-avatar">…</div>
-          <div style="flex:1;min-width:220px;">
-            <h1 class="dash-title" id="user-name">Welcome</h1>
-            <div class="email-chip">
-              <span id="user-email" class="mono">…</span>
-              <span class="tag tag-accent">Unified ID</span>
-              <span class="tag tag-success">✓ Active</span>
+    <!-- ═══════════════════════ APP BAR (Google-style) ═══════════════════════ -->
+    <header class="me-appbar">
+      <div class="me-appbar-inner">
+        <button type="button" class="me-menu-btn" id="btn-menu" aria-label="Open menu">
+          <span class="msym">menu</span>
+        </button>
+        <span class="me-appbar-title">Gothwad Account</span>
+
+        <!-- Search (Google: "Search Gothwad Account") -->
+        <div class="me-search" id="me-search">
+          <span class="msym search-icon">search</span>
+          <input type="text" id="search-input" placeholder="Search Gothwad Account"
+                 autocomplete="off" aria-label="Search Gothwad Account" />
+          <div class="me-search-results hidden" id="search-results"></div>
+        </div>
+
+        <div class="me-appbar-actions">
+          <button type="button" class="theme-toggle" data-theme-toggle>
+            <span class="msym">dark_mode</span>
+          </button>
+          <!-- Avatar + account switcher menu -->
+          <div class="acct-switch" id="acct-switch">
+            <button type="button" class="acct-switch-btn" id="acct-switch-btn" aria-label="Account menu">
+              <span class="avatar" id="appbar-avatar">?</span>
+            </button>
+            <div class="acct-menu hidden" id="acct-menu" role="menu">
+              <div class="acct-menu-head">
+                <div class="acct-menu-name" id="menu-name">Account</div>
+                <div class="acct-menu-email mono" id="menu-email">…</div>
+              </div>
+              <div id="menu-accounts"></div>
+              <a class="acct-menu-item" id="link-add-account" href="/signin?add=1">
+                <span class="acct-plus"><span class="msym" style="font-size:18px;">person_add</span></span>
+                <span>Add another account</span>
+              </a>
+              <button type="button" class="acct-menu-item" id="btn-signout-one">
+                <span class="msym" style="font-size:18px;color:var(--text-muted);">logout</span>
+                <span>Sign out</span>
+              </button>
+              <button type="button" class="acct-menu-item danger hidden" id="btn-signout-all">
+                <span class="msym" style="font-size:18px;">logout</span>
+                <span>Sign out all accounts</span>
+              </button>
             </div>
           </div>
-          <button class="btn btn-ghost" id="btn-signout">Sign out</button>
         </div>
+      </div>
+    </header>
 
-        <!-- ═══════════════════ TABS ═══════════════════ -->
-        <div class="tabs" role="tablist">
-          <button class="tab active" data-tab="overview">Overview</button>
-          <button class="tab" data-tab="profile">Profile</button>
-          <button class="tab" data-tab="security">Security</button>
-          <button class="tab" data-tab="apps">Connected apps</button>
+    <div class="me-backdrop" id="me-backdrop"></div>
+
+    <!-- ═══════════════════════ BODY: sidebar + content ═══════════════════════ -->
+    <div class="me-body">
+
+      <!-- ─────────── SIDEBAR NAV (Google myaccount jaisa) ─────────── -->
+      <aside class="me-sidebar" id="me-sidebar">
+        <div class="me-sidebar-head">
+          <span class="msym" style="font-size:26px;color:var(--accent);">ac_unit</span>
+          <span>Gothwad Account</span>
         </div>
+        <nav class="me-nav" id="me-nav">
+          <button type="button" class="me-nav-item active" data-section="home">
+            <span class="msym">home</span><span>Home</span>
+          </button>
+          <button type="button" class="me-nav-item" data-section="personal">
+            <span class="msym">person</span><span>Personal info</span>
+          </button>
+          <button type="button" class="me-nav-item" data-section="security">
+            <span class="msym">shield_lock</span><span>Security</span>
+          </button>
+          <button type="button" class="me-nav-item" data-section="data">
+            <span class="msym">database</span><span>Data &amp; privacy</span>
+          </button>
+          <button type="button" class="me-nav-item" data-section="people">
+            <span class="msym">group</span><span>People &amp; sharing</span>
+          </button>
+          <button type="button" class="me-nav-item" data-section="apps">
+            <span class="msym">apps</span><span>Connected apps</span>
+          </button>
+        </nav>
+      </aside>
 
-        <!-- ═══════════════════ OVERVIEW ═══════════════════ -->
-        <section class="tab-panel active" id="tab-overview">
+      <!-- ─────────── CONTENT ─────────── -->
+      <main class="me-content" id="me-content">
+
+        <!-- ═══════════════ HOME ═══════════════ -->
+        <section class="me-section" id="section-home">
+          <div class="dash-header">
+            <span class="avatar xl" id="home-avatar">?</span>
+            <div>
+              <h1 class="dash-title" id="home-name">Welcome</h1>
+              <div class="email-chip">
+                <span id="home-email" class="mono">…</span>
+                <span class="tag tag-accent">Unified ID</span>
+                <span class="tag tag-success"><span class="msym" style="font-size:13px;">check_circle</span> Active</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Security checkup (Google-style nudge card) -->
+          <div class="card">
+            <div class="card-header-row">
+              <div>
+                <div class="card-title"><span class="msym">shield_lock</span> Security checkup</div>
+                <div class="card-subtitle" id="home-security-sub">Check your account security.</div>
+              </div>
+              <button type="button" class="btn btn-tonal" data-goto-section="security">Review</button>
+            </div>
+            <div id="home-security-issues" class="text-sm text-muted"></div>
+          </div>
+
+          <!-- Quick links -->
+          <div class="card">
+            <div class="card-title">Quick access</div>
+            <div class="card-subtitle">Aapke Gothwad Account ke common settings.</div>
+            <div class="quick-grid">
+              <button type="button" class="quick-item" data-goto-section="personal">
+                <span class="setting-icon"><span class="msym">person</span></span>
+                <span>Personal info<span class="quick-item-sub">Name, photo, birthday, gender</span></span>
+              </button>
+              <button type="button" class="quick-item" data-goto-section="security">
+                <span class="setting-icon"><span class="msym">password</span></span>
+                <span>Password<span class="quick-item-sub">Change your password</span></span>
+              </button>
+              <button type="button" class="quick-item" data-goto-section="data">
+                <span class="setting-icon"><span class="msym">cloud</span></span>
+                <span>Storage<span class="quick-item-sub">Drive &amp; Mail quota</span></span>
+              </button>
+              <button type="button" class="quick-item" data-goto-section="apps">
+                <span class="setting-icon"><span class="msym">apps</span></span>
+                <span>Connected apps<span class="quick-item-sub">Gothwad services &amp; products</span></span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Storage -->
+          <div class="card">
+            <div class="card-title"><span class="msym">cloud</span> Storage</div>
+            <div class="card-subtitle">Shared across Gothwad Drive &amp; Mail.</div>
+            <div class="storage-bar">
+              <div class="storage-fill" id="home-storage-fill" style="width:1%"></div>
+            </div>
+            <div class="flex justify-between text-xs text-muted">
+              <span id="home-storage-used">0 B used</span>
+              <span id="home-storage-limit">15 GB total</span>
+            </div>
+          </div>
+
+          <!-- Recent activity snippet -->
+          <div class="card">
+            <div class="card-header-row">
+              <div class="card-title"><span class="msym">history</span> Recent activity</div>
+              <button type="button" class="btn btn-text" data-goto-section="data">See all</button>
+            </div>
+            <div class="activity-list" id="home-activity">
+              <div class="text-muted text-sm">Loading…</div>
+            </div>
+          </div>
+
+          <!-- Stats -->
           <div class="stat-grid">
             <div class="stat">
               <div class="stat-label">Gothwad Email</div>
-              <div class="stat-value mono" id="stat-email">—</div>
+              <div class="stat-value mono" id="home-stat-email">—</div>
             </div>
             <div class="stat">
               <div class="stat-label">Username</div>
-              <div class="stat-value mono" id="stat-username">—</div>
+              <div class="stat-value mono" id="home-stat-username">—</div>
             </div>
             <div class="stat">
               <div class="stat-label">Member since</div>
-              <div class="stat-value" id="stat-created">—</div>
+              <div class="stat-value" id="home-stat-created">—</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ═══════════════ PERSONAL INFO ═══════════════ -->
+        <section class="me-section hidden" id="section-personal">
+          <div class="me-section-label">Privacy &amp; personalisation</div>
+          <h1 class="me-section-title">Personal info</h1>
+
+          <!-- Photo -->
+          <div class="card">
+            <div class="card-title">Photo</div>
+            <div class="card-subtitle">Aapki photo Gothwad services mein dikhti hai. PNG ya JPEG, 2 MB tak.</div>
+            <div class="photo-preview-wrap" style="justify-content:flex-start;">
+              <span class="avatar-photo-wrap">
+                <span class="avatar lg" id="pi-photo">?</span>
+                <span class="avatar-photo-overlay" id="pi-photo-edit" role="button" tabindex="0" aria-label="Change photo">
+                  <span class="msym">photo_camera</span>
+                </span>
+              </span>
+            </div>
+          </div>
+
+          <!-- Info rows -->
+          <div class="card">
+            <div class="card-title">Basic info</div>
+            <div class="card-subtitle">Yeh details poori Gothwad ecosystem mein shared hongi.</div>
+            <div id="alert-personal" class="alert alert-error hidden" style="margin-bottom:10px;"></div>
+
+            <button type="button" class="setting-row" data-dialog="name">
+              <span class="setting-icon"><span class="msym">person</span></span>
+              <span class="setting-main">
+                <span class="setting-label">Name</span>
+                <span class="setting-value" id="pi-name">—</span>
+              </span>
+              <span class="msym setting-chevron">chevron_right</span>
+            </button>
+
+            <button type="button" class="setting-row" data-dialog="dob">
+              <span class="setting-icon"><span class="msym">cake</span></span>
+              <span class="setting-main">
+                <span class="setting-label">Date of birth</span>
+                <span class="setting-value" id="pi-dob">Not set</span>
+              </span>
+              <span class="msym setting-chevron">chevron_right</span>
+            </button>
+
+            <button type="button" class="setting-row" data-dialog="gender">
+              <span class="setting-icon"><span class="msym">diversity_3</span></span>
+              <span class="setting-main">
+                <span class="setting-label">Gender</span>
+                <span class="setting-value" id="pi-gender">Not set</span>
+              </span>
+              <span class="msym setting-chevron">chevron_right</span>
+            </button>
+          </div>
+
+          <!-- Contact info -->
+          <div class="card">
+            <div class="card-title">Contact info</div>
+            <div class="card-subtitle">Aapse contact karne ke tareeke.</div>
+
+            <div class="setting-row" disabled title="Username change nahi ho sakta">
+              <span class="setting-icon"><span class="msym">alternate_email</span></span>
+              <span class="setting-main">
+                <span class="setting-label">Gothwad email</span>
+                <span class="setting-value mono" id="pi-email">—</span>
+              </span>
+              <span class="tag">Fixed</span>
+            </div>
+
+            <button type="button" class="setting-row" data-dialog="phone">
+              <span class="setting-icon"><span class="msym">call</span></span>
+              <span class="setting-main">
+                <span class="setting-label">Phone number</span>
+                <span class="setting-value" id="pi-phone">Not set</span>
+              </span>
+              <span class="msym setting-chevron">chevron_right</span>
+            </button>
+
+            <button type="button" class="setting-row" data-dialog="recovery">
+              <span class="setting-icon"><span class="msym">mark_email_read</span></span>
+              <span class="setting-main">
+                <span class="setting-label">Recovery email</span>
+                <span class="setting-value" id="pi-recovery">Not set</span>
+              </span>
+              <span class="msym setting-chevron">chevron_right</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- ═══════════════ SECURITY ═══════════════ -->
+        <section class="me-section hidden" id="section-security">
+          <div class="me-section-label">Sign in &amp; safety</div>
+          <h1 class="me-section-title">Security</h1>
+
+          <!-- How you sign in -->
+          <div class="card">
+            <div class="card-title"><span class="msym">key</span> How you sign in</div>
+            <div class="card-subtitle">Aapke Gothwad Account mein sign-in karne ke tareeke.</div>
+            <div id="alert-password" class="alert alert-error hidden" style="margin-bottom:10px;"></div>
+
+            <button type="button" class="setting-row" data-dialog="password">
+              <span class="setting-icon"><span class="msym">password</span></span>
+              <span class="setting-main">
+                <span class="setting-label">Password</span>
+                <span class="setting-value">Last changed: <span id="sec-pw-last">—</span></span>
+              </span>
+              <span class="msym setting-chevron">chevron_right</span>
+            </button>
+
+            <div class="setting-row twofa-row" disabled>
+              <span class="setting-icon"><span class="msym">phonelink_lock</span></span>
+              <span class="setting-main">
+                <span class="setting-label">2-Step Verification</span>
+                <span class="setting-value">Coming soon to Gothwad Accounts</span>
+              </span>
+              <span class="tag">Off</span>
+            </div>
+
+            <button type="button" class="setting-row" data-dialog="recovery">
+              <span class="setting-icon"><span class="msym">mark_email_read</span></span>
+              <span class="setting-main">
+                <span class="setting-label">Recovery email</span>
+                <span class="setting-value" id="sec-recovery">Not set</span>
+              </span>
+              <span class="msym setting-chevron">chevron_right</span>
+            </button>
+          </div>
+
+          <!-- Recent security activity -->
+          <div class="card">
+            <div class="card-header-row">
+              <div class="card-title"><span class="msym">history</span> Recent security activity</div>
+              <button type="button" class="btn btn-text" data-goto-section="data">See all</button>
+            </div>
+            <div class="card-subtitle">Aapke account se judi recent activity.</div>
+            <div class="activity-list" id="sec-activity">
+              <div class="text-muted text-sm">Loading…</div>
+            </div>
+          </div>
+
+          <!-- Your devices -->
+          <div class="card">
+            <div class="card-header-row">
+              <div>
+                <div class="card-title"><span class="msym">devices</span> Your devices</div>
+                <div class="card-subtitle">Jin devices par aap logged-in ho.</div>
+              </div>
+              <button type="button" class="btn btn-danger-text" id="btn-revoke-others">Sign out other devices</button>
+            </div>
+            <div class="device-list" id="device-list">
+              <div class="text-muted text-sm">Loading sessions…</div>
+            </div>
+          </div>
+
+          <!-- Signing in with other sites -->
+          <div class="card">
+            <div class="card-header-row">
+              <div>
+                <div class="card-title"><span class="msym">apps</span> Signing in with other sites</div>
+                <div class="card-subtitle">Jo apps aapke Gothwad Account se connected hain.</div>
+              </div>
+              <button type="button" class="btn btn-tonal" data-goto-section="apps">Manage</button>
+            </div>
+            <div id="sec-apps-summary" class="text-sm text-muted">Loading…</div>
+          </div>
+        </section>
+
+        <!-- ═══════════════ DATA & PRIVACY ═══════════════ -->
+        <section class="me-section hidden" id="section-data">
+          <div class="me-section-label">Data &amp; customisation</div>
+          <h1 class="me-section-title">Data &amp; privacy</h1>
+
+          <!-- Your data -->
+          <div class="card">
+            <div class="card-title"><span class="msym">cloud</span> Your Gothwad data</div>
+            <div class="card-subtitle">Aapka storage aur activity data.</div>
+            <div class="storage-bar">
+              <div class="storage-fill" id="dp-storage-fill" style="width:1%"></div>
+            </div>
+            <div class="flex justify-between text-xs text-muted">
+              <span id="dp-storage-used">0 B used</span>
+              <span id="dp-storage-limit">15 GB total</span>
+            </div>
+          </div>
+
+          <!-- Recent activity -->
+          <div class="card">
+            <div class="card-title"><span class="msym">history</span> Recent activity</div>
+            <div class="card-subtitle">Yeh data sirf aapke account mein hota hai (last 30 events).</div>
+            <div class="activity-list" id="dp-activity">
+              <div class="text-muted text-sm">Loading…</div>
+            </div>
+          </div>
+
+          <!-- Export -->
+          <div class="card">
+            <div class="card-header-row">
+              <div>
+                <div class="card-title"><span class="msym">download</span> Export your data</div>
+                <div class="card-subtitle">Apna poora account data (profile, devices, apps, activity) JSON file mein download karo.</div>
+              </div>
+              <button type="button" class="btn btn-tonal" id="btn-export">Download</button>
+            </div>
+          </div>
+
+          <!-- Danger zone -->
+          <div class="card card-danger">
+            <div class="card-title"><span class="msym">warning</span> Delete your Gothwad Account</div>
+            <div class="card-subtitle">
+              Account hamesha ke liye delete ho jayega — aapka username, email, profile aur saara data
+              remove ho jayega. Yeh action undo NAHI ho sakta.
+            </div>
+            <button type="button" class="btn btn-danger" id="btn-open-delete">Delete your account</button>
+          </div>
+        </section>
+
+        <!-- ═══════════════ PEOPLE & SHARING ═══════════════ -->
+        <section class="me-section hidden" id="section-people">
+          <div class="me-section-label">Contacts &amp; connections</div>
+          <h1 class="me-section-title">People &amp; sharing</h1>
+
+          <div class="card">
+            <div class="card-header-row">
+              <div>
+                <div class="card-title"><span class="msym">contacts</span> Gothwad Contacts</div>
+                <div class="card-subtitle">Aapke Gothwad Account ke contacts — sab apps mein sync.</div>
+              </div>
+              <span class="tag">Coming soon</span>
+            </div>
+            <div class="text-sm text-muted">
+              Gothwad Contacts abhi develop ho raha hai. Jab ready hoga, aapka contact list yahan
+              manage kar paoge — aur wahi list Mail, Drive aur Chat mein dikhega.
             </div>
           </div>
 
           <div class="card">
-            <div class="card-title">☁️ Storage</div>
-            <div class="card-subtitle">Shared across Gothwad Drive &amp; Mail (coming soon)</div>
-            <div class="storage-bar">
-              <div class="storage-fill" id="storage-fill" style="width:2%"></div>
+            <div class="card-title"><span class="msym">share</span> Sharing</div>
+            <div class="card-subtitle">Aap kaun-kaise share karte ho.</div>
+            <div class="info-row">
+              <span class="setting-icon"><span class="msym">alternate_email</span></span>
+              <span class="setting-main">
+                <span class="setting-label">Your Gothwad email</span>
+                <span class="setting-value mono" id="people-email">—</span>
+              </span>
             </div>
-            <div class="flex justify-between text-xs text-muted">
-              <span id="storage-used">0 B used</span>
-              <span id="storage-limit">15 GB total</span>
-            </div>
-          </div>
-
-          <div class="card mt-4">
-            <div class="card-title">🛡️ Account status</div>
-            <div class="card-subtitle">Aapki Gothwad identity protected aur ready hai.</div>
-            <div class="flex gap-2" style="flex-wrap:wrap;">
-              <span class="tag tag-success">✓ Email identity active</span>
-              <span class="tag tag-success">✓ Session secured (HttpOnly JWT)</span>
-              <span class="tag tag-accent" id="tag-2fa">2FA: not enabled</span>
+            <div class="info-row">
+              <span class="setting-icon"><span class="msym">group</span></span>
+              <span class="setting-main">
+                <span class="setting-label">Products connected</span>
+                <span class="setting-value" id="people-apps-count">—</span>
+              </span>
             </div>
           </div>
         </section>
 
-        <!-- ═══════════════════ PROFILE ═══════════════════ -->
-        <section class="tab-panel" id="tab-profile">
-          <div class="card" style="max-width:620px;">
-            <div class="card-title">Personal information</div>
-            <div class="card-subtitle">Yeh details poori Gothwad ecosystem mein shared hongi.</div>
+        <!-- ═══════════════ CONNECTED APPS ═══════════════ -->
+        <section class="me-section hidden" id="section-apps">
+          <div class="me-section-label">Third-party apps &amp; services</div>
+          <h1 class="me-section-title">Connected apps</h1>
 
-            <div id="alert-profile" class="alert alert-error hidden"></div>
-
-            <form id="profile-form">
-              <div class="row-2">
-                <div class="field">
-                  <label class="label" for="first_name">First name</label>
-                  <input class="input" id="first_name" type="text" />
-                </div>
-                <div class="field">
-                  <label class="label" for="last_name">Last name</label>
-                  <input class="input" id="last_name" type="text" />
-                </div>
-              </div>
-
-              <div class="field">
-                <label class="label">Username (cannot be changed)</label>
-                <div class="input-group">
-                  <input class="input mono" id="profile-username" type="text" disabled />
-                  <span class="suffix" id="domain-suffix-profile"></span>
-                </div>
-              </div>
-
-              <div class="field">
-                <label class="label" for="recovery_email">Recovery email</label>
-                <input class="input" id="recovery_email" type="email" />
-                <div class="hint">Password reset links isi address par jaate hain.</div>
-              </div>
-
-              <div class="field">
-                <label class="label" for="phone_number">Phone number</label>
-                <input class="input" id="phone_number" type="tel" />
-              </div>
-
-              <button type="submit" class="btn btn-primary" id="profile-save-btn">Save changes</button>
-            </form>
-          </div>
-        </section>
-
-        <!-- ═══════════════════ SECURITY ═══════════════════ -->
-        <section class="tab-panel" id="tab-security">
-          <div class="card" style="max-width:620px;">
-            <div class="card-title">🔑 Change password</div>
-            <div class="card-subtitle">Strong password rakho — kam se kam 8 characters.</div>
-
-            <div id="alert-password" class="alert alert-error hidden"></div>
-
-            <form id="password-form">
-              <div class="field">
-                <label class="label" for="current_password">Current password</label>
-                <input class="input" id="current_password" type="password" autocomplete="current-password" required />
-              </div>
-              <div class="row-2">
-                <div class="field">
-                  <label class="label" for="new_password">New password</label>
-                  <input class="input" id="new_password" type="password" autocomplete="new-password" required />
-                </div>
-                <div class="field">
-                  <label class="label" for="confirm_new_password">Confirm new password</label>
-                  <input class="input" id="confirm_new_password" type="password" autocomplete="new-password" required />
-                </div>
-              </div>
-              <button type="submit" class="btn btn-primary" id="password-save-btn">Update password</button>
-            </form>
-          </div>
-
-          <div class="card mt-4">
-            <div class="flex justify-between items-center gap-3" style="flex-wrap:wrap;">
-              <div>
-                <div class="card-title" style="margin-bottom:2px;">📱 Your devices</div>
-                <div class="card-subtitle" style="margin-bottom:0;">Jin devices par aap abhi logged-in ho.</div>
-              </div>
-              <button class="btn btn-danger" id="btn-revoke-others">Sign out other devices</button>
-            </div>
-            <div class="device-list mt-4" id="device-list">
-              <div class="text-muted text-sm">Loading sessions…</div>
-            </div>
-          </div>
-        </section>
-
-        <!-- ═══════════════════ CONNECTED APPS ═══════════════════ -->
-        <section class="tab-panel" id="tab-apps">
           <div class="card">
             <div class="card-title">Gothwad Services</div>
             <div class="card-subtitle">
               Yeh aapke account ke saath automatically connected rehte hain.
               Inhe revoke / disconnect nahi kiya ja sakta — sirf dekh sakte ho.
             </div>
-            <div class="device-list mb-6" id="gothwad-services-list" style="gap:10px;">
+            <div class="device-list" id="gothwad-services-list">
               <div class="text-muted text-sm">Loading…</div>
             </div>
+          </div>
 
+          <div class="card">
             <div class="card-title">Gothwad products (other brands)</div>
             <div class="card-subtitle">
               Yeh bhi Gothwad Tech ke apps hain — naam alag hai (Tube / PlusTube, GrixChat, Indogram).
               Inme Sign in with Gothwad se login hota hai; yahan se Disconnect kar sakte ho.
             </div>
-            <div class="device-list mb-6" id="connected-list" style="gap:10px;">
+            <div class="device-list" id="connected-list">
               <div class="text-muted text-sm">Loading…</div>
             </div>
+          </div>
 
-            <div class="label" style="text-transform:uppercase;letter-spacing:0.08em;font-size:10.5px;">
-              All products
-            </div>
+          <div class="card">
+            <div class="card-title">All products</div>
+            <div class="card-subtitle">Poora Gothwad ecosystem.</div>
             <div class="apps-grid" id="apps-grid">
               <div class="text-muted text-sm">Loading…</div>
             </div>
           </div>
         </section>
 
-      </div>
-    </main>
+      </main>
+    </div>
 
+    <!-- ═══════════════ FOOTER ═══════════════ -->
     <footer class="footer">
-      <div class="container footer-inner">
+      <div class="footer-inner container">
         <div class="flex items-center gap-2">
           <img src="/icon-192.png" alt="" style="width:16px;height:16px;border-radius:4px;" />
           <span>© 2026 Gothwad Tech · Gothwad Accounts</span>
@@ -216,12 +511,14 @@
         <div class="footer-links">
           <a href="/privacy">Privacy</a>
           <a href="/terms">Terms</a>
-          <a href="/signin">Sign in</a>
-          <a href="/signup">Create account</a>
+          <a href="https://gothwadtech.com" target="_blank" rel="noopener">About</a>
         </div>
       </div>
     </footer>
   </div>
+
+  <!-- ═══════════════════════ DIALOGS (Google-style modals) ═══════════════════════ -->
+  <div id="dialog-root"></div>
 
   <script type="module" src="/js/me.js"></script>
 </body>

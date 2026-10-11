@@ -3,12 +3,14 @@
  */
 
 import { redirectIfAuthed, setupPasswordEyes } from '../../js/common.js';
+import { mountThemeToggles } from '../../js/theme.js';
 import { GOTHWAD_CONFIG } from '../../js/config.js';
 import { initUsernameCheck } from './modules/username-check.js';
 import { initPasswordStrengthMeter } from './modules/password-strength.js';
 import { initSignupSubmit } from './modules/signup-submit.js';
 
 setupPasswordEyes();
+mountThemeToggles();
 redirectIfAuthed();
 
 const domainSuffix = document.getElementById('domain-suffix');
@@ -40,11 +42,12 @@ function clearError() {
 
 /* --------------------------------------------------- Multi-step navigation */
 const steps = [
-  { panel: document.getElementById('signup-step-1'), actions: document.getElementById('signup-step-1-actions'), desc: 'Basic information — enter your name and date of birth.' },
-  { panel: document.getElementById('signup-step-2'), actions: document.getElementById('signup-step-2-actions'), desc: 'Choose your Gothwad email address.' },
+  { panel: document.getElementById('signup-step-1'), actions: document.getElementById('signup-step-1-actions'), desc: 'Basic information — enter your name, date of birth and gender.' },
+  { panel: document.getElementById('signup-step-2'), actions: document.getElementById('signup-step-2-actions'), desc: 'Choose your Gothwad email address (username).' },
   { panel: document.getElementById('signup-step-3'), actions: document.getElementById('signup-step-3-actions'), desc: 'Create a strong password with letters, numbers & symbols.' },
   { panel: document.getElementById('signup-step-4'), actions: document.getElementById('signup-step-4-actions'), desc: 'Recovery information to keep your account safe.' },
 ];
+const dots = document.querySelectorAll('.step-dot');
 
 let currentStepIndex = 0;
 
@@ -55,17 +58,26 @@ function setStep(index) {
     if (s.panel) s.panel.classList.toggle('hidden', i !== index);
     if (s.actions) s.actions.classList.toggle('hidden', i !== index);
   });
+  dots.forEach((d, i) => d.classList.toggle('active', i === index));
   if (headerDesc && steps[index]) {
     headerDesc.textContent = steps[index].desc;
   }
 }
 
-// Step 1 -> Step 2
+// Step 1 -> Step 2 (Google: name + DOB + gender)
 document.getElementById('btn-step-1-next')?.addEventListener('click', () => {
   const firstName = document.getElementById('first_name')?.value.trim();
   const lastName = document.getElementById('last_name')?.value.trim();
+  const dob = document.getElementById('dob')?.value;
   if (!firstName || !lastName) {
     return showError('Please enter both your first and last name.');
+  }
+  if (!dob) {
+    return showError('Please enter your date of birth.');
+  }
+  const dobDate = new Date(dob);
+  if (isNaN(dobDate.getTime()) || dobDate >= new Date()) {
+    return showError('Date of birth must be a valid date in the past.');
   }
   setStep(1);
   usernameInput?.focus();
