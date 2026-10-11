@@ -33,7 +33,8 @@ ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 
 # Internal Mail → Accounts lookup (server-to-server)
 # Generate a strong random token (e.g. `openssl rand -hex 32`) and set the same value
-# in BOTH Accounts Worker (wrangler secret put MAIL_INTERNAL_TOKEN) and Mail Worker env.
+# in BOTH Accounts Worker (wrangler secret put MAIL_INTERNAL_TOKEN) and Mail Worker env
+# (wahan ka secret naam ACCOUNTS_INTERNAL_TOKEN hai — Worker "mail", not "gothwad-mail-api").
 MAIL_INTERNAL_TOKEN=REPLACE_ME
 
 # Optional — password reset emails (resend.com)

@@ -7,6 +7,23 @@ Accounts exposes a small internal endpoint for Mail's Worker to call.
 
 ---
 
+## ⚠️ Naming — pehle yeh padho (2026-10-11 update)
+
+Teen alag-alag naam hain, inhe **mix mat karo**:
+
+| Kya | Naam | Kahan |
+|-----|------|-------|
+| Mail ka **Cloudflare Worker** (dashboard) | **`mail`** | `GothwadTech/mail` repo ka `worker/wrangler.toml` → `name = "mail"` |
+| Accounts ka OAuth **`client_id`** (app id) | **`gothwad-mail`** | Accounts `ecosystem_apps` table + `web/js/gothwad-apps.js` |
+| Mail ke `/api/health` JSON ka `service` field | `gothwad-mail-api` | Sirf **cosmetic label** hai, Worker ka naam **nahi** |
+
+- Worker ka naam **`gothwad-mail-api` NAHI hai** — woh purani `wrangler.toml` ki galti thi (fix: `GothwadTech/mail` PR #7).
+- Worker **rename mat karo**: `mail` ke andar secrets (`ACCOUNTS_INTERNAL_TOKEN`, `SUPABASE_SERVICE_ROLE_KEY`, `RESEND_API_KEY`), route `mail.gothwadtech.com/api/*`, aur Email Routing catch-all — sab usi par hain.
+- `client_id` **`gothwad-mail`** waisa hi rehta hai (OAuth rows + Mail repo ke docs isi ka use karte hain) — yeh Worker ke naam se alag cheez hai.
+- `gothwad-mail-api` string sirf ek label ke roop mein `/api/health` JSON aur uske examples mein bachi hai. Agar kabhi confusion ho: **file (repo config) ko fix karo, dashboard ko nahi.**
+
+---
+
 ## Endpoint
 
 **Method and path:** `GET /api/internal/usernames/:username`
@@ -42,6 +59,10 @@ Accounts exposes a small internal endpoint for Mail's Worker to call.
 - Comparison is constant-time (SHA-256 digests compared with timing-safe loop).
 - Never hardcode, never commit, never log the secret.
 - Placeholder in `.dev.vars.example`: `MAIL_INTERNAL_TOKEN=REPLACE_ME`
+- **Mail side ka naam alag hai, value same:** Mail apne Worker mein isi token ko secret
+  **`ACCOUNTS_INTERNAL_TOKEN`** ke naam se padhta hai (dekho `GothwadTech/mail` →
+  `worker/src/config.ts`). Ek hi random value, do env names — dono jagah same honi chahiye,
+  warna Mail ko `401 unauthorized` milega.
 
 ---
 
@@ -75,15 +96,15 @@ Error shapes:
 
 ## Usage from Mail Worker
 
-Mail Worker (Cloudflare Email Routing → Email Worker) does:
+Mail Worker (`GothwadTech/mail` repo, deployed Worker name **`mail`** — Cloudflare Email Routing → same Worker's `email()` handler) does:
 
 ```ts
-// env.AUTH_HUB_URL = https://accounts.gothwadtech.com/api  (or https://accounts.gothwadtech.com/api is base, see below)
-// env.MAIL_INTERNAL_TOKEN = same secret as Accounts Worker
+// env.AUTH_HUB_URL       = https://api.gothwadtech.com   (server-to-server host — no trailing slash)
+// env.ACCOUNTS_INTERNAL_TOKEN = same value as Accounts' MAIL_INTERNAL_TOKEN
 
 const username = localPart.toLowerCase().trim(); // from `someone@gothwadtech.com`
-const res = await fetch(`${AUTH_HUB_URL}/internal/usernames/${encodeURIComponent(username)}`, {
-  headers: { Authorization: `Bearer ${MAIL_INTERNAL_TOKEN}` },
+const res = await fetch(`${AUTH_HUB_URL}/api/internal/usernames/${encodeURIComponent(username)}`, {
+  headers: { Authorization: `Bearer ${ACCOUNTS_INTERNAL_TOKEN}` },
 });
 if (!res.ok) {
   // 401 → misconfigured token, log error, maybe reject mail
@@ -96,14 +117,28 @@ if (!exists) {
 }
 ```
 
-Note: `AUTH_HUB_URL` in Mail should be the Accounts API base URL **without** trailing slash, e.g. `https://accounts.gothwadtech.com/api`.
+**`AUTH_HUB_URL` ka rule (yeh bug already ek baar ho chuka hai):**
+
+- Server-to-server (Mail Worker → Accounts Worker) base = **`https://api.gothwadtech.com`** —
+  Accounts Worker ka Custom Domain. **`accounts.gothwadtech.com/api` mat use karo.**
+- Kyun: same zone mein ek Worker ki `fetch()` dusre Worker ko uska **Route**
+  (`accounts.gothwadtech.com/api/*`) use karke call nahi kar sakti — request Pages origin
+  par jaati hai aur `200 text/html` lauta deti hai. Isi wajah se Mail ne pehle
+  `503 accounts_unexpected_response` dikhaya tha (fix: `GothwadTech/mail` PR #5).
+- Browser-facing links (sign-in redirect) ke liye Mail ek **alag** var rakhta hai:
+  `AUTH_SIGNIN_URL = https://accounts.gothwadtech.com`. Dono ko mix mat karo.
+- Dono bases **without trailing slash** rakho; Mail code khud bhi trailing slash strip karta hai.
 
 ---
 
 ## Manual Checks (replace placeholders with real values; never paste real token into repo or chat)
 
+Usi host se check karo jo Mail actually use karta hai — Accounts Worker ka Custom Domain.
+(`accounts.gothwadtech.com/api` bhi laptop/browser se chalta hai, lekin woh route hai —
+Worker-to-Worker calls ke liye `api.` host hi sahi hai.)
+
 ```bash
-BASE=https://accounts.gothwadtech.com/api
+BASE=https://api.gothwadtech.com/api
 TOKEN=your-secret-here
 
 # No token → 401

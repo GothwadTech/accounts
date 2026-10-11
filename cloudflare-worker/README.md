@@ -23,6 +23,7 @@ aur `/oauth/*` routes. Ek hi file: `src/index.ts` (well-commented TypeScript).
 | GET | `/api/auth/sessions` | Device sessions list |
 | POST | `/api/auth/sessions/revoke` | Ek device sign-out |
 | POST | `/api/auth/sessions/revoke-others` | Other devices sign-out |
+| GET | `/api/internal/usernames/:username` | **Internal** (Bearer `MAIL_INTERNAL_TOKEN`) — Mail → Accounts username check, `{"exists": bool}`. Mail side secret ka naam `ACCOUNTS_INTERNAL_TOKEN`, base `https://api.gothwadtech.com`. Details: [docs/MAIL_INTERNAL.md](../docs/MAIL_INTERNAL.md) |
 
 ## Local Development
 

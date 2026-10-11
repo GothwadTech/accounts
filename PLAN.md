@@ -44,12 +44,22 @@ Detail: [`TASK.md`](TASK.md) work log Session 2 · Integration: [`docs/OAUTH.md`
 **Goal:** Har user ko mile `username@gothwadtech.com` — receive + send emails.
 
 > **UPDATE (2026-10-11) — supersedes old plan:**
-> Gothwad Mail (GothwadTech/mail) now uses its **OWN Supabase project**.
-> It does **NOT** read Accounts DB (`public.profiles`). Accounts stays source of truth.
+> Gothwad Mail (GothwadTech/mail — alag repo, yahan `mail-web/` NAHI banega) now uses its
+> **OWN Supabase project**. It does **NOT** read Accounts DB (`public.profiles`).
+> Accounts stays source of truth.
 > Mail validates recipients via Accounts internal endpoint:
 > `GET /api/internal/usernames/:username` with `Authorization: Bearer MAIL_INTERNAL_TOKEN`
 > → `{"exists": true/false}`. See `docs/MAIL_INTERNAL.md`.
 > Old references to shared Supabase are outdated — Mail has its own DB.
+>
+> **NAMING (2026-10-11) — yadd rakho, yeh confusion already ek baar hui hai:**
+> - Mail ka Cloudflare Worker = **`mail`** (dashboard; `GothwadTech/mail` ka
+>   `worker/wrangler.toml` → `name = "mail"`). **`gothwad-mail-api` NAHI** — `/api/health`
+>   ka `service` field sirf cosmetic label hai. Worker rename mat karo.
+> - Accounts ka OAuth `client_id` = **`gothwad-mail`** (wohi rahega — Worker naam se alag cheez).
+> - Mail → Accounts server calls base = **`https://api.gothwadtech.com`**
+>   (`AUTH_HUB_URL`); browser links ke liye alag var `AUTH_SIGNIN_URL =
+>   https://accounts.gothwadtech.com`. `accounts.gothwadtech.com/api` sirf browser traffic ke liye.
 
 ### Architecture (free tier!)
 
@@ -57,7 +67,7 @@ Detail: [`TASK.md`](TASK.md) work log Session 2 · Integration: [`docs/OAUTH.md`
 INCOMING:
   Someone emails pawan@gothwadtech.com
       → Cloudflare Email Routing (MX record, free)
-      → Email Worker (route: *@gothwadtech.com)          ← Mail repo worker (OWN Supabase)
+      → Email Worker "mail" (route: *@gothwadtech.com)   ← Mail repo worker (OWN Supabase)
       → parse to local-part = username
       → CALL Accounts: GET /api/internal/usernames/:username (Bearer MAIL_INTERNAL_TOKEN)
       → if exists=false → drop (not a real Accounts user)
@@ -83,22 +93,28 @@ OUTGOING:
    + RLS: user sirf apni mails (to_username = apna username via JWT claim
      ya profiles join) — service_role se Email Worker insert karega.
    ```
-2. **Email Worker** (`cloudflare-email-worker/` — naya folder, naya wrangler):
+2. **Email Worker** (`GothwadTech/mail` repo → `worker/` — Accounts mein naya folder NAHI):
+   - Deployed Worker ka naam **`mail`** hai (wrangler.toml `name = "mail"`; rename mat karo)
    - `email(message, env)` handler (Cloudflare Email Workers API)
    - `message.to` se username nikalo (part before @)
+   - Accounts internal lookup se username verify karo (`AUTH_HUB_URL=https://api.gothwadtech.com`,
+     secret `ACCOUNTS_INTERNAL_TOKEN` — same value as Accounts' `MAIL_INTERNAL_TOKEN`)
    - Supabase mein insert (service_role — is worker ka apna secret)
    - Attachments: chhote files base64 JSONB mein, bade → skip/reject (500MB DB limit!)
 3. **DNS:** Cloudflare Email Routing enable → catch-all `*@gothwadtech.com`
    → Email Worker. (User ko dashboard mein karna padega — SETUP.md mein steps.)
-4. **Outgoing API:** accounts worker mein `POST /api/mail/send`
-   (session required, scope `mail`) → Resend se bhejo + `mail_messages`
-   (folder='sent') mein save. Rate limit basic lagao (free tier protection).
-5. **Webmail UI** — **`mail.gothwadtech.com`** (NEW app, NEW folder/repo:
-   `gothwad-mail` ya is repo mein `mail-web/` — user se poochho):
+4. **Outgoing API:** Mail ke apne worker mein `POST /api/mail/send` (session required)
+   → Resend se bhejo + `mail_messages` (folder='sent') mein save. Rate limit basic
+   lagao (free tier protection). Accounts worker mein mail bhejne ka koi endpoint
+   nahi banega — Accounts sirf identity deta hai.
+5. **Webmail UI** — **`mail.gothwadtech.com`** — ✅ decided: **alag repo
+   `GothwadTech/mail`** (Vite + React + TSX; is accounts repo mein koi `mail-web/`
+   folder nahi):
    - Pages: Inbox, Sent, Trash, Compose, Read mail
-   - Auth: "Sign in with Gothwad" (OAuth, scope `email mail.read mail.write`)
+   - Auth: "Sign in with Gothwad" (OAuth + cookie session)
      — accounts ke worker ka `/oauth/*` use hoga. `ecosystem_apps` mein
-     `gothwad-mail` already registered hai!
+     `gothwad-mail` client_id already registered hai! (client_id `gothwad-mail`,
+     Worker ka naam `mail` — dono alag hain, confuse mat karo.)
    - Realtime: Supabase Realtime subscription on mail_messages
    - Dark theme + brand blue (same design system — `web/css/styles.css`
      copy karke variables reuse karo)

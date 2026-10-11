@@ -1,3 +1,53 @@
+## 2026-10-11 — Session 26 — Mail Worker naming docs sync (`mail`, not `gothwad-mail-api`)
+
+**Report from the owner:** The Mail Worker ka naam **`gothwad-mail-api` nahi, `mail` hai**.
+Owner ne mail repo (`GothwadTech/mail`) mein config fix kar diya — PR #7:
+`worker/wrangler.toml` → `name = "mail"` (yeh entry likhte waqt PR **open** tha; merge hote hi
+main par aa jayega). Accounts repo mein bhi email/mail-related docs check karke update karne the.
+
+**Kya nikla (Accounts repo mein):**
+- `gothwad-mail-api` string Accounts repo mein kahin nahi thi — lekin Mail ke naam/env docs
+  kahin-kahin stale ya confusing the, aur `docs/MAIL_INTERNAL.md` ke "Usage from Mail Worker"
+  section mein **galat base URL** (`accounts.gothwadtech.com/api`) likha tha — wahi config
+  Mail ke `503 accounts_unexpected_response` bug ki jadd thi (mail repo PR #5 mein fix hua).
+
+**Done (docs-only, koi code change nahi):**
+- `docs/MAIL_INTERNAL.md`: naya "⚠️ Naming" section — 3 alag naam ka table: Worker = **`mail`**,
+  OAuth `client_id` = `gothwad-mail`, `gothwad-mail-api` = sirf `/api/health` ka cosmetic
+  `service` label. "Usage from Mail Worker" code block fix: base `https://api.gothwadtech.com`,
+  secret `ACCOUNTS_INTERNAL_TOKEN`; AUTH_HUB_URL vs AUTH_SIGNIN_URL ka rule + kyun Route fetch
+  nahi hota. Manual `curl` checks ka base bhi `api.gothwadtech.com` kar diya. Auth section mein
+  "ek value, do env names" note.
+- `docs/MAIL_BOOTSTRAP_PROMPT.md`: top banner mein naming block (Worker `mail`, client_id
+  `gothwad-mail`, AUTH_HUB_URL/AUTH_SIGNIN_URL, secret names); items 3–4 updated; "Worker layout"
+  section mein correct vars/secrets list (`worker/` + ek hi Worker `mail`); execution step 4 mein
+  AUTH_HUB_URL ka host rule.
+- `docs/MAIL_SESSION_FIX_PROMPT.md`: top par ✅ STATUS banner (PR #4/#5 merged + root cause),
+  verification bullet fix (Route vs Custom Domain).
+- `docs/SETUP.md`: server-to-server section mein Mail side ke vars/Worker naam ka note;
+  env table row (`MAIL_INTERNAL_TOKEN` ↔ Mail ka `ACCOUNTS_INTERNAL_TOKEN`); naya troubleshooting
+  entry — "Mail Worker ke naam ka confusion (gothwad-mail-api vs mail)".
+- `docs/ARCHITECTURE.md`: internal endpoint row + footer naming note (Worker `mail`, client_id
+  `gothwad-mail`, `api.` base).
+- `PLAN.md` Step 3: diagram mein `Email Worker "mail"`; task 2 (worker Accounts repo ka folder
+  nahi — Mail repo `worker/`), task 4 (send API Mail ke worker mein), task 5 (webmail = alag repo
+  `GothwadTech/mail` — decided, "user se poochho" hataya).
+- `cloudflare-worker/wrangler.toml`: comment `(e.g. Mail)` → `(e.g. the Mail Worker "mail")`.
+- `cloudflare-worker/README.md`: API table mein `/api/internal/usernames/:username` row + naam note.
+- `cloudflare-worker/.dev.vars.example`: `MAIL_INTERNAL_TOKEN` comment — Mail side ka naam
+  `ACCOUNTS_INTERNAL_TOKEN` bhi likha.
+- `AGENTS.md`: status summary mein Mail repo/Worker naming note.
+- `docs/README.md`: MAIL_INTERNAL.md ka description update.
+
+**Note:** OAuth `client_id` `gothwad-mail` jaan-boojh kar NAHI badla (sql/ecosystem_apps,
+`web/js/gothwad-apps.js`, mail repo ke docs — sab isi ko use karte hain). Sirf Worker ka naam
+`mail` hai, app id nahi.
+
+**Verify:** `grep -rni "gothwad-mail-api" . --exclude-dir=.git` → sirf jaan-boojh kar likhe gaye
+naming/clarification notes milte hain (label + "yeh Worker ka naam nahi hai" wale).
+
+---
+
 ## 2026-10-11 — Mail "could not verify your sign-in" (Accounts side)
 
 **Evidence:** Browser network shows `gothwad_at`/`gothwad_rt`/`gothwad_sid` sent to
@@ -23,7 +73,8 @@ is the failing step.
 >
 > Rules & working style: [`AGENTS.md`](AGENTS.md) · Master plan: [`PLAN.md`](PLAN.md)
 
-**Last updated:** 2026-10-11 (Session 24 — Google-style UI redesign + sql/ folder + activity/photo/export/delete)
+**Last updated:** 2026-10-11 (Session 26 — Mail Worker naming docs sync: `mail`, not `gothwad-mail-api`;
+Session 24 — Google-style UI redesign + sql/ folder + activity/photo/export/delete)
 
 ---
 
@@ -335,8 +386,9 @@ numbered idempotent files (supabase/ folder merged + removed).
 
 ### 2. STEP 3 — GOTHWAD MAIL 🔜 (agla major feature)
 - [ ] Cloudflare Email Routing: `*@gothwadtech.com` → Email Worker
-- [ ] Email Worker (naya worker ya existing mein): inbound email parse →
-      Supabase DB (mail_messages table — username ke hisaab se)
+      (**Worker ka naam `mail`** — alag repo `GothwadTech/mail`, `worker/`; `gothwad-mail-api` nahi)
+- [ ] Email Worker (`mail`): inbound email parse →
+      Supabase DB (mail_messages table — username ke hisaab se, Mail ke apne Supabase mein)
 - [ ] Outgoing mail via Resend API (from: `username@gothwadtech.com`)
 - [ ] Webmail UI — **yeh NAYI app hogi: `mail.gothwadtech.com`** (accounts ki
       3-route rule sirf accounts site ke liye hai!)
@@ -377,7 +429,9 @@ numbered idempotent files (supabase/ folder merged + removed).
   `email_confirm: true` karta hai)
 
 **Open (user se poochna jab aaye):**
-- ❓ Mail ka webmail UI kaisa chahiye (Gmail-jaisa minimal?) — Step 3 start par
+- ✅ **Decided (2026-10-11):** Webmail UI = alag repo `GothwadTech/mail` (Vite + React,
+  `mail.gothwadtech.com`), apna Cloudflare Worker **`mail`** + apna Supabase project.
+  Accounts repo mein `mail-web/` folder NAHI banega. (`gothwad-mail` sirf OAuth client_id hai.)
 - ❓ Kya GrixChat web app hai ya mobile/Telegram? (Step 4 integration approach)
 - ❓ Resend domain verification kab karoge (emails `no-reply@gothwadtech.com` se)?
 

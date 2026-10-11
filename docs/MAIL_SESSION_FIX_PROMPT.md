@@ -1,5 +1,16 @@
 # Prompt for the Mail repo maintainer — fix "Mail could not verify your sign-in"
 
+> **✅ STATUS (2026-10-11): DONE — both sides merged.**
+> Mail repo: PR #4 (session status mapping: 3xx/HTML → `503 accounts_unexpected_response`,
+> invalid username → `503 accounts_user_invalid`) + PR #5 (`AUTH_HUB_URL` for server calls,
+> `AUTH_SIGNIN_URL` for browser links). Accounts repo: `/api/auth/me` username fallback +
+> `503 profile_unavailable`.
+> **Root cause of the 503 class:** `AUTH_HUB_URL` pointed at `accounts.gothwadtech.com/api`,
+> a Worker **Route** on a Pages host — same-zone Worker-to-Worker fetches do not run a Worker
+> behind a Route, so the Pages origin answered HTML. Correct server base =
+> **`https://api.gothwadtech.com`** (Accounts Worker Custom Domain). See `docs/MAIL_INTERNAL.md`.
+> This file is kept as reference for future session-verification work.
+
 Copy everything below the line into the Mail repo's AI agent or give it to the maintainer.
 
 ---
@@ -71,7 +82,7 @@ Update `docs/MAIL.md` "If Accounts keeps showing the chooser" with the new statu
 1. Browser (same profile as the failing user), open `https://accounts.gothwadtech.com/api/auth/me`. Check **only** the status code, that it is JSON, and `authenticated` / `user.username`. Do not share the body (it contains tokens).
 2. Reload `https://mail.gothwadtech.com`. Expected: inbox loads (200). If not, the Network tab `/api/session` status and JSON `error` code now say exactly which branch failed:
    - `accounts_user_invalid` → the Accounts profile row for that user is missing/has no username. Accounts side fix (already merged in `GothwadTech/accounts`) falls back to JWT metadata; if still failing, check the `profiles` row.
-   - `accounts_unexpected_response` → `/api/*` route for `accounts.gothwadtech.com` is not hitting the Accounts Worker, or Accounts is redirecting. Check Cloudflare Worker route `accounts.gothwadtech.com/api/*`.
+   - `accounts_unexpected_response` → `AUTH_HUB_URL` is a host that does not reach the Accounts Worker (e.g. the Pages host `accounts.gothwadtech.com/api`, or a Route instead of a Custom Domain), or Accounts is redirecting. Fix: `AUTH_HUB_URL=https://api.gothwadtech.com` (Custom Domain, Worker-to-Worker ke liye). Pages route `accounts.gothwadtech.com/api/*` sirf browser traffic ke liye hai.
    - `auth_unavailable` → Accounts worker down or `AUTH_HUB_URL` wrong.
 3. Never paste cookie values, JWTs, or refresh tokens into the PR, issues, or chat.
 
