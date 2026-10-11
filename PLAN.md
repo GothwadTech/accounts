@@ -39,9 +39,17 @@ Detail: [`TASK.md`](TASK.md) work log Session 2 · Integration: [`docs/OAUTH.md`
 
 ---
 
-## 🔜 STEP 3 — GOTHWAD MAIL (AGLA KAAM)
+## 🔜 STEP 3 — GOTHWAD MAIL (AGLA KAAM) — UPDATED PLAN 2026-10-11
 
 **Goal:** Har user ko mile `username@gothwadtech.com` — receive + send emails.
+
+> **UPDATE (2026-10-11) — supersedes old plan:**
+> Gothwad Mail (GothwadTech/mail) now uses its **OWN Supabase project**.
+> It does **NOT** read Accounts DB (`public.profiles`). Accounts stays source of truth.
+> Mail validates recipients via Accounts internal endpoint:
+> `GET /api/internal/usernames/:username` with `Authorization: Bearer MAIL_INTERNAL_TOKEN`
+> → `{"exists": true/false}`. See `docs/MAIL_INTERNAL.md`.
+> Old references to shared Supabase are outdated — Mail has its own DB.
 
 ### Architecture (free tier!)
 
@@ -49,16 +57,18 @@ Detail: [`TASK.md`](TASK.md) work log Session 2 · Integration: [`docs/OAUTH.md`
 INCOMING:
   Someone emails pawan@gothwadtech.com
       → Cloudflare Email Routing (MX record, free)
-      → Email Worker (route: *@gothwadtech.com)          ← naya worker
-      → parse (from, to, subject, body, attachments)
-      → Supabase table mail_messages (to_username = "pawan")
-      → webmail realtime mein dikhata hai (Supabase Realtime)
+      → Email Worker (route: *@gothwadtech.com)          ← Mail repo worker (OWN Supabase)
+      → parse to local-part = username
+      → CALL Accounts: GET /api/internal/usernames/:username (Bearer MAIL_INTERNAL_TOKEN)
+      → if exists=false → drop (not a real Accounts user)
+      → if exists=true  → Supabase table mail_messages (to_username = "pawan") in MAIL's own Supabase
+      → webmail realtime mein dikhata hai (Supabase Realtime on Mail project)
 
 OUTGOING:
   User compose kare webmail mein
-      → API call (yehi accounts worker ya mail worker)
+      → API call (Mail worker)
       → Resend API (from: pawan@gothwadtech.com, free 3000/month)
-      → copy mail_sent table mein save
+      → copy mail_messages (folder='sent') in Mail's own Supabase
 ```
 
 ### Tasks (execution order)

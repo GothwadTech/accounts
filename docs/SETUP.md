@@ -241,6 +241,7 @@ Poora guide: **[docs/OAUTH.md](OAUTH.md)**
 | `SUPABASE_ANON_KEY` | Worker → Variables and Secrets (Secret) | ⚠️ semi | Supabase apikey header |
 | `SUPABASE_SERVICE_ROLE_KEY` | Worker → Variables and Secrets (Secret) | ✅ YES | Admin DB/auth operations |
 | `JWT_SECRET` | Worker → Variables and Secrets (Secret) | ✅ YES | OAuth access tokens sign (Step 2C) |
+| `MAIL_INTERNAL_TOKEN` | Worker → Variables and Secrets (Secret) | ✅ YES | Mail → Accounts internal lookup (`/api/internal/usernames/:username`) — shared secret |
 | `RESEND_API_KEY` | Worker → Variables and Secrets (Secret) | ✅ YES | Reset emails bhejne ke liye |
 | `RESEND_FROM` | wrangler.toml `[vars]` | ❌ | Email "From" address |
 | `DEV_MODE` | wrangler.toml `[vars]` | ❌ | Dev conveniences on/off |

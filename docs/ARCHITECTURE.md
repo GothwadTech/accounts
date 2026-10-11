@@ -174,9 +174,11 @@ forgot-password, reserved usernames.
 | GET | `/oauth/userinfo` | Bearer | Profile (scoped) |
 | GET | `/oauth/authorizations` | cookie | Connected apps (dashboard) |
 | POST | `/oauth/revoke` | cookie | Disconnect app |
+| GET | `/api/internal/usernames/:username` | Bearer `MAIL_INTERNAL_TOKEN` | **Internal** — Mail → Accounts username existence check (no CORS, no cookies, `{"exists": bool}`) |
 
 Route matching: `/api/x` aur `/x` dono chalte hain (frontend `/api` prefix
-use karta hai; external OAuth apps `/oauth/*`).
+use karta hai; external OAuth apps `/oauth/*`). Internal endpoint `/api/internal/*`
+is server-to-server only — no CORS, no cookies, `Cache-Control: no-store`, constant-time token compare.
 
 ## 8. Frontend Design System
 
@@ -210,7 +212,8 @@ Dev mein: `tools/dev-server.js` (port 3000) `/api`+`/oauth` ko
 
 ---
 
-> **Future steps ke liye:** Mail (Step 3) ka design `PLAN.md` mein hai —
-> naya Email Worker + `mail_messages` table + `mail.gothwadtech.com` webmail.
-> Architecture patterns (username-derived email, RLS, worker-only secrets)
-> wahi rahenge.
+> **Future steps ke liye:** Mail (Step 3) ka design `PLAN.md` aur `docs/MAIL_INTERNAL.md` mein hai.
+> **Updated plan (2026-10-11):** Mail uses its **OWN Supabase project** — it does NOT read Accounts DB.
+> Inbound mail validation is done via `GET /api/internal/usernames/:username` (Bearer `MAIL_INTERNAL_TOKEN`).
+> Old docs that said Mail shares Accounts Supabase are superseded.
+> Architecture patterns (username-derived email, RLS, worker-only secrets) wahi rahenge.
