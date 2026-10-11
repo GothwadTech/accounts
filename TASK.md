@@ -7,7 +7,7 @@
 >
 > Rules & working style: [`AGENTS.md`](AGENTS.md) · Master plan: [`PLAN.md`](PLAN.md)
 
-**Last updated:** 2026-10-10 (Session 23 — Gothwad Services vs products; Mail still next)
+**Last updated:** 2026-10-11 (Session 24 — Google-style UI redesign + sql/ folder + activity/photo/export/delete)
 
 ---
 
@@ -20,12 +20,61 @@
 | 3 | Gothwad Mail — `username@gothwadtech.com` inbox | 🔜 NEXT |
 | 4 | Cross-app SSO (ClashDrive, GrixChat integration) | 📋 Planned |
 
-**Current state in one line:** LIVE on accounts.gothwadtech.com (health OK,
-pages serving, login Supabase se connect hai); All CSS modules, including the root splash, bundle directly into web/css/styles.css without nested @import chains; root no longer contains an AI Studio cookie wrapper; the dev preview uses no-store asset headers.
+**Current state in one line:** LIVE on accounts.gothwadtech.com; UI ab poora
+**Google Account jaisa** (light + dark toggle, Roboto, Material You cards,
+sidebar /me with Home/Personal info/Security/Data & privacy/People & sharing/
+Connected apps + search); naye features: profile photo upload (Supabase Storage),
+recent activity feed, data export, account delete; DB ab `sql/` folder mein
+numbered idempotent files (supabase/ folder merged + removed).
 
 ---
 
 ## ✅ DONE (completed work — newest first)
+
+### Session 24 — 2026-10-11 — Google-style UI + sql/ folder + 4 naye features
+- **UI redesign (Google Account jaisa — exactly copy NAHI, hamara apna):**
+  - Light theme default + **dark toggle** (`web/js/theme.js`, localStorage
+    `gothwad-theme`; har page ke head mein inline snippet — no FOUC).
+  - Fonts: **Roboto** + Roboto Mono; icons: **Material Symbols Outlined**.
+  - Colors: Google palette (light `#1a73e8`, dark `#8ab4f8`), pill buttons,
+    Material-You cards (border + 24px radius).
+  - `/signin` `/signup`: Google jaisa centered layout, floating-label fields,
+    footer bar; signup mein **gender** field bhi (DB + API support ke saath).
+  - `/me`: **Google myaccount layout** — top app bar (search "Search Gothwad
+    Account" + avatar menu), left sidebar nav, 6 sections: Home, Personal info,
+    Security, Data & privacy, People & sharing, Connected apps. Sab **fully
+    working** (settings search bhi — type karo, section jump karo).
+  - Edit dialogs Google-style modals (name, DOB, gender, phone, recovery,
+    password, photo, delete).
+- **Naye fully-working features:**
+  - **Profile photo upload** — client 256×256 canvas resize → `POST /auth/avatar`
+    → Supabase Storage `avatars` bucket → public URL.
+  - **Recent activity feed** — Worker har important event log karta hai
+    (signin/signup/password change/reset/profile update/photo/app connect/
+    disconnect/session revoke). `GET /auth/activity`.
+  - **Export your data** — `GET /auth/export` (JSON download: profile +
+    sessions + apps + activity).
+  - **Delete account** — `POST /auth/delete-account` (password confirm +
+    Supabase admin delete, sab FK cascade).
+- **`sql/` folder (naya):** `supabase/schema.sql` yahan merge + move ho gaya.
+  - `01_core_schema.sql` (core + naye columns: date_of_birth, gender),
+    `02_account_activity.sql`, `03_avatars_storage.sql`, `README.md`.
+  - **Idempotent** — Postgres mein 3 scenarios test kiya (fresh, re-run,
+    old-DB-update): sab clean. 600-1000 lines/file rule README mein.
+  - ⚠️ Sirf Accounts ke Supabase project ke liye — GrixChat/Indogram/Mail
+    ke ALAG projects hain (README mein warning).
+- **Worker:** `presentUser` + signup + update-profile mein dob/gender (validated),
+  activity logging, 4 naye endpoints, consent screen + reset email Google-style.
+- **Tools fixed:** `mock-supabase.js` + `dev-server.js` ESM mein convert (root
+  package.json `type: module` se CommonJS toot gaye the). Mock mein storage
+  API + admin-delete + activity support.
+- **Testing:** 33/33 UI tests pass (jsdom + esbuild harness — signin/signup
+  steps, theme toggle, dashboard render, nav, search, dialogs, live API calls);
+  SQL idempotency tests pass; `tsc --strict` clean; `wrangler deploy --dry-run` OK.
+- **Files:** `web/css/*` (rewrite), `web/js/theme.js` (naya), `web/me/*` (rewrite
+  + search.js, dialogs.js, store.js, nav.js, avatar.js, tabs/*), worker
+  `src/index.ts`, `sql/*` (naya), `supabase/` (removed), docs (README, AGENTS,
+  SETUP, ARCHITECTURE, TASK).
 
 ### Session 23 — 2026-10-10 — Gothwad Services (no revoke) vs other products
 - Dashboard Connected apps: **Gothwad Services** (Meet, Mail, Store, Drive, Notes, Calendar, Contacts) hamesha connected, **Disconnect nahi**. Worker `/oauth/revoke` in IDs par 403.

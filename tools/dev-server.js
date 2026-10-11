@@ -18,13 +18,13 @@
  * =============================================================================
  */
 
-const http = require('http');
-const fs = require('fs');
-const path = require('path');
+import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
 
 const PORT = Number(process.env.PORT || 3000);
 const WORKER_URL = process.env.WORKER_URL || 'http://127.0.0.1:8787';
-const WEB_ROOT = path.join(__dirname, '..', 'web');
+const WEB_ROOT = path.join(import.meta.dirname, '..', 'web');
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',

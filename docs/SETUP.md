@@ -21,7 +21,7 @@ Total time: ~30–40 minutes.
       └── /api/*       → Cloudflare Worker "accounts"  (Worker ROUTE, same origin)
                               │  Supabase calls (service_role key)
                               ▼
-                     [ Supabase: Auth + Postgres DB ]   ← supabase/schema.sql
+                     [ Supabase: Auth + Postgres DB ]   ← sql/ folder (01 → 02 → 03)
 ```
 
 - **Frontend + API ek hi domain** (`accounts.gothwadtech.com`) par hain.
@@ -39,8 +39,11 @@ Total time: ~30–40 minutes.
    - Database Password: koi strong password **kahin likh lo** (baad mein kaam aayega)
    - Region: `Southeast Asia (Singapore)` — India ke liye fastest
 3. Project ready hone do (~2 minutes).
-4. Left menu → **SQL Editor** → `supabase/schema.sql` ka poora content
-   copy-paste karo → **Run** dabao. ✅ Tables + security ready!
+4. Left menu → **SQL Editor** → **`sql/` folder ki files NUMBER-WISE** run karo:
+   pehle `sql/01_core_schema.sql` ka poora content copy-paste → **Run**,
+   phir `sql/02_account_activity.sql` → **Run**, phir `sql/03_avatars_storage.sql`
+   → **Run**. ✅ Tables + activity feed + photo bucket ready!
+   (Dobara run karne par bhi error nahi aata — details: `sql/README.md`)
 5. Left menu → **Settings → API** → yeh 3 cheezein note karo:
    - `Project URL` → `SUPABASE_URL` (jaise `https://abcdxyz.supabase.co`)
    - `anon public` key → `SUPABASE_ANON_KEY`

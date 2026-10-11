@@ -31,7 +31,7 @@ export function toast(message, type = 'success') {
   const el = document.createElement('div');
   el.className = `toast ${type}`;
   el.innerHTML = `
-    <span>${type === 'error' ? '⚠️' : '✅'}</span>
+    <span class="msym" style="font-size:18px;">${type === 'error' ? 'error' : 'check_circle'}</span>
     <span>${escapeHtml(message)}</span>`;
   wrap.appendChild(el);
   setTimeout(() => el.remove(), 4200);
@@ -295,7 +295,13 @@ export function setupPasswordEyes() {
       if (!input) return;
       const isPassword = input.type === 'password';
       input.type = isPassword ? 'text' : 'password';
-      btn.textContent = isPassword ? '🙈' : '👁️';
+      // Material Symbols icon ho to usse toggle karo, warna emoji (purana style)
+      const icon = btn.querySelector('.msym');
+      if (icon) {
+        icon.textContent = isPassword ? 'visibility_off' : 'visibility';
+      } else {
+        btn.textContent = isPassword ? '🙈' : '👁️';
+      }
     });
   });
 }

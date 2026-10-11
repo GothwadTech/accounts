@@ -16,6 +16,11 @@ node tools/dev-server.js          # → http://localhost:3000
 
 ## mock-supabase.js — FAKE Supabase (offline testing)
 
+> NOTE: dono tools ab ES modules hain (repo ka `package.json` `"type": "module"`
+> hai). Mock mein ab Storage API (avatars), admin user-delete aur
+> `account_activity` table bhi supported hai — naye features offline test
+> karne ke liye.
+
 ```bash
 node tools/mock-supabase.js       # → http://127.0.0.1:8788
 ```

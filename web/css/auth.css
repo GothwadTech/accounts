@@ -1,459 +1,351 @@
 /* =============================================================================
-   GOTHWAD DESIGN SYSTEM — AUTH SCREENS & COMPONENTS
+   AUTH PAGES (/signin, /signup) — Google Account style
+   Centered column, Material fields, pill buttons, bottom bar.
    ============================================================================= */
 
-.chooser-list {
-  width: 100%;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  overflow: hidden;
-  margin-bottom: 10px;
-}
-.chooser-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  padding: 14px 16px;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  color: var(--text);
-  font-family: inherit;
-  text-align: left;
-  cursor: pointer;
-  margin-bottom: 8px;
-}
-.chooser-list .chooser-row {
-  border: none;
-  border-radius: 0;
-  border-bottom: 1px solid var(--border);
-  margin: 0;
-}
-.chooser-list .chooser-row:last-child { border-bottom: none; }
-.chooser-row:hover { background: var(--bg-hover); }
-.chooser-row.chooser-add { margin-top: 4px; }
-.acct-plus {
-  width: 36px; height: 36px; border-radius: 11px;
-  display: flex; align-items: center; justify-content: center;
-  background: var(--bg-hover); font-size: 20px; font-weight: 600; flex-shrink: 0;
-}
-.chooser-row.is-disabled { opacity: 0.5; cursor: not-allowed; }
-.chooser-meta { display: flex; flex-direction: column; min-width: 0; }
-.chooser-name { font-weight: 650; font-size: 14px; }
-.chooser-email { font-size: 12px; color: var(--text-muted); }
-
 .auth-wrap {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 40px 20px;
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Centered content area */
+.auth-main {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  padding: 48px 20px 24px;
 }
 
 .auth-container-modern {
   width: 100%;
-  max-width: 440px;
-  margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  position: relative;
-  z-index: 10;
+  max-width: 448px;
+  animation: auth-in 0.3s ease-out;
+}
+@keyframes auth-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-/* Header Card */
+/* Header: logo + heading (Google jaisa — text-heavy, kam decoration) */
 .auth-header-card {
-  width: 100%;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  padding: 24px 20px;
-  text-align: center;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  margin-bottom: 18px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  text-align: center;
+  margin-bottom: 28px;
 }
-
-.auth-logo-box {
-  width: 68px;
-  height: 68px;
-  background: #0494f4;
-  border-radius: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  overflow: hidden;
-  margin-bottom: 14px;
-  box-shadow: 0 8px 24px rgba(4, 148, 244, 0.4);
-}
-
-.auth-logo-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.auth-user-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 14px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  font-size: 13px;
-  color: var(--text);
-  margin-bottom: 16px;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-}
-.auth-user-chip:hover {
-  background: var(--bg-hover);
-  border-color: var(--border-strong);
-}
-.auth-user-chip-text {
-  font-family: var(--mono);
-  font-weight: 500;
-  font-size: 13px;
-}
-
+.auth-logo-box { margin-bottom: 18px; }
+.auth-logo-img { width: 76px; height: 76px; border-radius: 50%; }
 .auth-header-title {
   font-size: 26px;
-  font-weight: 900;
-  color: var(--text);
-  letter-spacing: -0.02em;
-  margin-bottom: 4px;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.25;
 }
-
 .auth-header-desc {
-  font-size: 12px;
+  font-size: 15px;
+  font-weight: 400;
   color: var(--text-muted);
-  line-height: 1.55;
-  max-width: 270px;
-  margin: 0 auto;
-  font-weight: 500;
-  opacity: 0.85;
+  margin-top: 8px;
+  max-width: 380px;
 }
 
-/* Switcher Tabs (Sign In / Sign Up) */
-.auth-nav-tabs {
-  width: 100%;
-  display: flex;
-  gap: 8px;
-  padding: 5px;
-  background: rgba(40, 40, 40, 0.7);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  margin-bottom: 18px;
-  user-select: none;
+/* Auth page ki section heading ("Sign in" bade text) */
+.auth-h1 {
+  font-size: 26px;
+  font-weight: 400;
+  text-align: center;
 }
-
-.auth-tab-btn {
-  flex: 1;
-  padding: 10px 14px;
-  font-size: 11.5px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  text-decoration: none;
-  transition: all 0.2s ease;
-  cursor: pointer;
+.auth-sub {
+  text-align: center;
+  font-size: 15px;
   color: var(--text-muted);
-  border: none;
-  background: transparent;
+  margin: 6px 0 26px;
 }
 
-.auth-tab-btn:hover {
-  color: var(--text);
-  background: rgba(255, 255, 255, 0.04);
-  text-decoration: none;
-}
-
-.auth-tab-btn.active {
-  background: var(--accent);
-  color: #ffffff;
-  box-shadow: 0 4px 16px rgba(4, 148, 244, 0.3);
-}
-
-/* Form Card (legacy/fallback if needed) */
-.auth-body-card {
-  width: 100%;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  padding: 24px;
-  box-shadow: var(--shadow);
-}
-
-/* Individual field group — standalone button-like field container */
-.auth-field-group {
-  width: 100%;
-  margin-bottom: 12px;
-  display: flex;
-  flex-direction: column;
-  text-align: left;
-}
-
-/* Label written directly above the button-like field */
+/* Field spacing */
+.auth-field-group { margin-bottom: 16px; }
 .auth-field-label {
   display: block;
-  font-size: 12.5px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 500;
   color: var(--text-muted);
-  margin-bottom: 6px;
-  letter-spacing: 0.02em;
-  user-select: none;
+  margin: 0 0 6px 4px;
 }
 
-/* Button-styled input box matching button height & geometry */
+/* Google-style outlined field box */
 .btn-field-box {
   position: relative;
-  display: flex;
-  align-items: center;
-  width: 100%;
-  height: 48px;
-  border-radius: 12px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  padding: 0 16px;
-  transition: all 0.15s ease;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
 }
-
-.btn-field-box:focus-within {
-  border-color: var(--accent);
-  background: var(--bg-panel);
-  box-shadow: 0 0 0 3px var(--accent-soft);
-}
-
-.btn-field-box.box-error,
-.btn-field-box.box-error:focus-within {
-  border-color: #ff4d4f !important;
-  box-shadow: 0 0 0 3px rgba(255, 77, 79, 0.25) !important;
-}
-
-.auth-field-error-note {
-  color: #ff4d4f;
-  font-size: 12.5px;
-  line-height: 1.4;
-  margin-top: 6px;
-  display: block;
-  font-weight: 500;
-  text-align: left;
-}
-
-.auth-field-error-note.hidden {
-  display: none !important;
-}
-
 .btn-field-box .input {
-  height: 100%;
-  width: 100%;
-  border: none !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  padding: 0 !important;
-  color: var(--text);
-  font-size: 14px;
-  outline: none;
+  padding: 20px 16px 8px;
+  font-size: 16px;
+  border-radius: var(--radius-sm);
 }
-
-.btn-field-box .input::placeholder {
-  color: var(--text-faint);
-  font-weight: 400;
+.btn-field-box .input::placeholder { color: transparent; }
+.btn-field-box label.floating {
+  position: absolute;
+  left: 15px;
+  top: 18px;
+  font-size: 16px;
+  color: var(--text-muted);
+  pointer-events: none;
+  transition: all 0.13s ease-out;
+  padding: 0 2px;
 }
-
-.btn-field-box input[type="date"] {
-  color-scheme: dark;
-  font-family: inherit;
-  color: var(--text);
-  cursor: pointer;
+.btn-field-box .input:focus + label.floating,
+.btn-field-box .input:not(:placeholder-shown) + label.floating {
+  top: 7px;
+  font-size: 12px;
+  color: var(--accent);
+  background: var(--bg-input);
 }
-@media (prefers-color-scheme: light) {
-  .btn-field-box input[type="date"] {
-    color-scheme: light;
-  }
-}
-
+.btn-field-box.box-error .input { border-color: var(--danger); box-shadow: inset 0 0 0 1px var(--danger); }
+.btn-field-box.box-error label.floating { color: var(--danger); }
 .btn-field-box .input-eye {
   position: absolute;
-  right: 14px;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
   background: transparent;
   border: none;
   cursor: pointer;
-  padding: 4px;
+  padding: 6px;
+  border-radius: 50%;
+  line-height: 0;
+}
+.auth-field-error-note {
+  font-size: 12px;
+  color: var(--danger);
+  margin: 6px 4px 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  line-height: 1.45;
+}
+
+/* Small helper text under fields */
+.auth-helper {
+  font-size: 12.5px;
   color: var(--text-muted);
-  font-size: 14px;
-  line-height: 1;
+  margin: 6px 4px 0;
+  line-height: 1.5;
+}
+.auth-helper a { font-weight: 500; }
+
+/* Main action row — Google: left link, right "Next" button */
+.auth-actions {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 26px;
+  flex-wrap: wrap;
 }
+.auth-actions .btn { min-width: 110px; }
 
-/* Input matching button geometry (fallback/generic) */
-.input-icon-wrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-  width: 100%;
-  height: 48px;
-  border-radius: 12px;
-  background: var(--bg-input);
-  border: 1px solid var(--border);
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-
-.input-icon-wrap:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
-}
-
-.input-icon-wrap .input {
-  height: 100%;
-  border: none !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  padding-left: 16px;
-  padding-right: 14px;
-  color: var(--text);
-  font-size: 14px;
-  width: 100%;
-  outline: none;
-}
-
-.input-left-icon {
-  display: none !important;
-}
-
-/* Suffix pill inside username field */
-.input-suffix-pill {
-  padding: 4px 10px;
-  margin-right: 8px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 11px;
-  font-family: var(--mono);
-  color: var(--text-muted);
-  white-space: nowrap;
-  user-select: none;
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.btn-lg {
-  padding: 13px 20px;
-  font-size: 14px;
-  font-weight: 700;
-  border-radius: 12px;
-  height: 48px;
-}
-
-/* Action button outside the card */
-.auth-btn-outside {
-  margin-top: 14px;
-  width: 100%;
-}
-
-/* Secondary Action Button (Forgot Password, Back) */
-.btn-secondary-auth {
-  width: 100%;
-  height: 48px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  color: var(--text);
-  font-weight: 700;
-  font-size: 13.5px;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-top: 10px;
-  text-decoration: none;
-}
-.btn-secondary-auth:hover {
-  background: var(--bg-hover);
-  border-color: var(--border-strong);
-  color: var(--text);
-  text-decoration: none;
-}
-.btn-secondary-auth:active {
-  transform: scale(0.98);
-}
-
-.text-accent {
-  color: var(--accent) !important;
-}
-
-.font-bold {
-  font-weight: 700;
-}
-
-/* Bottom Info Card */
-.auth-info-card {
-  width: 100%;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  padding: 20px 18px;
-  text-align: center;
+/* Links row under form (Google: "Forgot email?") */
+.auth-links-row {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  margin-top: 22px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-  gap: 12px;
-  user-select: none;
+  gap: 10px;
+  margin-top: 14px;
 }
-
-.auth-terms-text {
-  font-size: 12px;
+.auth-link {
+  font-size: 14px;
   font-weight: 500;
-  color: var(--text-muted);
-  line-height: 1.55;
-  max-width: 340px;
-  margin: 0 auto;
-  opacity: 0.85;
+  color: var(--accent);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-family: var(--font);
+  text-align: left;
+  align-self: flex-start;
 }
+.auth-link:hover { text-decoration: underline; color: var(--accent-hover); }
 
-.auth-divider-line {
+/* Secondary full-width button (forgot/reset ke back buttons) */
+.btn-secondary-auth {
   width: 100%;
-  height: 1px;
-  background: var(--border);
-  opacity: 0.6;
+  margin-top: 10px;
 }
 
-.auth-atmanirbhar-text {
-  font-size: 12px;
-  font-weight: 500;
+/* Guest-mode style hint (Google ka "Not your computer?") */
+.auth-guest-note {
+  font-size: 13px;
   color: var(--text-muted);
   line-height: 1.55;
-  max-width: 340px;
-  margin: 0 auto;
-  opacity: 0.85;
+  margin-top: 34px;
 }
+.auth-guest-note a { font-weight: 500; }
 
-.accent-link {
-  color: var(--accent) !important;
-  font-weight: 700;
+/* Switch tabs (Sign In / Sign Up) — Google nahi use karta, hum minimal rakhe hain */
+.auth-nav-tabs {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 24px;
+  background: var(--chip);
+  border-radius: var(--radius-pill);
+  padding: 4px;
+  width: fit-content;
+  margin-left: auto;
+  margin-right: auto;
+}
+.auth-tab-btn {
+  padding: 8px 22px;
+  border-radius: var(--radius-pill);
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text-muted);
   text-decoration: none;
 }
-.accent-link:hover {
-  text-decoration: underline;
+.auth-tab-btn:hover { color: var(--text); text-decoration: none; }
+.auth-tab-btn.active {
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: var(--shadow-soft);
+}
+
+/* ------------------------------------------- Account chooser (Google style) */
+.chooser-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--surface);
+}
+.chooser-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  padding: 14px 20px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  font-family: var(--font);
+  text-align: left;
+  transition: background 0.12s;
+}
+.chooser-row:last-of-type { border-bottom: none; }
+.chooser-row:hover { background: var(--bg-hover); }
+.chooser-row.is-disabled { opacity: 0.5; cursor: not-allowed; }
+.chooser-meta { display: flex; flex-direction: column; min-width: 0; }
+.chooser-name { font-size: 15px; font-weight: 500; color: var(--text); }
+.chooser-email { font-size: 13px; color: var(--text-muted); }
+.chooser-row .avatar { width: 40px; height: 40px; font-size: 15px; }
+.chooser-add .acct-plus { width: 40px; height: 40px; border-radius: 50%; background: var(--chip); }
+.chooser-row.chooser-add { color: var(--text-muted); }
+.chooser-remove {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 50%;
+  line-height: 0;
+}
+.chooser-remove:hover { background: var(--chip); color: var(--danger); }
+
+/* ---------------------------------------------- auth bottom bar (footer) */
+.auth-footer {
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+.auth-footer-inner {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.auth-footer-links { display: flex; gap: 20px; flex-wrap: wrap; }
+.auth-footer-links a {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.auth-footer-links a:hover { color: var(--accent); }
+
+/* Branded note card (terms/atmanirbhar) — signup ke last step par */
+.auth-info-card {
+  margin-top: 28px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+.auth-divider-line {
+  height: 1px;
+  background: var(--border);
+  margin: 14px 0;
+}
+.accent-link { color: var(--accent); font-weight: 500; }
+
+/* ------------------------------------------------------------ step flow */
+.step-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 26px;
+}
+.step-progress {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  margin-bottom: 22px;
+}
+.step-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border);
+  transition: background 0.2s, width 0.2s;
+}
+.step-dot.active { background: var(--accent); width: 18px; border-radius: 3px; }
+
+/* Password strength bar (Google jaisa label ke saath) */
+.strength-wrap { margin: 8px 4px 0; }
+.strength-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--chip);
+  overflow: hidden;
+}
+.strength-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 2px;
+  background: var(--danger);
+  transition: width 0.25s ease, background 0.25s ease;
+}
+
+/* Radio/checkbox rows (Google ka "Show password" jaisa) */
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--text);
+  cursor: pointer;
+  margin: 12px 0;
+}
+.check-row input { accent-color: var(--accent); width: 16px; height: 16px; cursor: pointer; }
+
+/* ------------------------------------------------------------ responsive */
+@media (max-width: 480px) {
+  .auth-main { padding: 28px 14px 16px; }
+  .auth-header-title { font-size: 23px; }
+  .auth-h1 { font-size: 23px; }
+  .auth-actions { flex-direction: column-reverse; align-items: stretch; }
+  .auth-actions .btn { width: 100%; }
 }
