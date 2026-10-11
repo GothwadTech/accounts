@@ -23,6 +23,12 @@ APP_DOMAIN = "gothwadtech.com"
 # Frontend ka public URL (password-reset redirect ke liye)
 AUTH_HUB_URL = "https://accounts.gothwadtech.com"
 
+# Server-to-server API host (same Worker, Custom Domain). Other Workers in the
+# same zone (e.g. Mail) can call this host; a Worker Route cannot be fetched
+# same-zone. Signed-out /auth/me on this host answers 401 JSON.
+# Dashboard step required (see the ROUTES section below). Leave empty to disable.
+API_DOMAIN = "api.gothwadtech.com"
+
 # Apne Supabase project ka URL (Supabase Dashboard → Settings → API)
 SUPABASE_URL = "https://ruqauxozsawzjfwoonfz.supabase.co"
 
@@ -63,7 +69,23 @@ DEV_MODE = "true"
 # Isse frontend + API ek hi origin par (same-origin, CORS ki zaroorat nahi).
 # Yeh route yahan comment mein rakha hai taaki config = dashboard hamesha match ho.
 # Alternative: api.gothwadtech.com custom domain (docs/SETUP.md Step 2e).
+#
+# api.gothwadtech.com (Custom Domain) — REQUIRED for same-zone Worker-to-Worker calls:
+#   Dashboard (human step, not in this file):
+#     1. Workers & Pages → "accounts" → Settings → Domains & Routes
+#     2. Add → Custom Domain → api.gothwadtech.com → Add domain
+#        (Cloudflare creates the proxied DNS record + certificate in zone gothwadtech.com)
+#     3. Keep the existing route accounts.gothwadtech.com/api/* untouched.
+#   Cookies: unchanged — they are Domain=.gothwadtech.com, so they reach the API host too.
+#   Do NOT add `custom_domain = true` here without the same dashboard review: Git auto-deploy
+#   would attach it silently.
 # -----------------------------------------------------------------------------
 # [routes]
 # pattern = "accounts.gothwadtech.com/api/*"
 # zone_name = "gothwadtech.com"
+
+# -----------------------------------------------------------------------------
+# PREVIEWS — Workers Builds branch deploys run `npx wrangler preview`, which
+# requires this block (empty is fine). Production `wrangler deploy` ignores it.
+# -----------------------------------------------------------------------------
+[previews]
