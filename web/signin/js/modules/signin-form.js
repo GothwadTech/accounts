@@ -1,7 +1,7 @@
 import { api } from '../../../js/api.js';
 import { setBusy, toast } from '../../../js/common.js';
 import { GOTHWAD_CONFIG } from '../../../js/config.js';
-import { rememberAccount, canAddAccount } from '../../../js/accounts.js';
+import { rememberAccount, canAddAccount, safeNextUrl } from '../../../js/accounts.js';
 
 /**
  * Validates and formats user identifier:
@@ -230,7 +230,7 @@ export function initSigninForm(showAlert, hideAlert) {
 
     const params = new URLSearchParams(location.search);
     const next = params.get('next');
-    const safeNext = next && (next.startsWith('/') || next.startsWith(location.origin)) ? next : '/me';
-    location.href = safeNext;
+    // Mail jaise cross-origin apps ke ?next= ko safeNextUrl allow karta hai
+    location.href = safeNextUrl(next, '/me');
   });
 }

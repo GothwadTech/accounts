@@ -30,8 +30,14 @@ export function toast(message, type = 'success') {
   }
   const el = document.createElement('div');
   el.className = `toast ${type}`;
+  // Material Symbols font load hota hai (naye dashboard jaisi page) tabhi icon
+  // use karo — purani (legacy) pages par wahi purana emoji style bana rahe.
+  const hasMaterialIcons = !!document.querySelector('link[href*="Material+Symbols"]');
+  const icon = hasMaterialIcons
+    ? `<span class="msym" style="font-size:18px;">${type === 'error' ? 'error' : 'check_circle'}</span>`
+    : `<span>${type === 'error' ? '⚠️' : '✅'}</span>`;
   el.innerHTML = `
-    <span class="msym" style="font-size:18px;">${type === 'error' ? 'error' : 'check_circle'}</span>
+    ${icon}
     <span>${escapeHtml(message)}</span>`;
   wrap.appendChild(el);
   setTimeout(() => el.remove(), 4200);
@@ -42,6 +48,21 @@ export function escapeHtml(str) {
   return String(str ?? '').replace(/[&<>"']/g, (c) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
   }[c]));
+}
+
+/**
+ * Auth pages ke links (signin ↔ signup) par maujood ?next= carry karo.
+ * Mail se aaya next signup tak na kho jaaye — warna naya user bhi /me par
+ * land karega aur apne inbox par kabhi nahi pahunchega.
+ */
+export function carryNextOnAuthLinks() {
+  const next = new URLSearchParams(location.search).get('next');
+  if (!next) return;
+  document.querySelectorAll('a[href="/signin"], a[href="/signup"]').forEach((a) => {
+    const url = new URL(a.getAttribute('href'), location.origin);
+    url.searchParams.set('next', next);
+    a.setAttribute('href', url.pathname + url.search);
+  });
 }
 
 /* ------------------------------------------------------------ button busy */

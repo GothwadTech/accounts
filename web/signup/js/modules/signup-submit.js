@@ -1,6 +1,6 @@
 import { api } from '../../../js/api.js';
 import { setBusy, toast } from '../../../js/common.js';
-import { rememberAccount, canAddAccount } from '../../../js/accounts.js';
+import { rememberAccount, canAddAccount, safeNextUrl } from '../../../js/accounts.js';
 
 export function initSignupSubmit(form, submitBtn, showError, clearError) {
   if (!form || !submitBtn) return;
@@ -19,8 +19,6 @@ export function initSignupSubmit(form, submitBtn, showError, clearError) {
     const confirmPassword = document.getElementById('confirm_password').value;
     const recoveryEmail = document.getElementById('recovery_email').value.trim();
     const phoneNumber = document.getElementById('phone_number').value.trim();
-    const dateOfBirth = document.getElementById('dob')?.value || '';
-    const gender = document.getElementById('gender')?.value || '';
 
     if (!firstName || !lastName) return showError('First and last name are required.');
     if (!/^[a-z0-9](?:[a-z0-9._-]{1,22}[a-z0-9])?$/.test(username)) {
@@ -41,8 +39,6 @@ export function initSignupSubmit(form, submitBtn, showError, clearError) {
       password,
       recovery_email: recoveryEmail,
       phone_number: phoneNumber || null,
-      date_of_birth: dateOfBirth || null,
-      gender: gender || null,
       remember: true,
     });
 
@@ -62,7 +58,9 @@ export function initSignupSubmit(form, submitBtn, showError, clearError) {
     toast(`Account created! Welcome to Gothwad, ${firstName}!`);
 
     setTimeout(() => {
-      location.href = '/me';
+      // ?next= ho to wahi (jaise mail.gothwadtech.com) — warna dashboard
+      const next = new URLSearchParams(location.search).get('next');
+      location.href = safeNextUrl(next, '/me');
     }, 600);
   });
 }

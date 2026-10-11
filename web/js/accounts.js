@@ -5,6 +5,7 @@
  */
 
 import { api, getTokens, saveTokens, clearTokens } from './api.js';
+import { GOTHWAD_CONFIG } from './config.js';
 
 const LIST_KEY = 'gothwad_accounts';
 const ACTIVE_KEY = 'gothwad_active_account';
@@ -143,10 +144,26 @@ export async function switchToNextAvailable(exceptIds = []) {
   return { ok: false };
 }
 
+/**
+ * Safe `?next=` — sirf trusted destinations.
+ * Mail/Drive jaise apps apna full URL bhejte hain
+ * (https://mail.gothwadtech.com/...) — wo kabhi /me par na girein, isliye
+ * APP_DOMAIN ke (sub)domain allow karte hain. Baaki sab fallback.
+ * Security: "//evil.com" (protocol-relative) aur bahar ke domains reject.
+ */
 export function safeNextUrl(raw, fallback = '/me') {
-  if (raw && (raw.startsWith('/') || (typeof location !== 'undefined' && raw.startsWith(location.origin)))) {
-    return raw;
-  }
+  if (typeof raw !== 'string' || !raw) return fallback;
+  // Same-origin path — lekin "//host" jaisa protocol-relative nahi
+  if (raw.startsWith('/') && !raw.startsWith('//')) return raw;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return fallback;
+    const host = url.hostname.toLowerCase();
+    const app = String(GOTHWAD_CONFIG.APP_DOMAIN || '').toLowerCase();
+    const sameHost = typeof location !== 'undefined' && host === location.hostname;
+    const appDomain = !!app && (host === app || host.endsWith(`.${app}`));
+    if (sameHost || appDomain) return url.toString();
+  } catch { /* absolute URL nahi hai */ }
   return fallback;
 }
 
