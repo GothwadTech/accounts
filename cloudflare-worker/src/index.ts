@@ -28,6 +28,13 @@ export interface Env {
   APP_DOMAIN: string;
   /** Public URL of the frontend (for password-reset redirect), e.g. https://accounts.gothwadtech.com */
   AUTH_HUB_URL: string;
+  /**
+   * Server-to-server API hostname (Custom Domain on this same Worker), e.g. api.gothwadtech.com.
+   * Other Workers in the same zone can only reach this Worker via a Custom Domain (not a Route).
+   * On this host, a signed-out GET /auth/me answers 401 JSON instead of 200 {authenticated:false}
+   * so machine callers never see a 3xx/200 "success" for a signed-out user.
+   */
+  API_DOMAIN?: string;
   /** Supabase project URL, e.g. https://abcdxyz.supabase.co */
   SUPABASE_URL: string;
   /** Supabase anon key (public). Used as apikey for user-auth calls. */
@@ -252,6 +259,12 @@ function cookieDomain(request: Request, env: Env): string | null {
     return `.${env.APP_DOMAIN}`; // SSO: mail./drive./accounts. sab share karein
   }
   return null; // localhost / preview → host-only cookie
+}
+
+/** Kya request API hostname (API_DOMAIN) par aayi hai? Unset ho to false. */
+function isApiHost(request: Request, env: Env): boolean {
+  const apiHost = (env.API_DOMAIN || '').trim().toLowerCase();
+  return apiHost !== '' && new URL(request.url).hostname.toLowerCase() === apiHost;
 }
 
 function makeCookie(
@@ -1354,8 +1367,11 @@ export default {
       if (route === '/auth/me' && request.method === 'GET') {
         const session = await resolveSession(request, env);
         if (!session.ok) {
+          // Browser (accounts. host) ka contract unchanged: 200 {authenticated:false}.
+          // Server-to-server API host par: 401 JSON (Mail jaise callers 200/3xx ko "ok" na samjhein).
+          const status = isApiHost(request, env) ? 401 : 200;
           return withCors(
-            json({ authenticated: false }, 200, clearCookies(request, env).map((c) => ['Set-Cookie', c] as [string, string])),
+            json({ authenticated: false }, status, clearCookies(request, env).map((c) => ['Set-Cookie', c] as [string, string])),
           );
         }
 

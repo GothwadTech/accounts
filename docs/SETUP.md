@@ -124,12 +124,27 @@ accounts.gothwadtech.com/api/*
 > ✅ Is route ke saath OAuth endpoints ka base URL = `https://accounts.gothwadtech.com/api`
 > hota hai (Step 6 dekho).
 
-#### Alternative: alag API domain (`api.gothwadtech.com`)
+#### Alternative: alag API domain (`api.gothwadtech.com`) — server-to-server ke liye
 
-Agar API ko alag subdomain par chahiye:
-Domains & Routes → **Add** → **Custom Domain** → `api.gothwadtech.com`.
-Phir `web/js/config.js` mein `API_URL: 'https://api.gothwadtech.com'` set karo
-(aur Step 6 ka OAuth base URL = `https://api.gothwadtech.com`).
+**Kyun:** Cloudflare mein same zone ke andar ek Worker ki `fetch()` dusre Worker ko
+**Route** (`accounts.gothwadtech.com/api/*`) ke through call NAHI karti — request
+zone ke origin (Pages/SPA) par chali jaati hai, jo `200 text/html` deta hai.
+**Custom Domain** par aisa nahi hota, isliye Mail jaisa dusra Worker
+`https://api.gothwadtech.com` call kar sakta hai.
+
+Dashboard steps (human, ek hi Worker — naya script nahi):
+1. Workers & Pages → **accounts** → **Settings** → **Domains & Routes**
+2. **Add** → **Custom Domain** → `api.gothwadtech.com` → **Add domain**
+   (DNS record + certificate Cloudflare khud banata hai, zone `gothwadtech.com`).
+3. Existing route `accounts.gothwadtech.com/api/*` ko **mat** badlo.
+4. `wrangler.toml` mein `API_DOMAIN = "api.gothwadtech.com"` already set hai
+   (signed-out `/api/auth/me` is host par `401` JSON deta hai).
+
+Cookies: `Domain=.gothwadtech.com` hai, isliye `api.` host par bhi jaati hain —
+Domain/Path/Secure/HttpOnly attributes NAHI badle.
+
+Browser sign-in redirect ke liye base = `https://accounts.gothwadtech.com`.
+Server-to-server (Mail) ke liye base = `https://api.gothwadtech.com`.
 
 ### 2E. Deploy + test ✅
 

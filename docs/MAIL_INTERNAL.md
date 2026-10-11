@@ -14,8 +14,9 @@ Accounts exposes a small internal endpoint for Mail's Worker to call.
 - Worker strips `/api` prefix, so internally the route is `/internal/usernames/:username`.
 - Full URL in production (recommended route `accounts.gothwadtech.com/api/*`):
   - `https://accounts.gothwadtech.com/api/internal/usernames/:username`
-- Alternative if custom domain `api.gothwadtech.com` is used:
-  - `https://api.gothwadtech.com/internal/usernames/:username`
+- **Recommended for Worker-to-Worker calls (same zone):** custom domain `api.gothwadtech.com`
+  - `https://api.gothwadtech.com/api/internal/usernames/:username`
+  - A Worker Route (`accounts.gothwadtech.com/api/*`) cannot be fetched by another Worker in the same zone.
 
 **Input:** `:username` from path.
 
