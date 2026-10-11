@@ -1,3 +1,19 @@
+## 2026-10-11 — Mail "could not verify your sign-in" (Accounts side)
+
+**Evidence:** Browser network shows `gothwad_at`/`gothwad_rt`/`gothwad_sid` sent to
+`mail.gothwadtech.com`, access token fresh (~1h left), `/api/session` 401 with Mail's own
+401 body and no `Set-Cookie`. So cookie sharing works; Accounts `/api/auth/me` verification
+is the failing step.
+
+**Done (Accounts):**
+- `/auth/me` no longer returns `authenticated: true` with an empty username. Profile row
+  missing → falls back to JWT `user_metadata.username`. Profile REST failure or still no
+  username → `503 profile_unavailable` (was a silent empty username → Mail 401).
+- Prompt for the Mail maintainer: `docs/MAIL_SESSION_FIX_PROMPT.md`.
+
+**Human verification still needed:** deploy the Accounts worker; then check
+`accounts.gothwadtech.com/api/auth/me` (status, JSON, `authenticated`, `user.username` only).
+
 # ✅ TASK.md — Live Status & Task Board
 
 > **⚠️ HAR AI SESSION: kaam khatam hone se PEHLE yeh file update karo!**
