@@ -1359,12 +1359,31 @@ export default {
           );
         }
 
-        const profile = await fetchProfile(env, session.authUser!.id);
+        // Profile load karo. REST fail ho to 503 (401 nahi — user signed-in hai,
+        // sirf data nahi mila). Profile row missing ho to JWT ke user_metadata.username
+        // se fallback karo, taaki username khaali na jaaye (Mail usse 401 deta tha).
+        const authUser = session.authUser!;
+        const profRes = await SB.adminFetch(
+          env,
+          `/rest/v1/profiles?id=eq.${encodeURIComponent(authUser.id)}&select=*`,
+        );
+        if (!profRes.ok) {
+          return withCors(json({ error: 'profile_unavailable', message: 'Profile could not be loaded. Try again.' }, 503));
+        }
+        const profRows = (await profRes.json().catch(() => null)) as Record<string, any>[] | null;
+        const profile = Array.isArray(profRows) && profRows[0] ? profRows[0] : null;
+        const metaUsername = String(authUser.user_metadata?.username || '').trim().toLowerCase();
+        const username = profile?.username || metaUsername;
+        if (!username) {
+          return withCors(json({ error: 'profile_unavailable', message: 'Account username is missing. Contact support.' }, 503));
+        }
+        const profileWithUsername = { ...(profile || {}), id: profile?.id || authUser.id, username };
+
         const headers: [string, string][] = (session.newCookies || []).map((c) => ['Set-Cookie', c]);
 
         // Body mein tokens: rotation ke baad NAYA refresh token zaroor bhejo
         // (warna frontend ka purana token revoke ho jaata hai), warna current access.
-        const body: Record<string, any> = { authenticated: true, user: presentUser(profile, session.authUser, env) };
+        const body: Record<string, any> = { authenticated: true, user: presentUser(profileWithUsername, authUser, env) };
         if (session.newTokens) {
           body.access_token = session.newTokens.access_token;
           body.refresh_token = session.newTokens.refresh_token;
