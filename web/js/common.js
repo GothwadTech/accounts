@@ -50,6 +50,21 @@ export function escapeHtml(str) {
   }[c]));
 }
 
+/**
+ * Auth pages ke links (signin ↔ signup) par maujood ?next= carry karo.
+ * Mail se aaya next signup tak na kho jaaye — warna naya user bhi /me par
+ * land karega aur apne inbox par kabhi nahi pahunchega.
+ */
+export function carryNextOnAuthLinks() {
+  const next = new URLSearchParams(location.search).get('next');
+  if (!next) return;
+  document.querySelectorAll('a[href="/signin"], a[href="/signup"]').forEach((a) => {
+    const url = new URL(a.getAttribute('href'), location.origin);
+    url.searchParams.set('next', next);
+    a.setAttribute('href', url.pathname + url.search);
+  });
+}
+
 /* ------------------------------------------------------------ button busy */
 export function setBusy(btn, busy, busyText = 'Please wait...') {
   if (!btn) return;

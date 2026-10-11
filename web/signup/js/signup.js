@@ -2,13 +2,14 @@
  * /signup page main orchestrator — Google-style multi-step
  */
 
-import { redirectIfAuthed, setupPasswordEyes } from '../../js/common.js';
+import { redirectIfAuthed, setupPasswordEyes, carryNextOnAuthLinks } from '../../js/common.js';
 import { GOTHWAD_CONFIG } from '../../js/config.js';
 import { initUsernameCheck } from './modules/username-check.js';
 import { initPasswordStrengthMeter } from './modules/password-strength.js';
 import { initSignupSubmit } from './modules/signup-submit.js';
 
 setupPasswordEyes();
+carryNextOnAuthLinks();
 redirectIfAuthed();
 
 const domainSuffix = document.getElementById('domain-suffix');

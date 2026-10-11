@@ -2,7 +2,7 @@
  * /signin page main orchestrator
  */
 
-import { redirectIfAuthed, setupPasswordEyes } from '../../js/common.js';
+import { redirectIfAuthed, setupPasswordEyes, carryNextOnAuthLinks } from '../../js/common.js';
 import { GOTHWAD_CONFIG } from '../../js/config.js';
 import { initSigninForm } from './modules/signin-form.js';
 import { initForgotPassword } from './modules/forgot-password.js';
@@ -10,6 +10,7 @@ import { extractResetToken, initResetPassword } from './modules/reset-password.j
 import { initAccountChooser } from './modules/account-chooser.js';
 
 setupPasswordEyes();
+carryNextOnAuthLinks();
 
 const resetTokenEarly = extractResetToken();
 if (!resetTokenEarly) {

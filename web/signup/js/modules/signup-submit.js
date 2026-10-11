@@ -1,6 +1,6 @@
 import { api } from '../../../js/api.js';
 import { setBusy, toast } from '../../../js/common.js';
-import { rememberAccount, canAddAccount } from '../../../js/accounts.js';
+import { rememberAccount, canAddAccount, safeNextUrl } from '../../../js/accounts.js';
 
 export function initSignupSubmit(form, submitBtn, showError, clearError) {
   if (!form || !submitBtn) return;
@@ -58,7 +58,9 @@ export function initSignupSubmit(form, submitBtn, showError, clearError) {
     toast(`Account created! Welcome to Gothwad, ${firstName}!`);
 
     setTimeout(() => {
-      location.href = '/me';
+      // ?next= ho to wahi (jaise mail.gothwadtech.com) — warna dashboard
+      const next = new URLSearchParams(location.search).get('next');
+      location.href = safeNextUrl(next, '/me');
     }, 600);
   });
 }
