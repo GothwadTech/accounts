@@ -24,8 +24,9 @@ APP_DOMAIN = "gothwadtech.com"
 AUTH_HUB_URL = "https://accounts.gothwadtech.com"
 
 # Server-to-server API host (same Worker, Custom Domain). Other Workers in the
-# same zone (e.g. Mail) can call this host; a Worker Route cannot be fetched
-# same-zone. Signed-out /auth/me on this host answers 401 JSON.
+# same zone (e.g. the Mail Worker, named "mail" — never "gothwad-mail-api") can
+# call this host; a Worker Route cannot be fetched same-zone. Signed-out
+# /auth/me on this host answers 401 JSON.
 # Dashboard step required (see the ROUTES section below). Leave empty to disable.
 API_DOMAIN = "api.gothwadtech.com"
 

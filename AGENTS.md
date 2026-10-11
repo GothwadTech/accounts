@@ -44,6 +44,15 @@ ek account se.
 
 **Live status detail + task board: `TASK.md`** (usse padho — yahan stale ho sakta hai).
 
+> **Mail naming (2026-10-11) — yadd rakho:** Gothwad Mail = alag repo **`GothwadTech/mail`**
+> (`mail.gothwadtech.com`, Vite + React, apna Supabase project). Uska Cloudflare Worker ka naam
+> **`mail`** hai — **`gothwad-mail-api` NAHI** (woh sirf `/api/health` JSON ka cosmetic `service`
+> label hai; purani wrangler config ki galti thi). Server-to-server Accounts base =
+> `https://api.gothwadtech.com` (`AUTH_HUB_URL`), browser links ke liye `AUTH_SIGNIN_URL`.
+> Shared secret: Accounts `MAIL_INTERNAL_TOKEN` = Mail `ACCOUNTS_INTERNAL_TOKEN`.
+> OAuth `client_id` **`gothwad-mail`** waisa hi rehta hai — Worker naam se alag cheez hai.
+> Mail ka koi folder is repo mein nahi banega. Details: `docs/MAIL_INTERNAL.md`.
+
 ### Kya ban chuka hai (summary)
 
 **Website (`web/`) — sirf 3 routes (Google Account jaisi UI, light+dark):**

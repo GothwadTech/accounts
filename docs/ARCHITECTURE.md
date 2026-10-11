@@ -184,7 +184,7 @@ forgot-password, reserved usernames.
 | GET | `/oauth/userinfo` | Bearer | Profile (scoped) |
 | GET | `/oauth/authorizations` | cookie | Connected apps (dashboard) |
 | POST | `/oauth/revoke` | cookie | Disconnect app |
-| GET | `/api/internal/usernames/:username` | Bearer `MAIL_INTERNAL_TOKEN` | **Internal** — Mail → Accounts username existence check (no CORS, no cookies, `{"exists": bool}`) |
+| GET | `/api/internal/usernames/:username` | Bearer `MAIL_INTERNAL_TOKEN` | **Internal** — Mail → Accounts username existence check (no CORS, no cookies, `{"exists": bool}`). Mail side base = `https://api.gothwadtech.com`, secret name = `ACCOUNTS_INTERNAL_TOKEN` |
 
 Route matching: `/api/x` aur `/x` dono chalte hain (frontend `/api` prefix
 use karta hai; external OAuth apps `/oauth/*`). Internal endpoint `/api/internal/*`
@@ -227,3 +227,10 @@ Dev mein: `tools/dev-server.js` (port 3000) `/api`+`/oauth` ko
 > Inbound mail validation is done via `GET /api/internal/usernames/:username` (Bearer `MAIL_INTERNAL_TOKEN`).
 > Old docs that said Mail shares Accounts Supabase are superseded.
 > Architecture patterns (username-derived email, RLS, worker-only secrets) wahi rahenge.
+>
+> **Naming (2026-10-11) — 3 alag naam, mix mat karo:** Mail ka Cloudflare Worker = **`mail`**
+> (dashboard + `GothwadTech/mail` ke `worker/wrangler.toml` mein `name = "mail"`; **`gothwad-mail-api`
+> nahi** — woh sirf `/api/health` JSON ka cosmetic `service` label hai). Accounts ka OAuth
+> `client_id` = **`gothwad-mail`** (change nahi hota). Mail → Accounts server calls ka base =
+> `https://api.gothwadtech.com` (Custom Domain) — `accounts.gothwadtech.com/api` sirf browser
+> traffic ke liye hai; same-zone Worker us route ko fetch nahi kar sakta (HTML milta hai).

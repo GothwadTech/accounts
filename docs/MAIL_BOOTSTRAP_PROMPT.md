@@ -11,6 +11,19 @@
 > The section below still says "Same Supabase project as Accounts" — that line is outdated.
 > New Mail prompt should mention own Supabase + internal lookup.
 
+> **⚠️ NAMING (2026-10-11) — `GothwadTech/mail` already exists; use these exact names:**
+> - Cloudflare Worker (dashboard) = **`mail`** → `worker/wrangler.toml` mein `name = "mail"`.
+>   Yeh **`gothwad-mail-api` NAHI hai** — woh purani config ki galti thi (fix: Mail repo PR #7).
+>   Worker ko rename mat karo: secrets + route `mail.gothwadtech.com/api/*` + Email Routing
+>   catch-all sab `mail` par hain. `/api/health` JSON ka `service` field sirf cosmetic label hai.
+> - Accounts ka OAuth `client_id` = **`gothwad-mail`** (yeh alag cheez hai, change nahi karni).
+> - Server-to-server Accounts base = **`AUTH_HUB_URL=https://api.gothwadtech.com`**;
+>   browser links ke liye alag var `AUTH_SIGNIN_URL=https://accounts.gothwadtech.com`.
+>   `accounts.gothwadtech.com/api` ko server calls ke liye kabhi mat use karo (Pages HTML
+>   lauta deta hai → `503 accounts_unexpected_response`).
+> - Mail ke apne secrets ke naam: `ACCOUNTS_INTERNAL_TOKEN` (same value as Accounts'
+>   `MAIL_INTERNAL_TOKEN`), `SUPABASE_SERVICE_ROLE_KEY`, `RESEND_API_KEY`.
+
 ---
 
 ## PROMPT START (yahan se copy)
@@ -31,8 +44,8 @@ Turn the existing **webmail UI** into a real app:
 
 1. **Remove all demo/mock inbox/sent/contacts data.** Empty states when DB empty.
 2. **Auth = Gothwad Accounts** (SSO). User already has `username@gothwadtech.com` as a **derived** email (DB stores **username only**, no email column).
-3. **Backend in THIS repo:** Cloudflare Worker(s) — REST for list/read/send/star/trash + **Email Worker** for inbound.
-4. **OWN Supabase project (NEW PLAN 2026-10-11 — supersedes old shared DB plan):** Mail uses its OWN Supabase project (user will paste URL + keys in wrangler secrets / `.env.example` placeholders only — **never commit real keys**, never echo secrets in chat). Accounts data stays in Accounts Supabase. For inbound mail validation, Mail calls Accounts internal endpoint `GET /api/internal/usernames/:username` with `Authorization: Bearer MAIL_INTERNAL_TOKEN` → `{"exists": bool}`. See Accounts `docs/MAIL_INTERNAL.md`.
+3. **Backend in THIS repo:** Cloudflare Worker — REST for list/read/send/star/trash + inbound `email()` handler (ek hi Worker, naam **`mail`**: dashboard + `worker/wrangler.toml` dono mein match kare, kabhi rename mat karo).
+4. **OWN Supabase project (NEW PLAN 2026-10-11 — supersedes old shared DB plan):** Mail uses its OWN Supabase project (user will paste URL + keys in wrangler secrets / `.env.example` placeholders only — **never commit real keys**, never echo secrets in chat). Accounts data stays in Accounts Supabase. For inbound mail validation, Mail calls Accounts internal endpoint `GET /api/internal/usernames/:username` with `Authorization: Bearer <ACCOUNTS_INTERNAL_TOKEN>` → `{"exists": bool}`. Secret ka naam Mail side par `ACCOUNTS_INTERNAL_TOKEN` hai (same value as Accounts' `MAIL_INTERNAL_TOKEN`). See Accounts `docs/MAIL_INTERNAL.md`.
 5. **Outbound mail: Resend** (free 3000/month). From: `{username}@{APP_DOMAIN}`.
 6. **Inbound: Cloudflare Email Routing** catch-all `*@gothwadtech.com` → Email Worker → `mail_messages` (in Mail's OWN Supabase) after validating username via Accounts internal lookup.
 7. Write living docs: `AGENTS.md`, `PLAN.md`, `TASK.md`, `docs/SETUP.md`, `docs/MAIL.md`. Update TASK every session.
@@ -167,10 +180,9 @@ Do not store passwords. Do not log secrets.
 - Dev: Vite proxy `/api` → local wrangler to avoid CORS pain. Production: Worker route `mail.gothwadtech.com/api/*`.
 
 ### Worker layout in THIS repo
-- `worker/` or `cloudflare-worker/` — `fetch` for HTTP API
-- same project or second wrangler for `email()` handler (Cloudflare Email Workers)
-- wrangler.toml `[vars]` public: APP_DOMAIN, AUTH_HUB_URL, MAIL_URL, SUPABASE_URL
-- secrets: SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, RESEND_API_KEY, JWT if any
+- `worker/` — `fetch` for HTTP API + `email()` handler for inbound (Cloudflare Email Workers), ek hi Worker (naam `mail`)
+- wrangler.toml `[vars]` public: APP_DOMAIN, AUTH_HUB_URL (**server calls → `https://api.gothwadtech.com`**), AUTH_SIGNIN_URL (**browser links → `https://accounts.gothwadtech.com`**), MAIL_URL, SUPABASE_URL
+- secrets: ACCOUNTS_INTERNAL_TOKEN (= Accounts' `MAIL_INTERNAL_TOKEN`), SUPABASE_SERVICE_ROLE_KEY, RESEND_API_KEY
 - CORS: `https://mail.gothwadtech.com`, `http://localhost:5173`, AUTH hub origin
 - DEV_MODE for extra errors, never dump keys
 
@@ -194,6 +206,9 @@ Do not store passwords. Do not log secrets.
 4. Worker: health + session resolve:
    - Prefer Accounts `GET {AUTH_HUB_URL}/api/auth/me` with forwarded cookies **or**
    - Verify OAuth access_token via `{AUTH_HUB_URL}/api/oauth/userinfo`
+   - `AUTH_HUB_URL` must be a host that reaches the Accounts Worker
+     (`https://api.gothwadtech.com`) — **never** the Pages host (`accounts.gothwadtech.com`)
+     or the call comes back as `200 text/html` and Mail reports `503 accounts_unexpected_response`
 5. CRUD message APIs against Supabase (empty list OK).
 6. Wire React: delete mock arrays/modules; use APIs.
 7. `POST /api/mail/send` + Resend (works when secret set; without secret return clear 503).

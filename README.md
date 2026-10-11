@@ -92,7 +92,7 @@ Browser mein `http://localhost:3000` kholo — `/signin`, `/signup`, `/me` sab c
 |------|---------|--------|
 | **1** | Gothwad Accounts (signup, login, sessions, reset) | ✅ Done |
 | **2** | OAuth 2.0 provider ("Sign in with Gothwad") | ✅ Done |
-| **3** | Gothwad Mail (Cloudflare Email Routing + Resend) | 🔜 Next |
+| **3** | Gothwad Mail (Cloudflare Email Routing + Resend) — alag repo [`GothwadTech/mail`](https://github.com/GothwadTech/mail), Worker naam **`mail`** | 🔜 Next |
 | **4** | Cross-app SSO (ClashDrive, GrixChat connect) | 📋 Planned |
 
 Full architecture & vision: [ROADMAP.md](ROADMAP.md)
@@ -107,5 +107,9 @@ Full architecture & vision: [ROADMAP.md](ROADMAP.md)
 4. Har Supabase table par **RLS ON** (sql/ folder already does this)
 5. **SQL sirf Gothwad Accounts ke Supabase project mein** — GrixChat / Indogram /
    Gothwad Mail ke apne alag Supabase projects hain (sql/README.md dekho)
+6. **Mail naming confuse mat karo** — Mail ka Cloudflare Worker **`mail`** hai
+   (`gothwad-mail-api` sirf `/api/health` ka label hai); OAuth `client_id`
+   **`gothwad-mail`**; server-to-server base `https://api.gothwadtech.com`
+   (details: [docs/MAIL_INTERNAL.md](docs/MAIL_INTERNAL.md))
 
 © 2026 Gothwad Tech · Built with 🔥

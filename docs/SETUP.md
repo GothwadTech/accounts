@@ -146,6 +146,12 @@ Domain/Path/Secure/HttpOnly attributes NAHI badle.
 Browser sign-in redirect ke liye base = `https://accounts.gothwadtech.com`.
 Server-to-server (Mail) ke liye base = `https://api.gothwadtech.com`.
 
+> **Mail side (GothwadTech/mail repo) mein:** `AUTH_HUB_URL = https://api.gothwadtech.com`
+> (server calls: `/api/auth/me`, `/api/oauth/userinfo`, `/api/internal/usernames/:username`)
+> aur `AUTH_SIGNIN_URL = https://accounts.gothwadtech.com` (sirf browser links).
+> Mail ka Cloudflare Worker **`mail`** naam se deploy hota hai — woh `gothwad-mail-api` nahi hai;
+> `/api/health` ka `service` field sirf cosmetic label hai. Details: [MAIL_INTERNAL.md](MAIL_INTERNAL.md).
+
 ### 2E. Deploy + test ✅
 
 - Pehle Git push / Workers Builds ka deploy complete hone do (Deployments tab mein green ✅).
@@ -259,7 +265,7 @@ Poora guide: **[docs/OAUTH.md](OAUTH.md)**
 | `SUPABASE_ANON_KEY` | Worker → Variables and Secrets (Secret) | ⚠️ semi | Supabase apikey header |
 | `SUPABASE_SERVICE_ROLE_KEY` | Worker → Variables and Secrets (Secret) | ✅ YES | Admin DB/auth operations |
 | `JWT_SECRET` | Worker → Variables and Secrets (Secret) | ✅ YES | OAuth access tokens sign (Step 2C) |
-| `MAIL_INTERNAL_TOKEN` | Worker → Variables and Secrets (Secret) | ✅ YES | Mail → Accounts internal lookup (`/api/internal/usernames/:username`) — shared secret |
+| `MAIL_INTERNAL_TOKEN` | Worker → Variables and Secrets (Secret) | ✅ YES | Mail → Accounts internal lookup (`/api/internal/usernames/:username`) — shared secret. Mail side par isi value ka naam `ACCOUNTS_INTERNAL_TOKEN` hai (Worker `mail`) |
 | `RESEND_API_KEY` | Worker → Variables and Secrets (Secret) | ✅ YES | Reset emails bhejne ke liye |
 | `RESEND_FROM` | wrangler.toml `[vars]` | ❌ | Email "From" address |
 | `DEV_MODE` | wrangler.toml `[vars]` | ❌ | Dev conveniences on/off |
@@ -278,6 +284,13 @@ Poora guide: **[docs/OAUTH.md](OAUTH.md)**
 **Workers Builds (Git deploy) fail / "worker name" mismatch**
 → `cloudflare-worker/wrangler.toml` mein `name = "accounts"` hai na? Dashboard mein
   Worker ka naam bhi `accounts` hona chahiye. Root directory `cloudflare-worker` hai na?
+
+**Mail Worker ke naam ka confusion (`gothwad-mail-api` vs `mail`)**
+→ Mail ka deployed Cloudflare Worker **`mail`** hai (dashboard + us repo ke
+  `worker/wrangler.toml` mein `name = "mail"`). Koi doc/prompt `gothwad-mail-api` bole to
+  woh purani config ki galti hai — `service` field (`/api/health` JSON) sirf label hai.
+  Worker rename **mat** karo (secrets, `mail.gothwadtech.com/api/*` route aur Email Routing
+  catch-all usi par hain). Poora naming table: [MAIL_INTERNAL.md](MAIL_INTERNAL.md).
 
 **`accounts.gothwadtech.com/api/health` 404 ya HTML dikhata hai**
 → Route `accounts.gothwadtech.com/api/*` add kiya? (Step 2D)
