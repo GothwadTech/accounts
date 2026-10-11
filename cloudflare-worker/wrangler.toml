@@ -46,11 +46,13 @@ DEV_MODE = "true"
 #   npx wrangler secret put SUPABASE_ANON_KEY
 #   npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
 #   npx wrangler secret put JWT_SECRET               (Step 2: OAuth token signing)
+#   npx wrangler secret put MAIL_INTERNAL_TOKEN      (Mail → Accounts internal lookup)
 #   npx wrangler secret put RESEND_API_KEY        (optional, password emails ke liye)
 #
 # SUPABASE_ANON_KEY          = Supabase → Settings → API → anon public
 # SUPABASE_SERVICE_ROLE_KEY  = Supabase → Settings → API → service_role (SECRET!)
 # JWT_SECRET                 = koi bhi strong random string (OAuth access tokens sign)
+# MAIL_INTERNAL_TOKEN        = shared secret for Mail Worker to call /api/internal/usernames/:username
 # RESEND_API_KEY             = Resend → API Keys (free: 3000 emails/month)
 # -----------------------------------------------------------------------------
 
