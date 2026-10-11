@@ -3,7 +3,6 @@
  */
 
 import { redirectIfAuthed, setupPasswordEyes } from '../../js/common.js';
-import { mountThemeToggles } from '../../js/theme.js';
 import { GOTHWAD_CONFIG } from '../../js/config.js';
 import { initSigninForm } from './modules/signin-form.js';
 import { initForgotPassword } from './modules/forgot-password.js';
@@ -11,7 +10,6 @@ import { extractResetToken, initResetPassword } from './modules/reset-password.j
 import { initAccountChooser } from './modules/account-chooser.js';
 
 setupPasswordEyes();
-mountThemeToggles();
 
 const resetTokenEarly = extractResetToken();
 if (!resetTokenEarly) {
@@ -47,17 +45,9 @@ export function showMode(name) {
   const sub = document.getElementById('auth-header-sub');
   if (tabs) tabs.classList.toggle('hidden', name !== 'signin');
   if (sub) {
-    const title = document.getElementById('auth-header-title');
-    if (name === 'forgot') {
-      if (title) title.textContent = 'Account recovery';
-      sub.textContent = 'Reset your password to access your account.';
-    } else if (name === 'reset') {
-      if (title) title.textContent = 'Set a new password';
-      sub.textContent = 'Your reset link is verified. Choose a new password.';
-    } else {
-      if (title) title.textContent = 'Sign in';
-      sub.textContent = 'to continue to Gothwad Accounts';
-    }
+    if (name === 'forgot') sub.textContent = 'Reset password to access your account securely.';
+    else if (name === 'reset') sub.textContent = 'Aapka reset link verified hai. Naya password choose karo.';
+    else sub.textContent = 'Connecting you to your world, one identity for Mail, Drive, Chat, Notes & more.';
   }
 }
 

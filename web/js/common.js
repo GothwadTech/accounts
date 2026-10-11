@@ -30,8 +30,14 @@ export function toast(message, type = 'success') {
   }
   const el = document.createElement('div');
   el.className = `toast ${type}`;
+  // Material Symbols font load hota hai (naye dashboard jaisi page) tabhi icon
+  // use karo — purani (legacy) pages par wahi purana emoji style bana rahe.
+  const hasMaterialIcons = !!document.querySelector('link[href*="Material+Symbols"]');
+  const icon = hasMaterialIcons
+    ? `<span class="msym" style="font-size:18px;">${type === 'error' ? 'error' : 'check_circle'}</span>`
+    : `<span>${type === 'error' ? '⚠️' : '✅'}</span>`;
   el.innerHTML = `
-    <span class="msym" style="font-size:18px;">${type === 'error' ? 'error' : 'check_circle'}</span>
+    ${icon}
     <span>${escapeHtml(message)}</span>`;
   wrap.appendChild(el);
   setTimeout(() => el.remove(), 4200);

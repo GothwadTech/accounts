@@ -6,11 +6,13 @@ this folder directly. **Site ke sirf 3 routes hain** (pretty URLs = folders):
 ```
 web/
 ├── signin/index.html    → /signin   Login + chooser + forgot/reset password
-├── signup/index.html    → /signup   Create account (name → DOB+gender → email → pw)
+├── signup/index.html    → /signup   Create account (multi-step: name → email → pw → recovery)
 ├── me/index.html        → /me       Google-style dashboard (6 sections + search)
 ├── index.html           → /         Smart redirect (/me ya /signin)
 │
-├── css/styles.css       Design system — Google-style light + dark (Roboto, #1a73e8)
+├── css/styles.css       Design system (generated — `node tools/bundle-css.js`) — Google-style light + dark (Roboto, #1a73e8) — dashboard ke liye
+├── css/legacy.css       🔒 Purana unique UI (Inter, dark, non-Google) — signin/signup/privacy/terms/root ke liye frozen snapshot.
+│                        Yeh file bundle-css se generate NAHI hoti; in pages ka look exact rakhne ke liye hai, mat overwrite karo.
 ├── js/
 │   ├── config.js        ⚙️ THE 1 FILE to edit: API_URL + APP_DOMAIN (Rule #1)
 │   ├── api.js           fetch wrapper (credentials: include, JSON, errors)
