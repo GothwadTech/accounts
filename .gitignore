@@ -13,3 +13,6 @@ tools/.mock-data.json
 
 # Wrangler build artifacts
 .wrangler/
+
+# Config-derived deployment SQL (regenerate with tools/generate-store-oauth-sql.mjs)
+Store-OAuth-Setup.sql

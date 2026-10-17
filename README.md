@@ -48,6 +48,7 @@ accounts/
 │   ├── 01_core_schema.sql    Tables + RLS + triggers + seeds (idempotent!)
 │   ├── 02_account_activity.sql  Recent activity feed
 │   ├── 03_avatars_storage.sql   Profile photo bucket
+│   ├── 04_store_android_oauth.sql   Android Store callback (preserves web URLs)
 │   └── README.md             Run order + rules (pehle yeh padho)
 │
 ├── tools/                   🛠️ Local dev helpers (never deploy!)
