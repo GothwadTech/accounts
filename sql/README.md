@@ -16,6 +16,7 @@ Gothwad ecosystem mein **har app ka APNA alag Supabase project/database hai**:
 | GrixChat | GrixChat ka apna alag project | ❌ NAHI |
 | Indogram | Indogram ka apna alag project | ❌ NAHI |
 | Gothwad Mail | Mail ka apna alag project | ❌ NAHI |
+| Gothwad Store / Android Store | Store ka apna alag project | ❌ NAHI — OAuth registration bhi **Accounts** mein hoti hai |
 
 **Is folder ki SQL files SIRF "Gothwad Accounts" wale Supabase project mein
 chalani hain.** GrixChat / Indogram / Gothwad Mail ke databases mein mat
@@ -37,11 +38,12 @@ Accounts project mein yeh table milti hai.
 | 1 | `01_core_schema.sql` | Core tables + RLS + triggers + helpers + seed apps | ~470 |
 | 2 | `02_account_activity.sql` | "Recent activity" log (Google-style security feed) | ~120 |
 | 3 | `03_avatars_storage.sql` | Profile photo bucket (Supabase Storage) | ~90 |
+| 4 | `04_store_android_oauth.sql` | Android Store native callback; existing web URLs/secrets preserved | ~25 |
 
-> **Naya file tab banao jab kisi file ki lines 600 se 1000 ke beech cross hone
-> lagein.** Us waqt us topic ka agla numbered file banao (jaise `04_xxx.sql`)
-> aur isi README ke table mein add kar do. Ek file 1000 lines se zyada kabhi
-> nahi honi chahiye (Supabase SQL Editor paste karne mein dikkat aati hai).
+> Schema files ko 600–1000 lines ke paas pahunchne par split karo. Chhoti,
+> targeted data migrations (jaise 04) alag numbered file ho sakti hain, taaki
+> live fix ke liye poora schema dobara na chalana pade. Naya file isi table
+> mein add karo; ek file 1000 lines se zyada nahi honi chahiye.
 
 ---
 
@@ -52,7 +54,18 @@ Accounts project mein yeh table milti hai.
 3. `01_core_schema.sql` ka **poora content** copy-paste karo → **Run** dabao
 4. Phir `02_account_activity.sql` → Run
 5. Phir `03_avatars_storage.sql` → Run
-6. Bas! 🎉 Database ready hai.
+6. Phir `04_store_android_oauth.sql` → Run (result mein Android callback check karo)
+7. Bas! 🎉 Database ready hai.
+
+**Existing deployment mein sirf Store Android redirect fix chahiye?** Core schema
+already hai to sirf file 04 run karo. Yeh web callbacks replace nahi karti.
+Web registration aur verification: [docs/STORE_OAUTH.md](../docs/STORE_OAUTH.md).
+SQL Git mein merge hone se Supabase mein automatically run nahi hoti.
+
+Android + chaaro web callbacks ek saath configure karne ke liye
+`node tools/generate-store-oauth-sql.mjs` configured domain se complete SQL print
+karta hai. Result review karke Accounts SQL Editor mein run karo (no network
+actions from the generator). See `docs/STORE_OAUTH.md`.
 
 Verify kaise karein: **Table Editor** mein jaao — `profiles`,
 `user_sessions`, `ecosystem_apps`, `app_authorizations`, `oauth_auth_codes`,

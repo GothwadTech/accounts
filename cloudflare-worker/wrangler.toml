@@ -41,7 +41,7 @@ RESEND_FROM = "Gothwad Accounts <onboarding@resend.dev>"
 #           (jab Resend configure nahi hoti, testing ke liye).
 # "false" = PRODUCTION: reset link sirf email par jaata hai.
 # ⚠️ LIVE hone se PEHLE isse "false" zaroor kar dena!
-DEV_MODE = "true"
+DEV_MODE = "false"
 
 # Extra CORS origins (comma separated) — zaroorat padne par hi.
 # Example local frontend dev: ALLOWED_ORIGINS = "http://localhost:3000"

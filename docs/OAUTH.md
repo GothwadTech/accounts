@@ -33,9 +33,9 @@
 > Accounts site ke sirf 3 routes hain: `/signin`, `/signup`, `/me`.
 
 **Security built-in:**
-- **PKCE** (S256) — public clients ke liye mandatory (mobile/SPA safe)
-- **One-time codes** — 5 min expiry, reuse impossible
-- **Refresh token rotation** — leak par purana token bekaar
+- **PKCE** (S256) — public clients ke liye mandatory at authorize, consent POST and token exchange; verifier 43–128 RFC 7636 characters, challenge 43 base64url characters
+- **One-time codes** — 5 min expiry, atomic consumption prevents parallel reuse
+- **Refresh token rotation** — atomic consumption; clients must single-flight refresh requests
 - **DB mein sirf hashes** — raw refresh tokens kabhi store nahi
 - **Exact redirect_uri match** — koi bhi random URL allowed nahi
 
@@ -164,7 +164,12 @@ Apps sirf wohi scopes maangti hain jinhe unhe chahiye (least privilege!).
 
 ## 🏢 Client registration (apps ko register karo)
 
-Supabase SQL Editor mein:
+**Store Android/web:** [STORE_OAUTH.md](STORE_OAUTH.md) mein exact callbacks,
+`sql/04_store_android_oauth.sql`, aur web `/api` URL fix hai. Android callback
+`gothwadstore://oauth/callback` hai — web `/auth/callback` se alag.
+
+**Accounts** ke Supabase SQL Editor mein (Store/Mail ke project mein nahi;
+Supabase Authentication → URL Configuration bhi is registry ko nahi badalta):
 
 ```sql
 -- Example: GrixChat ko register karo
@@ -216,8 +221,10 @@ Apni app ke login page mein yeh button + JS copy karo (koi library nahi chahiye)
 
     sessionStorage.setItem('pkce_verifier', verifier);
     sessionStorage.setItem('oauth_state', state);
+    sessionStorage.setItem('oauth_started_at', String(Date.now()));
 
-    const u = new URL('/oauth/authorize', GOTHWAD_AUTH_URL);
+    // Leading '/' would drop the configured /api path and miss the Worker route.
+    const u = new URL('oauth/authorize', GOTHWAD_AUTH_URL.replace(/\/+$/, '') + '/');
     u.searchParams.set('client_id', CLIENT_ID);
     u.searchParams.set('redirect_uri', REDIRECT_URI);
     u.searchParams.set('response_type', 'code');
@@ -237,32 +244,64 @@ Callback page (`/auth/gothwad/callback`) par:
   const GOTHWAD_AUTH_URL = 'https://accounts.gothwadtech.com/api';
   const CLIENT_ID = 'gothwad-chat';
   const p = new URLSearchParams(location.search);
+  const expectedState = sessionStorage.getItem('oauth_state');
+  const verifier = sessionStorage.getItem('pkce_verifier');
+  const startedAt = Number(sessionStorage.getItem('oauth_started_at'));
+  const age = Date.now() - startedAt;
 
-  if (p.get('error')) alert('Denied: ' + p.get('error'));
-  else {
-    // 1) Code → token (PKCE verifier ke saath)
-    const tokens = await (await fetch(`${GOTHWAD_AUTH_URL}/oauth/token`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        grant_type: 'authorization_code',
-        code: p.get('code'),
-        redirect_uri: location.origin + '/auth/gothwad/callback',
-        client_id: CLIENT_ID,
-        code_verifier: sessionStorage.getItem('pkce_verifier'),
-      }),
-    })).json();
+  // Missing state must NEVER match missing state (null === null is not valid).
+  // Check errors/denials too; do not consume another request's pending state.
+  if (!expectedState || !p.get('state') || p.get('state') !== expectedState ||
+      !verifier || !Number.isFinite(startedAt) || startedAt <= 0 || age < 0 || age > 15 * 60 * 1000) {
+    alert('Sign-in session is missing, expired or mismatched. Start sign-in again.');
+  } else {
+    // Consume once before any await. Never leave codes in browser history.
+    sessionStorage.removeItem('oauth_state');
+    sessionStorage.removeItem('pkce_verifier');
+    sessionStorage.removeItem('oauth_started_at');
+    history.replaceState({}, '', location.pathname);
 
-    // 2) Token save (asli app ise secure storage mein rakhega)
-    sessionStorage.setItem('gothwad_access_token', tokens.access_token);
+    if (p.get('error')) alert('Sign-in cancelled: ' + p.get('error'));
+    else if (!p.get('code')) alert('No authorization code returned. Start sign-in again.');
+    else {
+      try {
+        const tokenRes = await fetch(`${GOTHWAD_AUTH_URL}/oauth/token`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            grant_type: 'authorization_code', code: p.get('code'),
+            redirect_uri: location.origin + '/auth/gothwad/callback',
+            client_id: CLIENT_ID, code_verifier: verifier,
+          }),
+        });
+        const tokens = await tokenRes.json();
+        if (!tokenRes.ok || !tokens.access_token) throw new Error('Token exchange failed. Start sign-in again.');
 
-    // 3) UserInfo — user ka profile
-    const me = await (await fetch(`${GOTHWAD_AUTH_URL}/oauth/userinfo`, {
-      headers: { Authorization: `Bearer ${tokens.access_token}` },
-    })).json();
-    console.log('Logged in as:', me.name, me.email);
+        const meRes = await fetch(`${GOTHWAD_AUTH_URL}/oauth/userinfo`, {
+          headers: { Authorization: `Bearer ${tokens.access_token}` },
+        });
+        const me = await meRes.json();
+        if (!meRes.ok || !me.sub) throw new Error('Profile verification failed.');
+
+        // Demo storage only: a real server-side app should use a secure session.
+        // Never reuse an old account's refresh token after a new login.
+        sessionStorage.setItem('gothwad_access_token', tokens.access_token);
+        if (tokens.refresh_token) sessionStorage.setItem('gothwad_refresh_token', tokens.refresh_token);
+        else sessionStorage.removeItem('gothwad_refresh_token');
+        console.log('Gothwad sign-in completed');
+      } catch (error) {
+        alert(error.message || 'Sign-in failed. Please try again.');
+      }
+    }
   }
 </script>
 ```
+
+For framework apps, put callback exchange behind a shared single-flight promise
+(React StrictMode/remounts must not exchange a one-time code twice). Implement
+refresh rotation/expiry handling before using the example in a long-lived app.
+OAuth refresh tokens use `/oauth/token`, not `/api/auth/refresh` (which is for
+Accounts' own Supabase sessions). Keep OAuth tokens, authorization codes and
+PKCE verifiers out of logs.
 
 **Server-side app hai?** (Node/PHP/etc.) To token exchange apne SERVER par karo
 (client_secret ke saath) — browser mein secret mat rakho. Flow same hai.
@@ -284,7 +323,8 @@ Callback page (`/auth/gothwad/callback`) par:
 | Error | Matlab | Fix |
 |-------|--------|-----|
 | `Unknown client_id` | App register nahi | SQL UPDATE chalao (upar) |
-| `redirect_uri is not registered` | URI match nahi | `redirect_uris` array check karo |
+| `redirect_uri is not registered` | URI match nahi | `redirect_uris` array check karo; Store: [STORE_OAUTH.md](STORE_OAUTH.md) |
+| `temporarily_unavailable` (503) | OAuth database read/write failed | Retry later; check Worker/Supabase configuration, not the callback allowlist |
 | `PKCE required` | Public client ne challenge nahi bheja | `code_challenge` add karo |
 | `PKCE verification failed` | Galat verifier | Wahi verifier bhejo jo challenge banaya tha |
 | `Code is invalid or already used` | Code reuse/expired | Naya login flow karo (code 5 min = 1 baar) |
