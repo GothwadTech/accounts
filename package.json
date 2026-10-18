@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node --experimental-strip-types server.js",
     "build": "node tools/bundle-css.js",
+    "test": "node --experimental-strip-types --test tests/*.test.mjs",
     "start": "node --experimental-strip-types server.js"
   },
   "devDependencies": {
