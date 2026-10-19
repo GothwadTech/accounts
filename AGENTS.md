@@ -77,7 +77,7 @@ ek account se.
   `ecosystem_apps`, `app_authorizations`, `oauth_auth_codes`, `oauth_refresh_tokens`
 - `sql/02_account_activity.sql` — recent activity feed (Google-style)
 - `sql/03_avatars_storage.sql` — profile photo bucket (Supabase Storage)
-- `sql/04_store_android_oauth.sql` — exact Android Store callback (preserves web URLs);
+- `sql/05_store_android_oauth.sql` — exact Android Store callback (preserves web URLs);
   full Android + web setup generator: `tools/generate-store-oauth-sql.mjs`.
   Store auth handoff/setup: `docs/STORE_OAUTH.md`.
 - RLS ON everywhere. Profile auto-create trigger on auth.users.

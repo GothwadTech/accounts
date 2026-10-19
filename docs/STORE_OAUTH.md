@@ -22,7 +22,7 @@ They include the additional callback/session bugs found during the follow-up.
 
 `storeapp/app/build.gradle.kts` configures:
 
-- `OAUTH_CLIENT_ID = gothwad-store`
+- `OAUTH_CLIENT_ID = kiwi-store`
 - `OAUTH_REDIRECT_URI = gothwadstore://oauth/callback`
 - Accounts API base = `https://accounts.<APP_DOMAIN>/api/`
 
@@ -34,7 +34,7 @@ that HTTPS address belongs to the web landing site, not the Android app.
 Accounts' `isRedirectUriAllowed()` requires an **exact match** in
 `public.ecosystem_apps.redirect_uris`. Otherwise `/oauth/authorize` returns
 `redirect_uri is not registered for this app` before checking login.
-`01_core_schema.sql` seeds `gothwad-store` with an empty callback list; the
+`01_core_schema.sql` seeds `kiwi-store` with an empty callback list; the
 reviewed Store setup instructions list web URLs but omit the native callback.
 So an empty list, or a web-only list, reproduces the reported Android failure.
 The production row still needs checking to confirm its current values.
@@ -44,10 +44,10 @@ The production row still needs checking to confirm its current values.
 1. Open **the Accounts Supabase project** → **SQL Editor**.
    This is **not** the Store database and **not** Supabase Authentication → URL
    Configuration. Gothwad's own OAuth provider reads `ecosystem_apps`.
-2. Run the complete file [`sql/04_store_android_oauth.sql`](../sql/04_store_android_oauth.sql).
+2. Run the complete file [`sql/05_store_android_oauth.sql`](../sql/05_store_android_oauth.sql).
    The core schema (`01_core_schema.sql`) must already exist.
 3. Its result should show one row:
-   - `id` / `client_id`: `gothwad-store` for the default configuration;
+   - `id` / `client_id`: `kiwi-store` for the default configuration;
    - `redirect_uris` includes **exactly** `gothwadstore://oauth/callback`
      (no trailing slash);
    - `public_client = true` (`secret_hash IS NULL`, because the APK uses PKCE,
@@ -88,7 +88,7 @@ File 04 alone remains the smaller Android-only fix.
 
 ## 3. Keep the web callbacks too
 
-Android and web currently share `client_id=gothwad-store`. The web repo uses
+Android and web currently share `client_id=kiwi-store`. The web repo uses
 `window.location.origin + '/auth/callback'`. Register each deployed, owned site:
 
 | Client/site | Exact callback |
@@ -125,12 +125,12 @@ BEGIN
     ]) AS callbacks(uri)
     ORDER BY uri
   )
-  WHERE app.id = 'gothwad-store';
+  WHERE app.id = 'kiwi-store';
 END $$;
 
 SELECT id, client_id, redirect_uris, (secret_hash IS NULL) AS public_client
 FROM public.ecosystem_apps
-WHERE id = 'gothwad-store';
+WHERE id = 'kiwi-store';
 ```
 
 ## 4. Separate bug in the Store web repo: `/api` is dropped

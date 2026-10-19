@@ -42,7 +42,7 @@ Total time: ~30–40 minutes.
 4. Left menu → **SQL Editor** → **`sql/` folder ki files NUMBER-WISE** run karo:
    pehle `sql/01_core_schema.sql` ka poora content copy-paste → **Run**,
    phir `sql/02_account_activity.sql` → **Run**, phir `sql/03_avatars_storage.sql`
-   → **Run**, phir `sql/04_store_android_oauth.sql` → **Run**.
+   → **Run**, phir `sql/05_store_android_oauth.sql` → **Run**.
    ✅ Tables + activity feed + photo bucket + Android Store callback ready!
    (Dobara run karne par bhi error nahi aata — details: `sql/README.md`)
 5. Left menu → **Settings → API** → yeh 3 cheezein note karo:
@@ -255,7 +255,7 @@ Jab GrixChat / ClashDrive / Notes mein Gothwad login lagana ho:
 Poora guide: **[docs/OAUTH.md](OAUTH.md)**
 
 **Store Android / web redirect error:** [STORE_OAUTH.md](STORE_OAUTH.md) dekho.
-Android ke liye `sql/04_store_android_oauth.sql` **Accounts** DB mein run karo;
+Android ke liye `sql/05_store_android_oauth.sql` **Accounts** DB mein run karo;
 web callbacks preserve hote hain. Web Store ke URL builder mein `/api` prefix
 bhi preserve hona chahiye (guide mein separate Store-repo change diya hai).
 Complete Android + four-web registration SQL ke liye generator bhi hai:

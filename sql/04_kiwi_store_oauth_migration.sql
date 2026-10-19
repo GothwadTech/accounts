@@ -31,7 +31,9 @@ BEGIN
   END IF;
 
   -- Create/normalize the canonical client. These are the only production
-  -- redirect URIs; localhost is the one local development callback.
+  -- redirect URIs plus the Android native callback (the Android app uses this
+  -- same client_id, so re-running this file must not drop it); localhost is the
+  -- one local development callback.
   INSERT INTO public.ecosystem_apps
     (id, name, description, icon, redirect_uris, is_verified, client_id)
   VALUES
@@ -40,7 +42,9 @@ BEGIN
        'https://kiwistore.gothwadtech.com/auth/callback',
        'https://kiwiconsole.gothwadtech.com/auth/callback',
        'https://kiwiadmin.gothwadtech.com/auth/callback',
-       'http://localhost:3000/auth/callback'
+       'http://localhost:3000/auth/callback',
+       'gothwadstore://oauth/callback',
+       'kiwistore://oauth/callback'
      ]::TEXT[], FALSE, 'kiwi-store')
   ON CONFLICT (id) DO UPDATE
     SET name = EXCLUDED.name,

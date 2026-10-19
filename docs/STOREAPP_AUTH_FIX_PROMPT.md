@@ -14,7 +14,7 @@ Accounts session; add focused tests to prove the failures and fixes.
 
 ## Shared contract — do not change it to hide the error
 
-- `OAUTH_CLIENT_ID = gothwad-store` (public client; no client secret in the APK).
+- `OAUTH_CLIENT_ID = kiwi-store` (public client; no client secret in the APK).
 - `OAUTH_REDIRECT_URI = gothwadstore://oauth/callback`, exactly, no trailing slash.
 - Default Accounts API base: `https://accounts.gothwadtech.com/api/`.
   Android already constructs `/api/oauth/authorize` correctly. Do not remove `/api`.
@@ -24,7 +24,7 @@ Accounts session; add focused tests to prove the failures and fixes.
 - Code exchange and OAuth refresh go to `oauth/token`; profile to `oauth/userinfo`.
   Store API calls use `https://store.gothwadtech.com/api/` with the OAuth Bearer token.
 - The native callback must be in **Accounts'** `ecosystem_apps.redirect_uris` for
-  `gothwad-store`. This is not a Store DB or Supabase Authentication setting.
+  `kiwi-store`. This is not a Store DB or Supabase Authentication setting.
   Accounts has prepared registration SQL; an owner still needs to apply it.
   `https://storeapp.<APP_DOMAIN>/auth/callback` is the WEB landing callback,
   not a replacement for Android's custom scheme.
