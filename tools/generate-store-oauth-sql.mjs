@@ -15,7 +15,7 @@ export function generateStoreOAuthSql(domain) {
     !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))) {
     throw new Error('APP_DOMAIN must be a lowercase hostname, not a URL, wildcard or SQL fragment');
   }
-  const nativeSql = read('../sql/04_store_android_oauth.sql');
+  const nativeSql = read('../sql/05_store_android_oauth.sql');
   const guide = read('../docs/STORE_OAUTH.md');
   const template = guide.match(/```sql\n([\s\S]*?)\n```/)?.[1];
   const placeholder = "app_domain text := 'YOUR_APP_DOMAIN'";

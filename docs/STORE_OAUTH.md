@@ -44,7 +44,7 @@ The production row still needs checking to confirm its current values.
 1. Open **the Accounts Supabase project** → **SQL Editor**.
    This is **not** the Store database and **not** Supabase Authentication → URL
    Configuration. Gothwad's own OAuth provider reads `ecosystem_apps`.
-2. Run the complete file [`sql/04_store_android_oauth.sql`](../sql/04_store_android_oauth.sql).
+2. Run the complete file [`sql/05_store_android_oauth.sql`](../sql/05_store_android_oauth.sql).
    The core schema (`01_core_schema.sql`) must already exist.
 3. Its result should show one row:
    - `id` / `client_id`: `gothwad-store` for the default configuration;

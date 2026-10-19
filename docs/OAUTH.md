@@ -165,7 +165,7 @@ Apps sirf wohi scopes maangti hain jinhe unhe chahiye (least privilege!).
 ## 🏢 Client registration (apps ko register karo)
 
 **Store Android/web:** [STORE_OAUTH.md](STORE_OAUTH.md) mein exact callbacks,
-`sql/04_store_android_oauth.sql`, aur web `/api` URL fix hai. Android callback
+`sql/05_store_android_oauth.sql`, aur web `/api` URL fix hai. Android callback
 `gothwadstore://oauth/callback` hai — web `/auth/callback` se alag.
 
 **Accounts** ke Supabase SQL Editor mein (Store/Mail ke project mein nahi;
