@@ -658,15 +658,37 @@ async function readFormOrJson(request: Request): Promise<Record<string, any>> {
 /* ------------------------------ OAuth clients ------------------------------ */
 // Client = ecosystem app (jaise gothwad-chat). DB mein registered hona zaroori.
 
+class OAuthDatabaseError extends Error {
+  constructor() { super('OAuth database temporarily unavailable'); }
+}
+
+// Database failures are not "unknown client" or a successful token write.
+// Keep diagnostics generic: never expose database errors, codes, or tokens.
+async function oauthDbFetch(env: Env, path: string, init: RequestInit = {}): Promise<Response> {
+  try {
+    const res = await SB.adminFetch(env, path, init);
+    if (!res.ok) throw new OAuthDatabaseError();
+    return res;
+  } catch {
+    throw new OAuthDatabaseError();
+  }
+}
+
+async function oauthDbRows(env: Env, path: string, init: RequestInit = {}): Promise<Record<string, any>[]> {
+  const res = await oauthDbFetch(env, path, init);
+  const rows = await res.json().catch(() => null);
+  if (!Array.isArray(rows)) throw new OAuthDatabaseError();
+  return rows;
+}
+
 async function findOAuthClient(env: Env, clientId: string): Promise<Record<string, any> | null> {
-  // Pehle client_id se, phir id se (dono same ho sakte hain)
+  // Pehle client_id se, phir id se (dono same ho sakte hain).
   for (const col of ['client_id', 'id']) {
-    const res = await SB.adminFetch(
+    const rows = await oauthDbRows(
       env,
       `/rest/v1/ecosystem_apps?${col}=eq.${encodeURIComponent(clientId)}&select=*`,
     );
-    const rows = (await res.json()) as Record<string, any>[];
-    if (Array.isArray(rows) && rows[0]) return rows[0];
+    if (rows[0]) return rows[0];
   }
   return null;
 }
@@ -676,23 +698,47 @@ async function findOAuthClient(env: Env, clientId: string): Promise<Record<strin
  * Phle exact match; DEV_MODE mein localhost URLs extra allowed (testing ke liye).
  */
 function isRedirectUriAllowed(env: Env, client: Record<string, any>, redirectUri: string): boolean {
-  const allowed: string[] = Array.isArray(client.redirect_uris) ? client.redirect_uris : [];
-  if (allowed.includes(redirectUri)) return true;
-  if (env.DEV_MODE === 'true') {
-    try {
-      const u = new URL(redirectUri);
-      if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') return true;
-    } catch { /* invalid URL */ }
+  try {
+    const u = new URL(redirectUri);
+    // OAuth callbacks cannot contain fragments or embedded credentials.
+    // Registered native schemes remain supported; never allow script/data URLs.
+    if (redirectUri.includes('#') || u.username || u.password
+      || ['javascript:', 'data:', 'file:', 'about:', 'blob:'].includes(u.protocol)) return false;
+    const allowed: string[] = Array.isArray(client.redirect_uris) ? client.redirect_uris : [];
+    if (allowed.includes(redirectUri)) return true;
+    return env.DEV_MODE === 'true' && ['http:', 'https:'].includes(u.protocol)
+      && (u.hostname === 'localhost' || u.hostname === '127.0.0.1');
+  } catch {
+    return false;
   }
-  return false;
 }
 
-/** PKCE verify: SHA256(code_verifier) === code_challenge (method S256) */
+/** Same PKCE policy at authorize, consent POST, and token exchange (no bypass). */
+function pkceRequestError(client: Record<string, any>, challenge: string | null, method: string | null): string | null {
+  if (!challenge) {
+    if (!client.secret_hash) return 'PKCE required: pass code_challenge (S256)';
+    return method ? 'code_challenge is required with code_challenge_method' : null;
+  }
+  if (method !== 'S256') return 'Only code_challenge_method=S256 is supported';
+  if (!/^[A-Za-z0-9_-]{43}$/.test(challenge)) return 'Invalid S256 code_challenge';
+  return null;
+}
+
+/** PKCE verify: RFC 7636 verifier syntax + SHA256(verifier) === challenge. */
 async function verifyPkce(verifier: string, challenge: string | null, method: string | null): Promise<boolean> {
-  if (!challenge) return true; // PKCE optional (confidential clients)
-  if (method && method !== 'S256') return false; // sirf S256 supported
+  if (!challenge) return true; // Caller permits this ONLY for a confidential client.
+  if (method !== 'S256' || !/^[A-Za-z0-9._~-]{43,128}$/.test(verifier)) return false;
   const computed = await sha256Base64Url(verifier);
   return computed === challenge;
+}
+
+/** Keep registered query parameters, and encode OAuth response fields safely. */
+function oauthCallbackUrl(redirectUri: string, result: { code?: string; error?: string }, state: string): string {
+  const back = new URL(redirectUri);
+  for (const key of ['code', 'error', 'error_description', 'state']) back.searchParams.delete(key);
+  for (const [key, value] of Object.entries(result)) back.searchParams.set(key, value);
+  if (state) back.searchParams.set('state', state);
+  return back.toString();
 }
 
 /** Client secret check — sirf confidential clients (secret_hash set ho) ke liye. */
@@ -851,7 +897,7 @@ function consentPageHtml(
     </div>
   </div>
 <script>
-  const data = ${JSON.stringify(data)};
+  const data = ${JSON.stringify(data).replace(/</g, '\\u003c')};
   async function decide(approved) {
     const btn = document.getElementById(approved ? 'allow' : 'deny');
     btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> ' + (approved ? 'Authorizing…' : 'Denying…');
@@ -1032,8 +1078,15 @@ export default {
     }
 
     // Har JSON response par CORS headers lagao
-    const withCors = (res: Response): Response => {
+    let oauthCookies: string[] = [];
+    const withCors = (res: Response, newCookies: string[] = oauthCookies): Response => {
       corsHeaders.forEach((v, k) => res.headers.set(k, v));
+      for (const cookie of newCookies) res.headers.append('Set-Cookie', cookie);
+      if (route.startsWith('/oauth/')) {
+        // Consent contains identity/state; token and callback responses are private too.
+        res.headers.set('Cache-Control', 'no-store');
+        res.headers.set('Pragma', 'no-cache');
+      }
       return res;
     };
 
@@ -1898,14 +1951,12 @@ export default {
         if (scopes.length === 0) return withCors(apiError('At least one valid scope is required', 400));
 
         // Public clients (secret nahi) ke liye PKCE mandatory — security best practice
-        const challenge = url.searchParams.get('code_challenge');
-        const isPublicClient = !client.secret_hash;
-        if (isPublicClient && !challenge) {
-          return withCors(apiError('PKCE required: pass code_challenge (S256)', 400));
-        }
+        const pkceError = pkceRequestError(client, url.searchParams.get('code_challenge'), url.searchParams.get('code_challenge_method'));
+        if (pkceError) return withCors(apiError(pkceError, 400));
 
         // Logged-in nahi? → account chooser / signin, phir wapas yahin (OAuth)
         const session = await resolveSession(request, env);
+        oauthCookies = session.newCookies || []; // Also preserve rotation on later error responses.
         if (!session.ok) {
           const loginUrl = `${env.AUTH_HUB_URL}/signin?choose=1&next=${encodeURIComponent(url.toString())}`;
           return withCors(new Response(null, { status: 302, headers: { Location: loginUrl } }));
@@ -1914,15 +1965,17 @@ export default {
         // Logged-in → consent screen (Worker khud HTML render karta hai —
         // site par koi extra route/page nahi chahiye!)
         const profile = await fetchProfile(env, session.authUser!.id);
-        return withCors(consentPageHtml(env, client, session.authUser!, profile, url.searchParams, url.toString()));
+        return withCors(consentPageHtml(env, client, session.authUser!, profile, url.searchParams, url.toString()), session.newCookies);
       }
 
       // ---------------------------------------------- /oauth/decision (POST)
       // Consent screen se: user ne Allow/Deny kiya.
       if ((route === '/oauth/decision' || route === '/oauth/authorize/decision') && request.method === 'POST') {
         const session = await resolveSession(request, env);
+        oauthCookies = session.newCookies || []; // Also preserve rotation on later error responses.
         if (!session.ok) return withCors(apiError('Please sign in first', 401));
 
+        const respond = (res: Response) => withCors(res, session.newCookies);
         const body = await readJson(request);
         const approved = body.approved === true;
         const clientId = String(body.client_id || '');
@@ -1930,26 +1983,28 @@ export default {
         const state = body.state ? String(body.state) : '';
         const scopes = parseScopes(String(body.scope || ''));
         const challenge = body.code_challenge ? String(body.code_challenge) : null;
-        const challengeMethod = body.code_challenge_method ? String(body.code_challenge_method) : 'S256';
+        const challengeMethod = body.code_challenge_method ? String(body.code_challenge_method) : null;
 
         const client = await findOAuthClient(env, clientId);
-        if (!client) return withCors(apiError('Unknown client_id', 400));
+        if (!client) return respond(apiError('Unknown client_id', 400));
         if (!isRedirectUriAllowed(env, client, redirectUri)) {
-          return withCors(apiError('redirect_uri is not registered', 400));
+          return respond(apiError('redirect_uri is not registered', 400));
         }
 
         // User ne DENY kiya → error ke saath app par wapas
         if (!approved) {
-          const denyUrl = `${redirectUri}?error=access_denied${state ? `&state=${encodeURIComponent(state)}` : ''}`;
-          return withCors(json({ redirect_url: denyUrl }));
+          const denyUrl = oauthCallbackUrl(redirectUri, { error: 'access_denied' }, state);
+          return respond(json({ redirect_url: denyUrl }));
         }
 
-        if (scopes.length === 0) return withCors(apiError('No valid scopes requested', 400));
+        if (scopes.length === 0) return respond(apiError('No valid scopes requested', 400));
+        const pkceError = pkceRequestError(client, challenge, challengeMethod);
+        if (pkceError) return respond(apiError(pkceError, 400));
 
         // One-time authorization code banao (5 minute valid)
         const code = randomToken();
         const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-        await SB.adminFetch(env, '/rest/v1/oauth_auth_codes', {
+        await oauthDbFetch(env, '/rest/v1/oauth_auth_codes', {
           method: 'POST',
           body: JSON.stringify({
             code,
@@ -1966,11 +2021,10 @@ export default {
 
         // Grant save (dashboard mein "Connected apps" dikhta hai)
         // Pehle check, phir insert/update — taaki duplicate na bane
-        const existingRes = await SB.adminFetch(
+        const existingRows = await oauthDbRows(
           env,
           `/rest/v1/app_authorizations?user_id=eq.${encodeURIComponent(session.authUser!.id)}&app_id=eq.${encodeURIComponent(client.id)}&select=id`,
         );
-        const existingRows = (await existingRes.json()) as Record<string, any>[];
         const grantBody = {
           user_id: session.authUser!.id,
           app_id: client.id,
@@ -1979,20 +2033,20 @@ export default {
           last_used_at: new Date().toISOString(),
         };
         if (existingRows.length > 0) {
-          await SB.adminFetch(env, `/rest/v1/app_authorizations?id=eq.${encodeURIComponent(existingRows[0].id)}`, {
+          await oauthDbFetch(env, `/rest/v1/app_authorizations?id=eq.${encodeURIComponent(existingRows[0].id)}`, {
             method: 'PATCH',
             body: JSON.stringify({ scopes, last_used_at: new Date().toISOString() }),
           });
         } else {
-          await SB.adminFetch(env, '/rest/v1/app_authorizations', { method: 'POST', body: JSON.stringify(grantBody) });
+          await oauthDbFetch(env, '/rest/v1/app_authorizations', { method: 'POST', body: JSON.stringify(grantBody) });
         }
 
         // Activity feed: app connected
         await logActivity(env, session.authUser!.id, 'app_authorized', `App connected: ${client.name}`, `Scopes: ${scopes.join(', ')}`, request);
 
         // App par wapas: code + state ke saath (standard OAuth redirect)
-        const backUrl = `${redirectUri}?code=${encodeURIComponent(code)}${state ? `&state=${encodeURIComponent(state)}` : ''}`;
-        return withCors(json({ redirect_url: backUrl }));
+        const backUrl = oauthCallbackUrl(redirectUri, { code }, state);
+        return respond(json({ redirect_url: backUrl }));
       }
 
       // -------------------------------------------------- /oauth/token (POST)
@@ -2017,8 +2071,7 @@ export default {
           const redirectUri = String(body.redirect_uri || '');
           const codeVerifier = body.code_verifier ? String(body.code_verifier) : '';
 
-          const codeRes = await SB.adminFetch(env, `/rest/v1/oauth_auth_codes?code=eq.${encodeURIComponent(code)}&select=*`);
-          const codeRows = (await codeRes.json()) as Record<string, any>[];
+          const codeRows = await oauthDbRows(env, `/rest/v1/oauth_auth_codes?code=eq.${encodeURIComponent(code)}&select=*`);
           const row = codeRows[0];
 
           // Har check zaroori hai: code ek baar hi use ho sakta hai!
@@ -2031,14 +2084,20 @@ export default {
           if (row.client_id !== client.id || row.redirect_uri !== redirectUri) {
             return withCors(json({ error: 'invalid_grant', error_description: 'redirect_uri or client mismatch' }, 400));
           }
-          if (!(await verifyPkce(codeVerifier, row.code_challenge, row.code_challenge_method))) {
+          if (pkceRequestError(client, row.code_challenge, row.code_challenge_method)
+            || !(await verifyPkce(codeVerifier, row.code_challenge, row.code_challenge_method))) {
             return withCors(json({ error: 'invalid_grant', error_description: 'PKCE verification failed' }, 400));
           }
 
-          // Code burn — reuse rokne ke liye turant used mark karo
-          await SB.adminFetch(env, `/rest/v1/oauth_auth_codes?code=eq.${encodeURIComponent(code)}`, {
-            method: 'PATCH', body: JSON.stringify({ used: true }),
-          });
+          // Conditional UPDATE is atomic: two concurrent exchanges cannot both win.
+          const consumed = await oauthDbRows(env,
+            `/rest/v1/oauth_auth_codes?code=eq.${encodeURIComponent(code)}&used=eq.false&expires_at=gt.${encodeURIComponent(new Date().toISOString())}`, {
+              method: 'PATCH', headers: { Prefer: 'return=representation' },
+              body: JSON.stringify({ used: true }),
+            });
+          if (consumed.length !== 1) {
+            return withCors(json({ error: 'invalid_grant', error_description: 'Code is invalid or already used' }, 400));
+          }
 
           const profile = await fetchProfile(env, row.user_id);
           const username = profile?.username || '';
@@ -2057,7 +2116,7 @@ export default {
           // offline_access scope → refresh token (30 din, DB mein sirf hash)
           if (scopes.includes('offline_access')) {
             const rt = randomToken();
-            await SB.adminFetch(env, '/rest/v1/oauth_refresh_tokens', {
+            await oauthDbFetch(env, '/rest/v1/oauth_refresh_tokens', {
               method: 'POST',
               body: JSON.stringify({
                 token_hash: await sha256Hex(rt),
@@ -2079,8 +2138,7 @@ export default {
           const rt = String(body.refresh_token || '');
           const hash = await sha256Hex(rt);
 
-          const rtRes = await SB.adminFetch(env, `/rest/v1/oauth_refresh_tokens?token_hash=eq.${encodeURIComponent(hash)}&select=*`);
-          const rtRows = (await rtRes.json()) as Record<string, any>[];
+          const rtRows = await oauthDbRows(env, `/rest/v1/oauth_refresh_tokens?token_hash=eq.${encodeURIComponent(hash)}&select=*`);
           const row = rtRows[0];
 
           if (!row || row.revoked || new Date(row.expires_at).getTime() < Date.now()) {
@@ -2090,10 +2148,15 @@ export default {
             return withCors(json({ error: 'invalid_grant', error_description: 'Token was issued to another app' }, 400));
           }
 
-          // ROTATION: purana token revoke, naya bhejo (token leak par purana bekaar)
-          await SB.adminFetch(env, `/rest/v1/oauth_refresh_tokens?token_hash=eq.${encodeURIComponent(hash)}`, {
-            method: 'PATCH', body: JSON.stringify({ revoked: true }),
-          });
+          // Rotation must also have exactly one winner under parallel requests.
+          const consumed = await oauthDbRows(env,
+            `/rest/v1/oauth_refresh_tokens?token_hash=eq.${encodeURIComponent(hash)}&revoked=eq.false&expires_at=gt.${encodeURIComponent(new Date().toISOString())}`, {
+              method: 'PATCH', headers: { Prefer: 'return=representation' },
+              body: JSON.stringify({ revoked: true }),
+            });
+          if (consumed.length !== 1) {
+            return withCors(json({ error: 'invalid_grant', error_description: 'Refresh token invalid or expired' }, 400));
+          }
 
           const profile = await fetchProfile(env, row.user_id);
           const accessToken = await issueAccessToken(env, {
@@ -2104,7 +2167,7 @@ export default {
           });
 
           const newRt = randomToken();
-          await SB.adminFetch(env, '/rest/v1/oauth_refresh_tokens', {
+          await oauthDbFetch(env, '/rest/v1/oauth_refresh_tokens', {
             method: 'POST',
             body: JSON.stringify({
               token_hash: await sha256Hex(newRt),
@@ -2231,6 +2294,12 @@ export default {
 
       return withCors(apiError('Endpoint not found', 404));
     } catch (err: any) {
+      if (err instanceof OAuthDatabaseError) {
+        return withCors(json({
+          error: 'temporarily_unavailable',
+          error_description: 'OAuth storage is unavailable. Please try again later.',
+        }, 503));
+      }
       console.error('Worker error:', err);
       return withCors(apiError('Internal server error', 500));
     }

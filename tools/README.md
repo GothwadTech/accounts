@@ -36,6 +36,33 @@ node tools/mock-supabase.js       # → http://127.0.0.1:8788
 - Kya emulate karta hai: auth (signup/login/refresh/logout/admin generate_link),
   profiles, user_sessions, ecosystem_apps (seeded), oauth tables, grants
 
+## OAuth regression tests — offline, no production services
+
+```bash
+npm test
+# equivalent: node --experimental-strip-types --test tools/test-oauth-*.mjs
+```
+
+Node 22+; no extra packages or running servers needed. Tests call the actual
+Worker against in-memory REST fixtures and execute the documented callback
+example. Coverage: redirect allowlists, PKCE bypass rejection, consent escaping,
+cookie refresh, code/refresh races, failed DB writes, state expiry/reuse and URL
+construction. Configuration tests cover the SQL generator and production DEV_MODE.
+These tests do not update or verify the live database.
+
+## generate-store-oauth-sql.mjs — owner-reviewed setup packet
+
+```bash
+node tools/generate-store-oauth-sql.mjs > Store-OAuth-Setup.sql
+```
+
+Prints safe, transactional registration SQL for Android + the four standard web
+sites, using the domain from Worker config. No network/database calls. Run the
+result manually in **Accounts** Supabase, not Store's project. Keeps existing
+callbacks; never resets confidential client secrets. The generated file is a
+local deployment artifact, not source code. Full steps:
+[docs/STORE_OAUTH.md](../docs/STORE_OAUTH.md).
+
 ## Local dev poora setup
 
 ```bash

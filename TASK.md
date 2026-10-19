@@ -73,8 +73,8 @@ is the failing step.
 >
 > Rules & working style: [`AGENTS.md`](AGENTS.md) · Master plan: [`PLAN.md`](PLAN.md)
 
-**Last updated:** 2026-10-11 (Session 26 — Mail Worker naming docs sync: `mail`, not `gothwad-mail-api`;
-Session 24 — Google-style UI redesign + sql/ folder + activity/photo/export/delete)
+**Last updated:** 2026-10-17 (Session 28 — Store/web Android AI handoff prompts,
+Accounts OAuth hardening + full callback SQL generator; live deployment/DB run pending)
 
 ---
 
@@ -97,6 +97,72 @@ numbered idempotent files (supabase/ folder merged + removed).
 ---
 
 ## ✅ DONE (completed work — newest first)
+
+### Session 28 — 2026-10-17 — Two repo handoffs + Accounts-side OAuth completion
+- Owner asked for separate copy-paste prompts for the Store and Android AIs;
+  only Accounts is edited here. Rechecked both remote main heads (unchanged from
+  Session 27). New `docs/STORE_WEB_AUTH_FIX_PROMPT.md` and
+  `docs/STOREAPP_AUTH_FIX_PROMPT.md` separate source findings from live verification.
+- Additional **Store source findings:** Admin/landing lack callback handlers,
+  nullable state comparison/pending-state lifecycle, refresh tokens stored but
+  unused, SSO Set-Cookie dropped, and upstream outages collapsed into 401.
+  Logout semantics need explicit review, not a silent ecosystem-wide logout.
+- Additional **Android source findings:** AuthManager inherits the download
+  client's token interceptor, creating recursive refresh/mutex deadlock; callback
+  path/state/age checks incomplete; cancel/retry button can stay busy; refresh/
+  account-switch consistency and credential-host scoping need fixes. Existing
+  README/integration docs are stale. No Android device/runtime test was claimed.
+- **Accounts Worker fixed:** public-client S256 PKCE enforced at authorize,
+  direct consent POST and token exchange; verifier syntax checked; consent JSON
+  safely escapes `<` (prevents script-tag injection while preserving state);
+  registered callback query parameters preserved; unsafe callback forms rejected;
+  rotated session cookies returned on consent/decision and later error responses;
+  OAuth responses no-store; database errors return generic 503 instead of false
+  unknown-client/success; writes checked; code and refresh-token consumption use
+  atomic conditional PATCH so concurrent requests have one winner.
+- Production `wrangler.toml` now has `DEV_MODE=false`; local dev overrides remain
+  possible. No deployment performed. OAuth docs' callback example now validates
+  state/verifier/age, handles denial/failure, consumes once and cleans history.
+- Added `tools/generate-store-oauth-sql.mjs`: complete Android + four web callback
+  SQL from the existing APP_DOMAIN config. Prints only; no network/DB access.
+  Preserves existing callbacks and aborts for missing/conflicting/confidential
+  client registration. Generated `Store-OAuth-Setup.sql` delivered separately,
+  excluded from Git. Core runtime remains domain-agnostic.
+- **Verified:** `npm test` **61/61**; PostgreSQL/PGlite **13/13** SQL checks
+  (7 migration/template + 6 actual generated-packet checks); strict TypeScript;
+  Wrangler dry-run (existing old-version/`previews` warnings, no build failure).
+  Mock-backed signup/me/profile/password/devices/signout/signin/reset + native
+  OAuth consent/code/token/userinfo/rotation smoke passed; test server stopped.
+- **Remaining owner steps:** merge/deploy reviewed Accounts Worker; execute
+  generated SQL in Accounts Supabase; give the two prompts to the respective
+  repo AIs; verify fresh Android/web login. No live DB inspection/update, no
+  Store/storeapp edits, and no production deployment were performed here.
+
+### Session 27 — 2026-10-17 — Store Android OAuth redirect + web URL review
+- Reviewed Accounts checkout + read-only GitHub snapshots: `GothwadTech/storeapp`
+  main `ec3d799` (Android) and `GothwadTech/store` main `eb3147a` (web/API).
+- Android sends `client_id=gothwad-store`, `redirect_uri=gothwadstore://oauth/callback`.
+  Accounts core seed has empty callback lists; Store setup lists web URLs but omits
+  Android. Empty/web-only registration reproduces the reported 400
+  `redirect_uri is not registered for this app`. Live DB contents were **not** inspected.
+- Added `sql/04_store_android_oauth.sql`: append only the exact native callback,
+  backfill a missing client_id, preserve existing web URLs/client secrets/other apps;
+  safe to re-run. Must run in **Accounts**, not Store's Supabase project.
+- Web Store has a separate source bug: `new URL('/oauth/authorize', AUTH_BASE + '/')`
+  drops `/api`. Corrected Accounts' `docs/OAUTH.md` example (same bug) and documented
+  the required Store-repo one-line fix in new `docs/STORE_OAUTH.md`. **No remote
+  Store/storeapp files were changed.** Accounts Worker validation is unchanged.
+- Updated SQL run order, setup/index docs, and added offline regression tests
+  `tools/test-oauth-redirects.mjs` (Node 22+, no extra packages/servers required).
+- **Verified locally:** 16/16 regression tests; 7/7 SQL checks using PostgreSQL via
+  PGlite (fresh/re-run, preserve web URLs/secrets/other clients, web SQL placeholder
+  guard/idempotency). Existing mock Supabase + actual Worker: signup/me/profile edit/
+  password change/devices/signout/signin/forgot/reset + native OAuth consent → code
+  → PKCE token → userinfo → refresh rotation pass; wrong callback/verifier, reused
+  code/refresh rejected. Test server stopped. No live deployment/device test.
+- **Pending owner:** execute SQL 04 in Accounts DB, verify `public_client=true`,
+  apply/deploy Store web URL fix, register owned web callbacks if missing, then
+  test fresh Android + web sign-in. Git merge alone does not execute SQL.
 
 ### Session 24 — 2026-10-11 — Google-style UI + sql/ folder + 4 naye features
 - **UI redesign (Google Account jaisa — exactly copy NAHI, hamara apna):**
@@ -360,6 +426,20 @@ numbered idempotent files (supabase/ folder merged + removed).
 
 ## 🔜 NEXT UP (priority order)
 
+### 0. Store sign-in — Accounts deployment + two repo handoffs
+- [x] Accounts-side runtime fixes, migration/generator, two AI prompts, local tests.
+- [ ] Merge/deploy the reviewed Accounts Worker (`accounts`); verify production
+      `DEV_MODE=false`. This does not automatically execute SQL.
+- [ ] Run the generated `Store-OAuth-Setup.sql` in **Accounts** Supabase SQL Editor
+      (or native SQL 04 + web registration from `docs/STORE_OAUTH.md`). Verify
+      all five intended callbacks and `public_client=true`; preserve other URLs.
+- [ ] Give `docs/STORE_WEB_AUTH_FIX_PROMPT.md` to the `store` repo AI; it handles
+      the web `/api` URL, shared callbacks, refresh/session/error handling.
+- [ ] Give `docs/STOREAPP_AUTH_FIX_PROMPT.md` to the `storeapp` repo AI; it handles
+      Android interceptor recursion, callback security, cancellation and sessions.
+- [ ] Fresh Android + production web sign-in/callback/token/refresh tests. Local
+      mock tests passed; production DB/device verification remains pending.
+
 ### 1. Deploy (LIVE ✅ — sirf service key fix pending, USER dashboard se — docs/SETUP.md)
 - [x] Supabase project + schema.sql run + keys mil gaye (Phase 1 DONE)
 - [x] `wrangler.toml` → `SUPABASE_URL` real Project URL set (Session 6)
@@ -382,7 +462,7 @@ numbered idempotent files (supabase/ folder merged + removed).
       Session 8 entry ka "Interpretation" use karo)
 - [ ] Full test: signup (fresh username) → /me → signout → login
 - [ ] Fix confirm hone ke baad (optional): 503 response se `debug` field hata sakte hain
-- [ ] DEV_MODE=false + Resend setup (password reset emails)
+- [ ] Deploy the configured DEV_MODE=false + Resend setup (password reset emails)
 
 ### 2. STEP 3 — GOTHWAD MAIL 🔜 (agla major feature)
 - [ ] Cloudflare Email Routing: `*@gothwadtech.com` → Email Worker
@@ -441,6 +521,8 @@ numbered idempotent files (supabase/ folder merged + removed).
 
 | # | Date | Kya hua |
 |---|------|---------|
+| 28 | 2026-10-17 | **Accounts OAuth hardening + separate Store/Android AI prompts.** PKCE/consent escaping/cookies/atomic code+refresh/DB errors fixed; production DEV_MODE=false; config-derived all-callback SQL generator. 61 regressions + 13 PostgreSQL SQL checks + mock auth/OAuth smoke + strict TS/dry-run passed (existing Wrangler warnings). Only Accounts changed; owner DB run, deployment and other-repo fixes remain pending. |
+| 27 | 2026-10-17 | **Store OAuth redirect diagnosis + registration repair.** Read Android `storeapp` + web `store`; added safe native-callback SQL 04, corrected Accounts' `/api`-dropping OAuth example, documented separate Store web fix. 16 regression + 7 PostgreSQL/PGlite SQL checks and mock-backed auth/OAuth smoke pass. Live Accounts DB SQL run, Store web source change/deploy, and device tests remain owner steps; other repos were read-only. |
 | 1 | 2026-10-09 | **Step 1 — Real auth from scratch.** Purana fake React demo review kiya; schema + worker + frontend banaya; 15/15 tests pass. |
 | 2 | 2026-10-09 | **Step 2 — OAuth 2.0 provider.** authorize/token/userinfo + PKCE + rotation + consent + scopes; E2E tested. |
 | 3 | 2026-10-09 | **Cleanup + 3-route UI.** User feedback par: sirf /signin /signup /me; real logo; brand blue; OAuth consent Worker-rendered; faltu files delete; continuity docs (yeh files). |

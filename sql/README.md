@@ -16,6 +16,7 @@ Gothwad ecosystem mein **har app ka APNA alag Supabase project/database hai**:
 | GrixChat | GrixChat ka apna alag project | ❌ NAHI |
 | Indogram | Indogram ka apna alag project | ❌ NAHI |
 | Gothwad Mail | Mail ka apna alag project | ❌ NAHI |
+| Gothwad Store / Android Store | Store ka apna alag project | ❌ NAHI — OAuth registration bhi **Accounts** mein hoti hai |
 
 **Is folder ki SQL files SIRF "Gothwad Accounts" wale Supabase project mein
 chalani hain.** GrixChat / Indogram / Gothwad Mail ke databases mein mat
@@ -37,12 +38,7 @@ Accounts project mein yeh table milti hai.
 | 1 | `01_core_schema.sql` | Core tables + RLS + triggers + helpers + seed apps | ~470 |
 | 2 | `02_account_activity.sql` | "Recent activity" log (Google-style security feed) | ~120 |
 | 3 | `03_avatars_storage.sql` | Profile photo bucket (Supabase Storage) | ~90 |
-| 4 | `04_kiwi_store_oauth_migration.sql` | Gothwad Store → Kiwi Store OAuth client migration | ~90 |
 
-> **Naya file tab banao jab kisi file ki lines 600 se 1000 ke beech cross hone
-> lagein.** Us waqt us topic ka agla numbered file banao (jaise `05_xxx.sql`)
-> aur isi README ke table mein add kar do. Ek file 1000 lines se zyada kabhi
-> nahi honi chahiye (Supabase SQL Editor paste karne mein dikkat aati hai).
 
 ---
 
@@ -53,8 +49,7 @@ Accounts project mein yeh table milti hai.
 3. `01_core_schema.sql` ka **poora content** copy-paste karo → **Run** dabao
 4. Phir `02_account_activity.sql` → Run
 5. Phir `03_avatars_storage.sql` → Run
-6. Existing Accounts DB mein Store rename ke liye sirf `04_kiwi_store_oauth_migration.sql` → Run (schema files dobara run karna zaroori nahi)
-7. Bas! 🎉 Database ready hai.
+
 
 Verify kaise karein: **Table Editor** mein jaao — `profiles`,
 `user_sessions`, `ecosystem_apps`, `app_authorizations`, `oauth_auth_codes`,
