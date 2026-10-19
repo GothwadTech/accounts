@@ -209,8 +209,8 @@ For an existing production Accounts database, run
 `sql/04_kiwi_store_oauth_migration.sql` once in the **Gothwad Accounts Supabase
 project**. It is transactional and idempotent. It creates/normalizes
 `id=client_id='kiwi-store'`, migrates existing user grants (merging scopes),
-removes the old app row, deletes pending `gothwad-store` authorization codes,
-and revokes old `gothwad-store` refresh tokens. Fresh installs get the renamed
+removes the old pre-rename app row, deletes pending authorization codes of that
+legacy client, and revokes its refresh tokens. Fresh installs get the renamed
 seed from `sql/01_core_schema.sql`.
 
 Registered redirect URIs (exact match):
@@ -219,6 +219,7 @@ Registered redirect URIs (exact match):
 - `https://kiwiconsole.gothwadtech.com/auth/callback`
 - `https://kiwiadmin.gothwadtech.com/auth/callback`
 - `http://localhost:3000/auth/callback`
+- `gothwadstore://oauth/callback` (Android APK — same `kiwi-store` client)
 
 `https://kiwiapp.gothwadtech.com/auth/callback` is intentionally not registered
 yet; add it only when that app begins sign-in. `ecosystem_apps` has no app-wide
@@ -236,10 +237,8 @@ subdomains of `gothwadtech.com`, so the Kiwi hostnames need no per-host CORS
 configuration. `accounts.gothwadtech.com`, `api.gothwadtech.com`, and the
 Gothwad Accounts branding remain unchanged.
 
-The migration does not touch any other client row, including a separately
-registered Android client. This repository contains no Android package/client
-registration to migrate; keep the existing `com.gothwad.store` registration
-unchanged in the Accounts database if present.
+Android and web share the single `kiwi-store` client (public PKCE, no secret in
+the APK). The migration does not touch any other client row.
 
 **Token impact:** old refresh tokens are revoked and pending old-client codes
 are deleted. Access tokens are stateless JWTs and are not individually revocable
@@ -251,16 +250,7 @@ Post-deploy SQL verification:
 ```sql
 SELECT id, client_id, name, redirect_uris
 FROM public.ecosystem_apps
-WHERE id = 'kiwi-store' OR client_id IN ('gothwad-store', 'kiwi-store');
-
--- Must return no old client references in live grants/codes/refresh tokens.
-SELECT 'authorization' AS kind, app_id AS client_ref
-FROM public.app_authorizations WHERE app_id = 'gothwad-store'
-UNION ALL
-SELECT 'auth_code', client_id FROM public.oauth_auth_codes WHERE client_id = 'gothwad-store'
-UNION ALL
-SELECT 'refresh_token', client_id FROM public.oauth_refresh_tokens
-WHERE client_id = 'gothwad-store' AND revoked = FALSE;
+WHERE id = 'kiwi-store';
 ```
 
 ## 🧩 App side integration (copy-paste)

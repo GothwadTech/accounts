@@ -28,10 +28,10 @@ function mockRegistry(t, callbacks) {
       return Response.json({ id: 'test-user' });
     }
     assert.equal(url.pathname, '/rest/v1/ecosystem_apps');
-    const matches = url.searchParams.get('client_id') === 'eq.gothwad-store'
-      || url.searchParams.get('id') === 'eq.gothwad-store';
+    const matches = url.searchParams.get('client_id') === 'eq.kiwi-store'
+      || url.searchParams.get('id') === 'eq.kiwi-store';
     return Response.json(matches ? [{
-      id: 'gothwad-store', client_id: 'gothwad-store', name: 'Gothwad Store',
+      id: 'kiwi-store', client_id: 'kiwi-store', name: 'Kiwi Store',
       redirect_uris: callbacks, secret_hash: null,
     }] : []);
   });
@@ -40,7 +40,7 @@ function mockRegistry(t, callbacks) {
 function authorize(callback, { pkce = true } = {}) {
   const url = new URL('/api/oauth/authorize', env.AUTH_HUB_URL);
   url.search = new URLSearchParams({
-    client_id: 'gothwad-store', redirect_uri: callback,
+    client_id: 'kiwi-store', redirect_uri: callback,
     response_type: 'code', scope: 'profile email offline_access', state: 'test-state',
     ...(pkce ? { code_challenge: 'a'.repeat(43), code_challenge_method: 'S256' } : {}),
   }).toString();
@@ -102,7 +102,7 @@ test('consent decision also requires exact registration and preserves native sta
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Cookie: 'gothwad_at=test-session' },
       body: JSON.stringify({
-        client_id: 'gothwad-store', redirect_uri: callback, approved: false, state: 'a/b & c',
+        client_id: 'kiwi-store', redirect_uri: callback, approved: false, state: 'a/b & c',
       }),
     }), env);
     const data = await res.json();

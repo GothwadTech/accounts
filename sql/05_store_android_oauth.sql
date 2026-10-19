@@ -1,5 +1,5 @@
 -- =============================================================================
--- 04 — Register the Gothwad Store Android OAuth callback
+-- 05 — Register the Kiwi Store Android OAuth callback
 -- =============================================================================
 -- Run in the ACCOUNTS Supabase project, NOT the Store project's database.
 -- Prerequisite: 01_core_schema.sql (creates/seeds ecosystem_apps).
@@ -14,7 +14,7 @@ SET client_id = COALESCE(client_id, id),
         THEN array_append(redirect_uris, 'gothwadstore://oauth/callback')
       ELSE redirect_uris
     END
-WHERE id = 'gothwad-store';
+WHERE id = 'kiwi-store';
 
 -- Expect ONE row, the native callback in redirect_uris, and public_client=true.
 -- No row? Run 01_core_schema.sql in the Accounts project first.
@@ -22,4 +22,4 @@ WHERE id = 'gothwad-store';
 -- or silently clear an existing confidential client's secret_hash.
 SELECT id, client_id, redirect_uris, (secret_hash IS NULL) AS public_client
 FROM public.ecosystem_apps
-WHERE id = 'gothwad-store';
+WHERE id = 'kiwi-store';

@@ -16,7 +16,7 @@ Gothwad ecosystem mein **har app ka APNA alag Supabase project/database hai**:
 | GrixChat | GrixChat ka apna alag project | ❌ NAHI |
 | Indogram | Indogram ka apna alag project | ❌ NAHI |
 | Gothwad Mail | Mail ka apna alag project | ❌ NAHI |
-| Gothwad Store / Android Store | Store ka apna alag project | ❌ NAHI — OAuth registration bhi **Accounts** mein hoti hai |
+| Kiwi Store / Android Store | Store ka apna alag project | ❌ NAHI — OAuth registration bhi **Accounts** mein hoti hai |
 
 **Is folder ki SQL files SIRF "Gothwad Accounts" wale Supabase project mein
 chalani hain.** GrixChat / Indogram / Gothwad Mail ke databases mein mat
@@ -38,7 +38,7 @@ Accounts project mein yeh table milti hai.
 | 1 | `01_core_schema.sql` | Core tables + RLS + triggers + helpers + seed apps | ~470 |
 | 2 | `02_account_activity.sql` | "Recent activity" log (Google-style security feed) | ~120 |
 | 3 | `03_avatars_storage.sql` | Profile photo bucket (Supabase Storage) | ~90 |
-| 4 | `04_kiwi_store_oauth_migration.sql` | Kiwi Store OAuth client migration (`gothwad-store` → `kiwi-store`) — sirf Accounts project | ~150 |
+| 4 | `04_kiwi_store_oauth_migration.sql` | Kiwi Store OAuth client migration (purana pre-rename client → `kiwi-store`) — sirf Accounts project | ~150 |
 | 5 | `05_store_android_oauth.sql` | Android Store native callback append (`gothwadstore://oauth/callback`) | ~25 |
 
 

@@ -12,7 +12,7 @@ not proof that the live database/deployment has already been fixed.
 
 ## Shared contract — keep this compatible
 
-- Public OAuth client: `gothwad-store`; scopes `profile email offline_access`.
+- Public OAuth client: `kiwi-store`; scopes `profile email offline_access`.
   No client secret in the browser or APK.
 - Browser authorize base: `https://accounts.gothwadtech.com/api` (config/env).
 - Store Worker → Accounts base: `https://api.gothwadtech.com` (Custom Domain).

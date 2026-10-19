@@ -18,7 +18,7 @@ const env = {
   SUPABASE_SERVICE_ROLE_KEY: 'test-only', JWT_SECRET: 'test-only-signing-key', DEV_MODE: 'false',
 };
 const params = {
-  client_id: 'gothwad-store', redirect_uri: native, response_type: 'code',
+  client_id: 'kiwi-store', redirect_uri: native, response_type: 'code',
   scope: 'profile email offline_access', state: 'test-state',
   code_challenge: challenge, code_challenge_method: 'S256',
 };
@@ -34,7 +34,7 @@ const exchange = (overrides = {}) => ({
 
 function fixture(t, { callback = native, secret = null, fail, raceTable } = {}) {
   const db = {
-    ecosystem_apps: [{ id: params.client_id, client_id: params.client_id, name: 'Gothwad Store', redirect_uris: [callback], secret_hash: secret }],
+    ecosystem_apps: [{ id: params.client_id, client_id: params.client_id, name: 'Kiwi Store', redirect_uris: [callback], secret_hash: secret }],
     profiles: [{ id: 'test-user', username: 'tester', first_name: 'OAuth', last_name: 'Test' }],
     oauth_auth_codes: [], oauth_refresh_tokens: [], app_authorizations: [], account_activity: [],
   };

@@ -28,13 +28,13 @@ export function generateStoreOAuthSql(domain) {
 BEGIN;
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM public.ecosystem_apps WHERE id = 'gothwad-store') THEN
-    RAISE EXCEPTION 'Run Accounts sql/01_core_schema.sql first; gothwad-store is missing';
+  IF NOT EXISTS (SELECT 1 FROM public.ecosystem_apps WHERE id = 'kiwi-store') THEN
+    RAISE EXCEPTION 'Run Accounts sql/01_core_schema.sql first; kiwi-store is missing';
   END IF;
-  IF EXISTS (SELECT 1 FROM public.ecosystem_apps WHERE id = 'gothwad-store' AND secret_hash IS NOT NULL) THEN
+  IF EXISTS (SELECT 1 FROM public.ecosystem_apps WHERE id = 'kiwi-store' AND secret_hash IS NOT NULL) THEN
     RAISE EXCEPTION 'Store must be a reviewed public PKCE client; do not clear an existing secret automatically';
   END IF;
-  IF EXISTS (SELECT 1 FROM public.ecosystem_apps WHERE client_id = 'gothwad-store' AND id <> 'gothwad-store') THEN
+  IF EXISTS (SELECT 1 FROM public.ecosystem_apps WHERE client_id = 'kiwi-store' AND id <> 'kiwi-store') THEN
     RAISE EXCEPTION 'Another row owns the Store client_id; review the registry before changing callbacks';
   END IF;
 END $$;
