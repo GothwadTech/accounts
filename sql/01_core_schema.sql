@@ -145,7 +145,7 @@ UPDATE public.ecosystem_apps SET client_id = id WHERE client_id IS NULL;
 INSERT INTO public.ecosystem_apps (id, name, description, icon) VALUES
   ('gothwad-meet',     'Gothwad Meet',              'Video meetings for your Gothwad Account', 'video'),
   ('gothwad-mail',     'Gothwad Mail',              'username inbox for your Gothwad Account', 'mail'),
-  ('gothwad-store',    'Gothwad Store',             'Apps and add-ons for Gothwad',            'store'),
+  ('kiwi-store',       'Kiwi Store',                'Apps and add-ons for Kiwi Store',         'store'),
   ('gothwad-drive',    'Gothwad Drive',             'Files and folders on your account',       'hard-drive'),
   ('gothwad-notes',    'Gothwad Notes',             'Notes and lists, synced',                 'file-text'),
   ('gothwad-calendar', 'Gothwad Calendar',          'Events and reminders',                    'calendar'),
@@ -157,6 +157,10 @@ ON CONFLICT (id) DO UPDATE
   SET name        = EXCLUDED.name,
       description = EXCLUDED.description,
       icon        = EXCLUDED.icon;
+
+-- The earlier backfill runs before seeds on a fresh DB; fill IDs for newly
+-- inserted seed rows as well (client_id normally mirrors the primary key).
+UPDATE public.ecosystem_apps SET client_id = id WHERE client_id IS NULL;
 
 
 -- -----------------------------------------------------------------------------

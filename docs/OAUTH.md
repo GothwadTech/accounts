@@ -195,6 +195,74 @@ PKCE unhe protect karta hai.
 
 ---
 
+## 🥝 Kiwi Store client migration
+
+Accounts keeps its own product branding, API hosts, and cookie domain. Only the
+Store OAuth client is renamed. The schema in `sql/01_core_schema.sql` defines
+`ecosystem_apps.id` as the primary key and `client_id` as the public OAuth ID;
+`app_authorizations.app_id` is the only FK to that ID. `oauth_auth_codes.client_id`
+and `oauth_refresh_tokens.client_id` are plain text (not FKs). `user_sessions`
+stores account-level sessions and has no app/client reference, so cookie SSO
+sessions are unaffected.
+
+For an existing production Accounts database, run
+`sql/04_kiwi_store_oauth_migration.sql` once in the **Gothwad Accounts Supabase
+project**. It is transactional and idempotent. It creates/normalizes
+`id=client_id='kiwi-store'`, migrates existing user grants (merging scopes),
+removes the old app row, deletes pending `gothwad-store` authorization codes,
+and revokes old `gothwad-store` refresh tokens. Fresh installs get the renamed
+seed from `sql/01_core_schema.sql`.
+
+Registered redirect URIs (exact match):
+
+- `https://kiwistore.gothwadtech.com/auth/callback`
+- `https://kiwiconsole.gothwadtech.com/auth/callback`
+- `https://kiwiadmin.gothwadtech.com/auth/callback`
+- `http://localhost:3000/auth/callback`
+
+`https://kiwiapp.gothwadtech.com/auth/callback` is intentionally not registered
+yet; add it only when that app begins sign-in. `ecosystem_apps` has no app-wide
+scopes column: scope grants are user-specific in `app_authorizations.scopes`,
+and the Store requests `profile email offline_access` as before.
+
+The Store endpoints do not change: browser authorize is
+`https://accounts.gothwadtech.com/api/oauth/authorize`; sign-in handoff remains
+`https://accounts.gothwadtech.com/signin?choose=1&next=...`; Worker token,
+userinfo, and cookie-session calls remain `https://api.gothwadtech.com/oauth/token`,
+`/oauth/userinfo`, and `/api/auth/me` (forward the Accounts cookies to `/api/auth/me`).
+The existing cookie is dynamically scoped to `Domain=.gothwadtech.com` for any
+host under that root, not pinned to a Store hostname. CORS likewise allows
+subdomains of `gothwadtech.com`, so the Kiwi hostnames need no per-host CORS
+configuration. `accounts.gothwadtech.com`, `api.gothwadtech.com`, and the
+Gothwad Accounts branding remain unchanged.
+
+The migration does not touch any other client row, including a separately
+registered Android client. This repository contains no Android package/client
+registration to migrate; keep the existing `com.gothwad.store` registration
+unchanged in the Accounts database if present.
+
+**Token impact:** old refresh tokens are revoked and pending old-client codes
+are deleted. Access tokens are stateless JWTs and are not individually revocable
+here; any already-issued access JWT may work until its normal one-hour expiry.
+After this migration, new authorizations and refreshes use `kiwi-store`.
+
+Post-deploy SQL verification:
+
+```sql
+SELECT id, client_id, name, redirect_uris
+FROM public.ecosystem_apps
+WHERE id = 'kiwi-store' OR client_id IN ('gothwad-store', 'kiwi-store');
+
+-- Must return no old client references in live grants/codes/refresh tokens.
+SELECT 'authorization' AS kind, app_id AS client_ref
+FROM public.app_authorizations WHERE app_id = 'gothwad-store'
+UNION ALL
+SELECT 'auth_code', client_id FROM public.oauth_auth_codes WHERE client_id = 'gothwad-store'
+UNION ALL
+SELECT 'refresh_token', client_id FROM public.oauth_refresh_tokens
+WHERE client_id = 'gothwad-store' AND revoked = FALSE;
+```
+
 ## 🧩 App side integration (copy-paste)
 
 Apni app ke login page mein yeh button + JS copy karo (koi library nahi chahiye):

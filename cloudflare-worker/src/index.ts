@@ -210,14 +210,14 @@ const RESERVED_USERNAMES = new Set([
 
 /** Built-in Gothwad Services — user revoke nahi kar sakta (account ke saath hamesha). */
 const CORE_GOTHWAD_SERVICES = new Set([
-  'gothwad-meet', 'gothwad-mail', 'gothwad-store', 'gothwad-drive',
+  'gothwad-meet', 'gothwad-mail', 'kiwi-store', 'gothwad-drive',
   'gothwad-notes', 'gothwad-calendar', 'gothwad-contacts',
 ]);
 
 // -----------------------------------------------------------------------------
 // CORS — sirf Gothwad domains + configured dev origins
 // -----------------------------------------------------------------------------
-function buildCorsHeaders(request: Request, env: Env): Headers {
+export function buildCorsHeaders(request: Request, env: Env): Headers {
   const headers = new Headers();
   const origin = request.headers.get('Origin') || '';
   const rootDomain = env.APP_DOMAIN;
@@ -253,7 +253,7 @@ function buildCorsHeaders(request: Request, env: Env): Headers {
 //                gothwad_sid = device-session row id (dashboard ke liye)
 
 /** Kya hum local/preview host par hain? (Wahan Domain attribute nahi lagta.) */
-function cookieDomain(request: Request, env: Env): string | null {
+export function cookieDomain(request: Request, env: Env): string | null {
   const host = new URL(request.url).hostname;
   if (host === env.APP_DOMAIN || host.endsWith(`.${env.APP_DOMAIN}`)) {
     return `.${env.APP_DOMAIN}`; // SSO: mail./drive./accounts. sab share karein

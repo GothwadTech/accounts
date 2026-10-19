@@ -20,11 +20,11 @@ export const GOTHWAD_SERVICES = [
     description: 'username@gothwadtech.com inbox',
   },
   {
-    id: 'gothwad-store',
-    name: 'Gothwad Store',
-    url: 'https://store.gothwadtech.com',
+    id: 'kiwi-store',
+    name: 'Kiwi Store',
+    url: 'https://kiwistore.gothwadtech.com',
     icon: 'store',
-    description: 'Apps and add-ons for Gothwad',
+    description: 'Apps and add-ons for Kiwi Store',
   },
   {
     id: 'gothwad-drive',
