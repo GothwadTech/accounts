@@ -11,7 +11,7 @@ const config = readFileSync(new URL('../cloudflare-worker/wrangler.toml', import
 test('Store setup combines the native migration and domain-configured web registration', () => {
   const sql = generateStoreOAuthSql('example.com');
   assert.ok(sql.includes("app_domain text := 'example.com'"));
-  assert.ok(sql.includes("array_append(redirect_uris, 'gothwadstore://oauth/callback')"));
+  assert.ok(sql.includes("'gothwadstore://oauth/callback'") && sql.includes("'kiwistore://oauth/callback'"));
   for (const host of ['store', 'console', 'storeadmin', 'storeapp']) {
     assert.ok(sql.includes(`'https://${host}.' || app_domain || '/auth/callback'`));
   }

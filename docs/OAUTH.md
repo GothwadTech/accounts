@@ -219,7 +219,8 @@ Registered redirect URIs (exact match):
 - `https://kiwiconsole.gothwadtech.com/auth/callback`
 - `https://kiwiadmin.gothwadtech.com/auth/callback`
 - `http://localhost:3000/auth/callback`
-- `gothwadstore://oauth/callback` (Android APK — same `kiwi-store` client)
+- `gothwadstore://oauth/callback` (Android APK, current build — same `kiwi-store` client)
+- `kiwistore://oauth/callback` (Android APK, planned new scheme — both are accepted during the transition; remove `gothwadstore://` only after every APK uses `kiwistore://`)
 
 `https://kiwiapp.gothwadtech.com/auth/callback` is intentionally not registered
 yet; add it only when that app begins sign-in. `ecosystem_apps` has no app-wide

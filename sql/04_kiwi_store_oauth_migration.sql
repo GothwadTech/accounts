@@ -43,7 +43,8 @@ BEGIN
        'https://kiwiconsole.gothwadtech.com/auth/callback',
        'https://kiwiadmin.gothwadtech.com/auth/callback',
        'http://localhost:3000/auth/callback',
-       'gothwadstore://oauth/callback'
+       'gothwadstore://oauth/callback',
+       'kiwistore://oauth/callback'
      ]::TEXT[], FALSE, 'kiwi-store')
   ON CONFLICT (id) DO UPDATE
     SET name = EXCLUDED.name,

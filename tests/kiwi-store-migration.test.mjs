@@ -18,6 +18,7 @@ test('Kiwi Store migration registers exactly the requested production and local 
     'https://kiwiadmin.gothwadtech.com/auth/callback',
     'http://localhost:3000/auth/callback',
     'gothwadstore://oauth/callback',
+    'kiwistore://oauth/callback',
   ]);
   assert.equal(actual.includes('https://kiwiapp.gothwadtech.com/auth/callback'), false);
 });
