@@ -1,0 +1,293 @@
+/* ------------------------------------------------------------- alerts */
+.alert {
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.alert-error {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border: 1px solid var(--danger);
+}
+.alert-success {
+  background: var(--success-soft);
+  color: var(--success);
+  border: 1px solid var(--success);
+}
+.alert-info {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--accent-border);
+}
+
+/* -------------------------------------------------------------- chips */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--chip);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.tag-accent { background: var(--accent-soft); color: var(--accent); }
+.tag-success { background: var(--success-soft); color: var(--success); }
+.tag-danger { background: var(--danger-soft); color: var(--danger); }
+
+/* ------------------------------------------------------------ avatars */
+/* Google circle avatar — photo ya initials */
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 500;
+  width: 40px;
+  height: 40px;
+  font-size: 15px;
+  overflow: hidden;
+  flex-shrink: 0;
+  user-select: none;
+}
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
+.avatar.sm { width: 32px; height: 32px; font-size: 13px; }
+.avatar.lg { width: 80px; height: 80px; font-size: 28px; }
+.avatar.xl { width: 96px; height: 96px; font-size: 34px; }
+
+/* Photo par camera overlay (edit hint) */
+.avatar-photo-wrap { position: relative; display: inline-block; }
+.avatar-photo-overlay {
+  position: absolute;
+  inset: auto 0 0 0;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 0;
+  cursor: pointer;
+}
+.avatar-photo-overlay .msym { font-size: 16px; }
+
+/* ------------------------------------------------------------ spinner */
+.spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: sp 0.7s linear infinite;
+}
+@keyframes sp { to { transform: rotate(360deg); } }
+
+/* -------------------------------------------------------------- toasts */
+.toast-wrap {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 9999;
+}
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #323639;
+  color: #f1f3f4;
+  padding: 13px 20px;
+  border-radius: var(--radius-sm);
+  font-size: 13.5px;
+  box-shadow: var(--shadow);
+  animation: toast-in 0.25s ease-out;
+  max-width: min(92vw, 480px);
+}
+.toast.error { background: var(--danger); color: #fff; }
+[data-theme='dark'] .toast.error { color: #42211e; }
+.toast .msym { font-size: 18px; }
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* --------------------------------------------------------- topbar (old) */
+/* /me jaise pages ka topbar (renderTopbar) — naya Google-style /me apna
+   header use karta hai, yeh class purani jagahon ke liye compatible hai. */
+.topbar {
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+.topbar-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 64px;
+  gap: 16px;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none !important;
+  color: var(--text-muted);
+  font-size: 21px;
+}
+.brand:hover { color: var(--text-muted); }
+.brand-logo { width: 28px; height: 28px; border-radius: 8px; }
+.brand-logo.sm { width: 26px; height: 26px; border-radius: 7px; }
+
+.nav { display: flex; align-items: center; gap: 8px; }
+.nav-link {
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 500;
+  padding: 8px 12px;
+  border-radius: var(--radius-pill);
+}
+.nav-link:hover { color: var(--text); background: var(--bg-hover); text-decoration: none; }
+
+/* Account switcher menu (avatar dropdown) */
+.acct-switch { position: relative; }
+.acct-switch-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+  line-height: 0;
+}
+.acct-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 10px);
+  width: 300px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 8px 0;
+  z-index: 100;
+}
+.acct-menu-head { padding: 12px 18px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+.acct-menu-name { font-size: 14.5px; font-weight: 500; }
+.acct-menu-email { font-size: 12px; color: var(--text-muted); }
+.acct-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 18px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: 14px;
+  color: var(--text);
+  text-align: left;
+}
+a.acct-menu-item { text-decoration: none; }
+.acct-menu-item:hover { background: var(--bg-hover); }
+.acct-menu-item.danger { color: var(--danger); }
+.acct-item-name { display: block; font-size: 13.5px; }
+.acct-item-email { display: block; font-size: 12px; color: var(--text-muted); }
+.acct-check { margin-left: auto; color: var(--accent); font-weight: 700; }
+.acct-plus {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* ------------------------------------------------------------- modal */
+/* Google-style dialog — /me ke edit dialogs isse use karte hain */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(32, 33, 36, 0.6);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: fade-in 0.15s ease-out;
+}
+.modal {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  width: 100%;
+  max-width: 480px;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 24px;
+  animation: modal-in 0.2s ease-out;
+}
+@media (max-width: 520px) {
+  .modal { max-width: 100%; border-radius: var(--radius-lg); }
+}
+.modal-title { font-size: 22px; font-weight: 400; margin-bottom: 6px; }
+.modal-sub { font-size: 13.5px; color: var(--text-muted); margin-bottom: 20px; }
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 24px;
+  flex-wrap: wrap;
+}
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes modal-in {
+  from { opacity: 0; transform: translateY(14px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* --------------------------------------------------- theme toggle button */
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.theme-toggle:hover { background: var(--bg-hover); }
+
+/* ------------------------------------------------------------- footer */
+.footer {
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  padding: 18px 0;
+}
+.footer-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+.footer-links { display: flex; gap: 18px; flex-wrap: wrap; }
+.footer-links a { color: var(--text-muted); }
+.footer-links a:hover { color: var(--accent); }

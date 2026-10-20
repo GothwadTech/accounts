@@ -17,30 +17,46 @@ import { initPeople, loadPeople } from './tabs/people.js';
 import { loadConnectedApps } from './tabs/apps.js';
 import { initSearch } from './search.js';
 
+window.__GOTHWAD_ME_BOOTED = true;
 mountThemeToggles();
 
 let currentUser = null;
 
+function showLoadFailure(message) {
+  const box = document.getElementById('auth-loading');
+  if (!box) return;
+  box.innerHTML = `
+    <p style="font-weight:500;color:var(--text);">${escapeHtml(message)}</p>
+    <div style="display:flex;gap:10px;margin-top:8px;">
+      <button type="button" class="btn btn-tonal" id="btn-retry-load">Reload</button>
+      <a class="btn btn-primary" href="/signin?next=%2Fme">Sign in</a>
+    </div>`;
+  document.getElementById('btn-retry-load')?.addEventListener('click', () => location.reload());
+}
+
 async function boot() {
-  currentUser = await requireAuth();
-  if (!currentUser) return;
+  try {
+    currentUser = await requireAuth();
+    if (!currentUser) return;
 
-  document.getElementById('auth-loading')?.classList.add('hidden');
-  document.getElementById('dash-root')?.classList.remove('hidden');
+    document.getElementById('auth-loading')?.classList.add('hidden');
+    document.getElementById('dash-root')?.classList.remove('hidden');
 
-  renderUserEverywhere(currentUser);
-  renderAccountMenu(currentUser);
+    renderUserEverywhere(currentUser);
+    renderAccountMenu(currentUser);
 
-  initNav();
-  initPersonalInfo(currentUser, onUserUpdated);
-  initSecurity(currentUser, onUserUpdated);
-  initDataPrivacy(currentUser, refreshAll);
-  initPeople();
-  loadConnectedApps();
-  initSearch();
-  loadPeople(currentUser);
-
-  loadHome(currentUser);
+    initNav();
+    initPersonalInfo(currentUser, onUserUpdated);
+    initSecurity(currentUser, onUserUpdated);
+    initDataPrivacy(currentUser, refreshAll);
+    initPeople();
+    loadConnectedApps();
+    initSearch();
+    loadPeople(currentUser);
+    loadHome(currentUser);
+  } catch {
+    showLoadFailure('Could not finish loading your Gothwad Account.');
+  }
 }
 
 function onUserUpdated(user) {

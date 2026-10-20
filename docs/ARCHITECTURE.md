@@ -1,69 +1,75 @@
-# 🏗️ ARCHITECTURE.md — Technical Deep Dive (100% Cloudflare Native v2.0)
+# 🏗️ ARCHITECTURE.md — Technical Deep Dive (v2.2 — Modular 100% Cloudflare Native)
 
-> **Updated: 2026-10-20 — Zero Supabase Architecture**
-> Gothwad Accounts now runs **100% on Cloudflare (`Pages` + `Workers` + `D1 SQLite` + `Global Edge Cache` + optional `R2`)**.
-> Master ecosystem roadmap: [`CLOUDFLARE_NATIVE_PLAN.md`](CLOUDFLARE_NATIVE_PLAN.md) · Setup: [`SETUP.md`](SETUP.md) · OAuth: [`OAUTH.md`](OAUTH.md)
+> **Updated: 2026-10-20 — Modular Zero-Supabase Architecture (`<= 500` Lines Per File Enforced)**
+> Gothwad Accounts runs **100% on Cloudflare (`Pages` + `Workers` + `D1 SQLite` + `Global Edge Cache` + optional `R2`)**.
+> Master roadmap: [`CLOUDFLARE_NATIVE_PLAN.md`](CLOUDFLARE_NATIVE_PLAN.md) · Setup: [`SETUP.md`](SETUP.md) · OAuth: [`OAUTH.md`](OAUTH.md) · Mail Contract: [`MAIL_INTERNAL.md`](MAIL_INTERNAL.md)
 
 ---
 
 ## 1. System Topology
 
 ```text
-┌────────────────────────────────────┐
-│  BROWSER (Static Vanilla JS UI)    │
-│  accounts.gothwadtech.com          │   Cloudflare Pages (Unlimited Free)
-│  Routes: /signin · /signup · /me   │
-└─────────────────┬──────────────────┘
-                  │  fetch('/api/*') — Hybrid Cookies + Bearer Header
-┌─────────────────▼──────────────────┐
-│  CLOUDFLARE WORKER (`accounts`)    │
-│  cloudflare-worker/src/index.ts    │   ~21 KiB gzipped · 0 NPM runtime deps
-│  • WebCrypto PBKDF2-SHA256 Auth    │   Routes: accounts.*/api/* + api.*
-│  • HS256 Session & OAuth 2.0 JWTs  │
-│  • Auto-Bootstrap D1 Schema Engine │
-└────────┬──────────────────┬────────┘
-         │ `env.DB` (1-5ms) │ Optional `env.AVATARS_BUCKET` / Edge Cache
-┌────────▼────────┐  ┌──────▼────────────────────────┐
-│  CLOUDFLARE D1  │  │  AVATAR DELIVERY ENGINE       │
-│  SQLite Vault   │  │  D1 `user_avatars` BLOB       │
-│  10 Core Tables │  │  + Cloudflare Edge CDN Cache  │
-│  Pure Username! │  │  (or R2 drop-in zero change!) │
-└─────────────────┘  └───────────────────────────────┘
+┌────────────────────────────────────────────────────────┐
+│  BROWSER (Modular Static Vanilla HTML + CSS + ESM JS)  │
+│  accounts.gothwadtech.com  (Cloudflare Pages + ETag)   │
+│  Routes: /signin · /signup · /me (+ /privacy · /terms) │
+│  web/_headers: Cache-Control: max-age=0,must-revalidate│
+└───────────────────────────┬────────────────────────────┘
+                            │ fetch('/api/*') — HttpOnly `.gothwadtech.com` Slot Cookies (`a`..`f`)
+┌───────────────────────────▼────────────────────────────┐
+│  CLOUDFLARE WORKER (`accounts` — 14 Modular TS Files)  │
+│  cloudflare-worker/src/index.ts (~28 KiB gzip bundle)  │
+│  • types · db · http · crypto · cookies · users        │
+│  • sessions · browser-slots · oauth-helpers            │
+│  • routes/{public-internal,auth-entry,auth-session,    │
+│            auth-accounts,auth-profile,oauth}.ts        │
+└─────────────┬──────────────────────────┬───────────────┘
+              │ `env.DB` (1–5ms SQLite)  │ Optional `env.AVATARS_BUCKET` / Edge Cache
+┌─────────────▼─────────────┐  ┌─────────▼─────────────────────────────┐
+│  CLOUDFLARE D1 (`accounts`)│  │  AVATAR DELIVERY ENGINE               │
+│  11 Tables · Pure Username│  │  D1 `user_avatars` BLOB + ETag 304    │
+│  0 Auto-Pause · $0 MAU    │  │  + Cloudflare Edge Cache / Drop-in R2 │
+└───────────────────────────┘  └───────────────────────────────────────┘
 ```
 
 ---
 
-## 2. Cryptographic & Security Architecture
+## 2. Modular Codebase Standard (`Rule #8` — Enforced by CI / `npm test`)
+
+Every source, stylesheet, SQL migration, test, and active documentation file across the repository follows a strict permanent modular ceiling enforced automatically by [`tests/frontend-and-filesize.test.mjs`](../tests/frontend-and-filesize.test.mjs):
+
+- **Target limit:** **`<= 500` lines per file** (every file in the repo satisfies `<= 500` lines).
+- **Hard ceiling:** **`500–800` lines absolute maximum** — whenever any new or existing file grows past `500` lines, split it cleanly by responsibility **without altering any API contract, status code, SQL query, cookie behavior, or visual styling**.
+- **Static ESM Link Verification:** Every `<script type="module">` and static/dynamic `import` across `web/**` has its target file and exported symbols verified automatically in `npm test`, and `web/_headers` sets `Cache-Control: public, max-age=0, must-revalidate` so Cloudflare Pages never mixes stale cached ES modules with newly deployed ones across releases.
+
+### Worker Module Map (`cloudflare-worker/src/`)
+| File | Responsibility |
+| :--- | :--- |
+| `index.ts` | Top-level request router, CORS/OAuth header wrapper, 503 error boundary, public re-exports |
+| `types.ts` | `Env`, D1/R2 interfaces, `AccountSlot` (`a`..`f`), cookie & session data models |
+| `db.ts` | WeakMap-memoized cold-start D1 schema bootstrap & `DatabaseUnavailableError` (`503`) wrappers |
+| `http.ts` | JSON/form body readers, username/email/phone validators, dynamic subdomain CORS |
+| `crypto.ts` | `PBKDF2-HMAC-SHA256` (`100k` iter), `SHA-256` digests, `HS256` JWT sign/verify |
+| `cookies.ts` | `.APP_DOMAIN` cookies, `gothwad_sess_a`..`f` codecs, HMAC `gothwad_accounts`, CSRF origin check |
+| `users.ts` | Identifier lookup (username/email/phone), profile formatting, `account_activity`, Resend mail |
+| `sessions.ts` | Atomic `auth_refresh_tokens` rotation, 10s parallel tab grace window, active session resolution |
+| `browser-slots.ts` | Multi-account browser inspection, dead-slot pruning, seamless legacy cookie promotion |
+| `oauth-helpers.ts` | Scope registry, `ecosystem_apps` lookup, S256 PKCE validation, consent HTML renderer |
+| `routes/public-internal.ts` | `/api/internal/usernames/:username` (Mail Worker `mail`), `/api/avatars/:id`, `/api/health` |
+| `routes/auth-entry.ts` | `/api/auth/check-username`, `/api/auth/check-identifier`, `/api/auth/signup` |
+| `routes/auth-session.ts` | `/api/auth/signin`, `/api/auth/signout`, `/api/auth/refresh` |
+| `routes/auth-accounts.ts` | `/api/auth/accounts`, `/api/auth/switch`, `/api/auth/accounts/:id/signout`, `/api/auth/me`, recovery |
+| `routes/auth-profile.ts` | `/api/auth/change-password`, `/api/auth/update-profile`, `/api/auth/sessions*`, `/api/auth/avatar`, `/api/auth/export`, `/api/auth/delete-account` |
+| `routes/oauth.ts` | `/api/oauth/{app-info,authorize,decision,token,userinfo,authorizations,revoke}` |
+
+---
+
+## 3. Cryptographic & Multi-Account Cookie Security
 
 | Layer | Algorithm / Design | Security Guarantee |
 | :--- | :--- | :--- |
-| **Password Storage** | `PBKDF2-HMAC-SHA256` (`100,000` iterations, 16-byte random salt per user) | Stored as `pbkdf2_sha256$100000$<salt>$<hash>`; verified via constant-time `timingSafeBytesEqual`. Compatible with Cloudflare Workers V8 WebCrypto limits. |
-| **Account Access JWT (`gothwad_at`)** | `HS256` with `token_use: "session"`, `sub`, `sid`, `username`, `exp` (1h) | Verified against both HMAC signature AND live `users` + `user_sessions` rows in D1 — revoking a device kills access **immediately**! |
-| **Account Refresh Token (`gothwad_rt`)** | 256-bit CSPRNG hex token; only `SHA-256` stored in `auth_refresh_tokens` | Single-winner atomic rotation (`UPDATE ... WHERE token_hash = ? AND revoked = 0 AND expires_at > ? RETURNING *`). Cascades on device delete. |
-| **Password Recovery Link** | 256-bit CSPRNG token in URL hash `#access_token=...`; `SHA-256` in `password_reset_tokens` | 15-minute TTL, atomic single-use (`RETURNING user_id`), fragment never sent in HTTP `Referer`, invalidates all old sessions on reset. |
-| **OAuth 2.0 Access JWT** | `HS256` with `token_use: "oauth_access"`, `aud`, `client_id`, `scope`, `exp` (1h) | Strictly isolated: accepted ONLY by `/oauth/userinfo`; rejected by all `/api/auth/*` account endpoints! |
-| **OAuth Code & Refresh Rotation** | Mandatory S256 PKCE for public clients; `SHA-256` refresh hashes in `oauth_refresh_tokens` | Atomic `UPDATE ... RETURNING` guarantees concurrent exchange attempts have strictly one winner (`200` vs `400`). |
-| **Internal Mail Lookup** | `GET /api/internal/usernames/:username` with `Bearer MAIL_INTERNAL_TOKEN` | Constant-time SHA-256 digest compare, strict input regex before DB query, `Cache-Control: no-store`, zero CORS/cookies. |
-
----
-
-## 3. Cloudflare D1 Schema (10 Tables — `sql/01` to `sql/05`)
-
-1. **`users`** — `(id, username UNIQUE COLLATE NOCASE, password_hash, created_at, updated_at)` — **Zero email column (100% Pure Rule #2)!**
-2. **`profiles`** — Personal info (`first_name`, `last_name`, `recovery_email`, `phone_number`, `avatar_url`, `date_of_birth`, `gender`, storage quota)
-3. **`user_sessions`** — Device sessions shown under `/me → Security → Your devices`
-4. **`auth_refresh_tokens`** — Hashed session refresh tokens tied to `user_sessions(id) ON DELETE CASCADE`
-5. **`password_reset_tokens`** — Hashed 15-minute one-time password recovery tokens
-6. **`ecosystem_apps`** — Registered OAuth 2.0 clients (`id`, `client_id`, JSON `redirect_uris`, `secret_hash`)
-7. **`app_authorizations`** — Per-user OAuth consent grants & JSON `scopes`
-8. **`oauth_auth_codes`** — 5-minute single-use PKCE authorization codes
-9. **`oauth_refresh_tokens`** — Hashed 30-day rotating OAuth refresh tokens
-10. **`account_activity` & `user_avatars`** — Security event log (auto-trimmed to latest 100/user) & binary profile photos
-
----
-
-## 4. Local Development & Automated Testing
-
-- **`npm start`** → Runs `server.js` with `tools/local-d1.mjs` (Node 22 built-in `node:sqlite`) against `.local-d1.sqlite` on `http://0.0.0.0:3000`.
-- **`npm test`** → Runs **62 automated security, SQL idempotency, OAuth PKCE, migration, and full account lifecycle tests** against real in-memory SQLite D1 instances in `< 2s`.
-- **`cd cloudflare-worker && npx tsc --noEmit && npx wrangler deploy --dry-run`** → Validates strict TypeScript types and compiles the production Worker bundle.
+| **Password Storage** | `PBKDF2-HMAC-SHA256` (`100,000` iter, 16B random salt) | Stored as `pbkdf2_sha256$100000$<salt>$<hash>`; constant-time compare. |
+| **Multi-Account Slots (`a`..`f`)** | `gothwad_sess_a`..`f` + `gothwad_active` + HMAC `gothwad_accounts` | Up to 6 simultaneous accounts per browser across `*.gothwadtech.com`; **zero tokens in `localStorage`/`sessionStorage`**; CSRF-checked `/auth/switch` & per-slot signout. |
+| **Account Access & Refresh** | `HS256` (`token_use: "session"`, 1h) + `SHA-256` refresh hash in D1 | Live session check in D1 + atomic single-winner rotation + 10s parallel tab grace window. |
+| **OAuth 2.0 + S256 PKCE** | `HS256` (`token_use: "oauth_access"`) + atomic `UPDATE ... RETURNING` | Public clients require S256 PKCE; OAuth tokens strictly rejected on `/api/auth/*`. |
+| **Internal Mail Lookup** | `GET https://api.<APP_DOMAIN>/api/internal/usernames/:username` | Called by Mail Worker **`mail`** (`client_id = gothwad-mail`) using constant-time `Bearer MAIL_INTERNAL_TOKEN`. |

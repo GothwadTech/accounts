@@ -13,6 +13,15 @@
 
 import { apiUrl } from './config.js';
 
+/**
+ * Legacy compatibility shim: returns an empty object without reading or writing
+ * `localStorage` / `sessionStorage`, preventing ESM link errors if a browser holds
+ * a stale cached module from an earlier deployment during rollout.
+ */
+export function getTokens() {
+  return {};
+}
+
 export function clearTokens() {
   try {
     sessionStorage.removeItem('gothwad_tokens');
@@ -39,7 +48,7 @@ async function doRefresh() {
   return !!(res && res.ok);
 }
 
-function refreshOnce() {
+export function refreshOnce() {
   if (!refreshPromise) {
     refreshPromise = doRefresh().finally(() => {
       refreshPromise = null;
@@ -69,11 +78,15 @@ const SKIP_REFRESH_PREFIXES = [
  * Call Worker API using first-party `HttpOnly` cookies (`credentials: 'include'`).
  * Always returns `{ ok, status, data, error }`.
  */
-export async function apiCall(path, { method = 'GET', body = null } = {}) {
+export async function apiCall(path, { method = 'GET', body = null, token = null } = {}) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
   const opts = {
     method,
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: body ? JSON.stringify(body) : undefined,
   };
 
@@ -82,7 +95,7 @@ export async function apiCall(path, { method = 'GET', body = null } = {}) {
     let data = await parseJson(res);
 
     const canRetryRefresh =
-      res.status === 401 && !SKIP_REFRESH_PREFIXES.some((prefix) => path.startsWith(prefix));
+      res.status === 401 && !token && !SKIP_REFRESH_PREFIXES.some((prefix) => path.startsWith(prefix));
 
     if (canRetryRefresh && (await refreshOnce())) {
       res = await fetch(apiUrl(path), opts);

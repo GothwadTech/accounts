@@ -2,7 +2,8 @@
  * /me — DATA & PRIVACY section (storage, activity, export, delete account).
  */
 
-import { api, getTokens, clearTokens } from '../../../js/api.js';
+import { refreshOnce } from '../../../js/api.js';
+import { apiUrl } from '../../../js/config.js';
 import { toast } from '../../../js/common.js';
 import { renderActivity } from './activity.js';
 import { setDialogUser, openDialog } from '../dialogs.js';
@@ -35,13 +36,10 @@ async function exportData() {
   btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;"></span> Preparing...';
 
   try {
-    // Bearer token ke saath direct fetch (attachment response download hota hai)
-    const { apiUrl } = await import('../../../js/config.js');
-    const tokens = getTokens();
-    const res = await fetch(apiUrl('/auth/export'), {
-      credentials: 'include',
-      headers: tokens.access_token ? { Authorization: `Bearer ${tokens.access_token}` } : {},
-    });
+    let res = await fetch(apiUrl('/auth/export'), { credentials: 'include' });
+    if (res.status === 401 && (await refreshOnce())) {
+      res = await fetch(apiUrl('/auth/export'), { credentials: 'include' });
+    }
     if (!res.ok) {
       const data = await res.json().catch(() => null);
       throw new Error((data && data.error) || 'Export failed');

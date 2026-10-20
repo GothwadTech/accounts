@@ -1,47 +1,37 @@
-# 🌐 web/ — Gothwad Accounts Frontend
+# 🌐 web/ — Gothwad Accounts Modular Frontend
 
-Static HTML/CSS/JS (no build step, no framework). Cloudflare Pages serves
-this folder directly. **Site ke sirf 3 routes hain** (pretty URLs = folders):
+Static Vanilla HTML + Modular CSS + Native ES Modules (zero framework overhead). Cloudflare Pages serves `web/` directly alongside `web/_headers` (`Cache-Control: public, max-age=0, must-revalidate` so HTML/JS/CSS stay 100% version-synced on reload).
 
-```
+```text
 web/
-├── signin/index.html    → /signin   Login + chooser + forgot/reset password
-├── signup/index.html    → /signup   Create account (multi-step: name → email → pw → recovery)
-├── me/index.html        → /me       Google-style dashboard (6 sections + search)
-├── index.html           → /         Smart redirect (/me ya /signin)
+├── _headers                     Cloudflare Pages ETag revalidation headers (`must-revalidate`)
+├── index.html                   → /         Session-aware root splash (/me or /signin)
+├── signin/index.html            → /signin   Multi-account chooser + sign-in + recovery
+├── signup/index.html            → /signup   4-step account creation
+├── me/index.html                → /me       Account dashboard + inline module error/watchdog guard
+├── privacy/index.html           → /privacy  Privacy Policy
+├── terms/index.html             → /terms    Terms of Service
 │
-├── css/styles.css       Design system (generated — `node tools/bundle-css.js`) — Google-style light + dark (Roboto, #1a73e8) — dashboard ke liye
-├── css/legacy.css       🔒 Purana unique UI (Inter, dark, non-Google) — signin/signup/privacy/terms/root ke liye frozen snapshot.
-│                        Yeh file bundle-css se generate NAHI hoti; in pages ka look exact rakhne ke liye hai, mat overwrite karo.
-├── js/
-│   ├── config.js        ⚙️ THE 1 FILE to edit: API_URL + APP_DOMAIN (Rule #1)
-│   ├── api.js           fetch wrapper (credentials: include, JSON, errors)
-│   ├── theme.js         light/dark toggle (localStorage: gothwad-theme)
-│   ├── common.js        session (getSession/requireAuth/signOut), toasts,
-│   │                    formatBytes/formatDate, passwordStrength
-│   ├── signin.js        /signin logic (3 modes: login / forgot / reset)
-│   ├── signup.js        /signup logic (live check + strength meter)
-│   └── me.js            /me logic (profile, password, devices, connected apps)
+├── css/                         Modular dashboard design system (`<= 500` lines per file!)
+│   ├── variables.css            Light + Dark design tokens
+│   ├── base.css                 Reset, typography, app bar, avatar popover, toast, spinner
+│   ├── components.css           Buttons, Material fields, cards, chips, modals
+│   ├── auth.css                 Google-style auth cards & steps
+│   ├── dashboard.css            `/me` shell, sidebar nav, section rows & lists
+│   ├── legal.css                Legal shell, sidebar TOC & callouts
+│   ├── legal-content.css        Privacy/Terms typography, responsive rules & animations
+│   ├── root.css                 Root splash styles
+│   └── legacy/                  🔒 Frozen dark-theme auth/legal stylesheets (7 modules, exact cascade)
+│       ├── variables.css · base.css · components.css · auth.css
+│       └── dashboard.css · legal-layout.css · legal-content.css
 │
-├── icon-192.png etc.    🔵 REAL brand icons (blue snowflake) — mat hatao!
-├── favicon.ico
-└── manifest.json        PWA manifest (theme #2f80ed)
+├── js/                          Shared ES modules (`config.js`, `api.js`, `accounts.js`, `common.js`, `theme.js`)
+├── me/js/                       Dashboard entry (`me.js`), modals (`dialogs.js` + `dialogs-security.js`), `tabs/*`
+├── signin/js/                   Sign-in entry (`signin.js`) + `modules/*`
+└── signup/js/                   Sign-up entry (`signup.js`) + `modules/*`
 ```
 
-## Rules (AGENTS.md se)
-- **Naya route/page mat banao** bina user ke kehne (3 routes fixed hain)
-- Colors sirf CSS variables se — inline colors mat likho
-- User input ko kabhi direct HTML mein mat dalo — `escapeHtml()` use karo
-- Absolute paths (`/js/...`, `/css/...`) — relative nahi
-
-## Local dev
-`node tools/dev-server.js` → http://localhost:3000 (repo root se)
-
-## Design tokens (quick reference)
-| Token | Value | Use |
-|-------|-------|-----|
-| `--bg` | `#0d1117` | page background |
-| `--bg-panel` | `#161b22` | cards |
-| `--accent` | `#2f80ed` | buttons, links (brand blue) |
-| `--text` | `#e6edf3` | main text |
-| `--font` | Inter / system-ui | everywhere |
+## Mandatory Frontend Rules (`AGENTS.md`)
+- **Rule #8 (`<= 500` lines/file):** Keep every HTML, CSS, and JS file `<= 500` lines (`500–800` max). Split large files into clean ES/CSS modules without changing visuals or behavior.
+- **Verify Exports & Cascade (`npm run build && npm test`):** Never remove or rename an exported JS function without checking all `import { ... }` callers across `web/**` (`tests/frontend-and-filesize.test.mjs` enforces this automatically).
+- **Zero Client Storage Tokens:** Never store session/OAuth tokens in `localStorage` or `sessionStorage` (only `gothwad-theme` is permitted).

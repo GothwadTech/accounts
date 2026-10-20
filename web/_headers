@@ -1,0 +1,28 @@
+# =============================================================================
+# CLOUDFLARE PAGES HEADERS — Revalidate HTML/JS/CSS on every reload (`ETag` 304)
+# =============================================================================
+# Prevents browsers from mixing a cached old ES module with a newly deployed one
+# across releases, eliminating link-time `SyntaxError` / stuck loading screens.
+
+/*
+  Cache-Control: public, max-age=0, must-revalidate
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+
+/js/*
+  Cache-Control: public, max-age=0, must-revalidate
+
+/me/*
+  Cache-Control: public, max-age=0, must-revalidate
+
+/me/js/*
+  Cache-Control: public, max-age=0, must-revalidate
+
+/signin/*
+  Cache-Control: public, max-age=0, must-revalidate
+
+/signup/*
+  Cache-Control: public, max-age=0, must-revalidate
+
+/css/*
+  Cache-Control: public, max-age=0, must-revalidate
