@@ -1,117 +1,58 @@
-# 🔥 GOTHWAD ACCOUNTS
+# 🔥 GOTHWAD ACCOUNTS (v2.0 — 100% Cloudflare Native)
 
-**Central auth system for the Gothwad ecosystem** — ek hi account se Mail, Drive,
-Chat, Notes, Calendar sab mein sign-in. (Google Account jaisa, but Gothwad!)
+**Central Identity, SSO & OAuth 2.0 Hub for the Gothwad Ecosystem** — ek hi account se Mail, Kiwi Store, Meet, Drive, Chat, Notes, Calendar sab mein sign-in. *(Google Account jaisa, 100% Gothwad!)*
 
-> Status: **Step 1 ✅ + Step 2 ✅** — real auth (Supabase), JWT sessions, remember-me,
-> password reset, device management + **OAuth 2.0 provider**
-> ("Sign in with Gothwad" — authorization/token/userinfo endpoints, PKCE, scopes).
-> UI ab **Google Account jaisi** hai (light + dark toggle) — profile photo upload,
-> recent activity, data export, account delete sab fully working.
-> Next: Step 3 = Gothwad Mail.
-
----
-
-## 📚 Documentation Map (naye log/AI ke liye)
-
-| File | Kiske liye | Kya milega |
-|------|-----------|------------|
-| **[AGENTS.md](AGENTS.md)** | 🤖 AI agents | Working guide — rules, style, commands, workflow. **PEHLE YEH PADHO** |
-| **[TASK.md](TASK.md)** | 🤖 Everyone | Live status board + poora kaam ka itihaas (work log) |
-| **[PLAN.md](PLAN.md)** | 🤖 Everyone | Master plan — Steps 3-6 + infrastructure decisions |
-| **[docs/SETUP.md](docs/SETUP.md)** | 👤 Humans | Step-by-step deploy (Supabase → Worker → Pages) |
-| **[docs/OAUTH.md](docs/OAUTH.md)** | 👤 App developers | "Sign in with Gothwad" integration guide |
-| **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** | 🤖 Tech | Flows, cookies, JWT, schema, endpoints |
-| **[ROADMAP.md](ROADMAP.md)** | 📖 Historical | User ka original vision doc |
+> **⚡ Architecture Upgrade (v2.0 — Zero Supabase!):**
+> Gothwad Accounts ab **100% Cloudflare Native (`Pages` + `Workers` + `Cloudflare D1 SQLite` + `Global Edge Cache` + optional `R2`)** par chalta hai:
+> - **♾️ Unlimited Users ($0 MAU Forever)** — WebCrypto `PBKDF2-SHA256` + `HS256` JWT engine
+> - **🚫 Never Sleeps / Zero 7-Day Pause** — Native Cloudflare D1 binding (`1–5ms` SQL)
+> - **🧬 100% Pure Username-Only DB (`Rule #2`)** — Zero email columns anywhere; domain change (`gothwad.in`) = 1-line config edit!
+> - **🖼️ Built-in Edge-Cached Avatars** — Works out of the box on free D1 (`0` card required) + drop-in R2 ready!
 
 ---
 
-## 📁 Project Structure
+## 📚 Documentation Map
 
-```
-accounts/
-├── web/                     🌐 Frontend (HTML/CSS/JS — no build step!)
-│   ├── signin/              /signin   — Login + forgot/reset password
-│   ├── signup/              /signup   — Create account (live username check)
-│   ├── me/                  /me       — Account dashboard (profile, security, devices, apps)
-│   ├── index.html           Root → smart redirect (/me ya /signin)
-│   ├── css/                 Google-style design system (light + dark, Roboto)
-│   └── js/                  config.js (THE 1 file to edit), api.js, common.js,
-│                            theme.js (light/dark toggle) + page scripts
-│
-├── cloudflare-worker/       ⚡ Auth + OAuth API (Cloudflare Worker)
-│   ├── src/index.ts         /api/auth/* + /oauth/* routes (well commented)
-│   ├── wrangler.toml        Config + env vars (APP_DOMAIN yahan badlo)
-│   └── .dev.vars.example    Local development secrets template
-│
-├── sql/                      🗄️ Database — NUMBERED SQL files (01 → 02 → 03…)
-│   ├── 01_core_schema.sql    Tables + RLS + triggers + seeds (idempotent!)
-│   ├── 02_account_activity.sql  Recent activity feed
-│   ├── 03_avatars_storage.sql   Profile photo bucket
-│   ├── 04_kiwi_store_oauth_migration.sql   Kiwi Store OAuth client migration
-│   ├── 05_store_android_oauth.sql   Android Store callback (preserves web URLs)
-│   └── README.md             Run order + rules (pehle yeh padho)
-│
-├── tools/                   🛠️ Local dev helpers (never deploy!)
-│   ├── dev-server.js        Static server + /api + /oauth proxy (pretty URLs)
-│   └── mock-supabase.js     Fake Supabase for offline testing only
-│
-├── docs/
-│   ├── SETUP.md             📘 STEP-BY-STEP setup guide (start here!)
-│   └── OAUTH.md             🔐 OAuth 2.0 provider integration guide
-├── ROADMAP.md               🗺️ Poora ecosystem vision & architecture
-└── .env.example             📋 All environment variables listed
-```
-
-> **Site ke sirf 3 routes hain:** `/signin` · `/signup` · `/me`
-> (OAuth consent screen Worker khud render karta hai — extra page nahi.)
+| File | Audience | Kya Milega |
+|------|----------|------------|
+| **[docs/SETUP.md](docs/SETUP.md)** | 👤 Founder / Beginners | **Step-by-Step Cloudflare Dashboard Deploy Guide** (Phone/Browser se 10 min mein live!) |
+| **[docs/CLOUDFLARE_NATIVE_PLAN.md](docs/CLOUDFLARE_NATIVE_PLAN.md)** | 🧭 Master Plan | Full Cloudflare Native architecture (`Accounts` ✅ + `Mail`, `Store`, `GrixChat` D1 blueprint) |
+| **[AGENTS.md](AGENTS.md)** | 🤖 AI Agents | Working rules, design constraints, test commands (**Read First!**) |
+| **[TASK.md](TASK.md)** | 📋 Everyone | Live status board + session-by-session work history |
+| **[docs/OAUTH.md](docs/OAUTH.md)** | 🧩 App Developers | `"Sign in with Gothwad"` OAuth 2.0 + S256 PKCE integration guide |
+| **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** | 🏗️ Tech Deep Dive | Crypto primitives, `session` vs `oauth_access` JWTs, D1 schema & avatars |
 
 ---
 
-## 🚀 Quick Start (Local Dev)
+## 🚀 Quick Start (1 Command — Zero External Services!)
 
 ```bash
-# 1. Worker start karo (Terminal 1)
-cd cloudflare-worker
-cp .dev.vars.example .dev.vars   # apni Supabase keys daalo (ya mock chalne do)
 npm install
-npx wrangler dev                 # → http://127.0.0.1:8787
-
-# 2. Frontend start karo (Terminal 2)
-node tools/dev-server.js         # → http://localhost:3000
+npm start
+# → Opens http://localhost:3000 (/signin · /signup · /me + real local SQLite D1!)
 ```
 
-Browser mein `http://localhost:3000` kholo — `/signin`, `/signup`, `/me` sab chalega!
+Run the full automated security & end-to-end test suite (**62 tests**):
 
-> **Full setup (Supabase + Cloudflare deploy):** [docs/SETUP.md](docs/SETUP.md)
-> **Apps ko connect karna:** [docs/OAUTH.md](docs/OAUTH.md)
+```bash
+npm test
+```
 
----
+Verify strict TypeScript & Cloudflare Worker production bundle:
 
-## 🧭 Roadmap
-
-| Step | Kya hai | Status |
-|------|---------|--------|
-| **1** | Gothwad Accounts (signup, login, sessions, reset) | ✅ Done |
-| **2** | OAuth 2.0 provider ("Sign in with Gothwad") | ✅ Done |
-| **3** | Gothwad Mail (Cloudflare Email Routing + Resend) — alag repo [`GothwadTech/mail`](https://github.com/GothwadTech/mail), Worker naam **`mail`** | 🔜 Next |
-| **4** | Cross-app SSO (ClashDrive, GrixChat connect) | 📋 Planned |
-
-Full architecture & vision: [ROADMAP.md](ROADMAP.md)
+```bash
+cd cloudflare-worker
+npx tsc --noEmit
+npx wrangler deploy --dry-run
+```
 
 ---
 
-## 🛡️ Security Rules (hamesha yaad rakho)
+## 🛡️ Hard Security & Design Rules
 
-1. **Domain hardcode mat karo** — `APP_DOMAIN` env var use karo (Rule #1)
-2. **DB mein sirf username** — email = `username@APP_DOMAIN` calculate hota hai (Rule #2)
-3. `SUPABASE_SERVICE_ROLE_KEY` = sirf Worker (secret) — frontend mein kabhi nahi
-4. Har Supabase table par **RLS ON** (sql/ folder already does this)
-5. **SQL sirf Gothwad Accounts ke Supabase project mein** — GrixChat / Indogram /
-   Gothwad Mail ke apne alag Supabase projects hain (sql/README.md dekho)
-6. **Mail naming confuse mat karo** — Mail ka Cloudflare Worker **`mail`** hai
-   (`gothwad-mail-api` sirf `/api/health` ka label hai); OAuth `client_id`
-   **`gothwad-mail`**; server-to-server base `https://api.gothwadtech.com`
-   (details: [docs/MAIL_INTERNAL.md](docs/MAIL_INTERNAL.md))
+1. **Domain-Agnostic (`Rule #1`):** Never hardcode domains in code — use `APP_DOMAIN` (`wrangler.toml` & `web/js/config.js`).
+2. **100% Pure Username DB (`Rule #2`):** `users` & `profiles` store **only `username`** — `email = username@APP_DOMAIN` is always computed at the API layer.
+3. **Secrets Stay in Worker Only (`Rule #3`):** Only `JWT_SECRET`, `MAIL_INTERNAL_TOKEN`, and optional `RESEND_API_KEY` live as Cloudflare Worker Secrets — never in frontend or Git.
+4. **3 Routes Only:** `/signin` · `/signup` · `/me` (OAuth consent screen renders directly inside the Worker).
 
 © 2026 Gothwad Tech · Built with 🔥
