@@ -249,6 +249,39 @@ const BOOTSTRAP_STATEMENTS: string[] = [
   )`,
 ];
 
+function buildDefaultCallbackSeedStatements(db: D1Database, rawDomain?: string): D1PreparedStatement[] {
+  const domain = (rawDomain || '').trim().toLowerCase();
+  if (!/^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/.test(domain)) {
+    return [];
+  }
+  const defaults: Array<[string, string[]]> = [
+    ['gothwad-meet', [`https://meet.${domain}/auth/callback`, `https://meet.${domain}/oauth/callback`]],
+    ['gothwad-mail', [`https://mail.${domain}/auth/callback`, `https://mail.${domain}/oauth/callback`]],
+    [
+      'kiwi-store',
+      [
+        'gothwadstore://oauth/callback',
+        'kiwistore://oauth/callback',
+        `https://kiwistore.${domain}/auth/callback`,
+        `https://kiwiconsole.${domain}/auth/callback`,
+        `https://kiwiadmin.${domain}/auth/callback`,
+        `https://kiwiapp.${domain}/auth/callback`,
+        'http://localhost:3000/auth/callback',
+        'http://localhost:5173/auth/callback',
+      ],
+    ],
+    ['gothwad-drive', [`https://drive.${domain}/auth/callback`, `https://drive.${domain}/oauth/callback`]],
+    ['gothwad-tube', [`https://plustube.${domain}/auth/callback`, `https://tube.${domain}/auth/callback`]],
+    ['gothwad-chat', [`https://grixchat.${domain}/auth/callback`, `https://chat.${domain}/auth/callback`]],
+    ['gothwad-indogram', [`https://indogram.${domain}/auth/callback`]],
+  ];
+  return defaults.map(([id, uris]) =>
+    db
+      .prepare("UPDATE ecosystem_apps SET redirect_uris = ? WHERE id = ? AND (redirect_uris IS NULL OR redirect_uris = '[]')")
+      .bind(JSON.stringify(uris), id),
+  );
+}
+
 async function getDb(env: Env): Promise<D1Database> {
   if (!env.DB) {
     throw new DatabaseUnavailableError(
@@ -258,7 +291,11 @@ async function getDb(env: Env): Promise<D1Database> {
   const key = env.DB as unknown as object;
   let pending = initializedDbs.get(key);
   if (!pending) {
-    pending = env.DB.batch(BOOTSTRAP_STATEMENTS.map((sql) => env.DB.prepare(sql)))
+    const statements = [
+      ...BOOTSTRAP_STATEMENTS.map((sql) => env.DB.prepare(sql)),
+      ...buildDefaultCallbackSeedStatements(env.DB, env.APP_DOMAIN),
+    ];
+    pending = env.DB.batch(statements)
       .then(() => undefined)
       .catch((err) => {
         initializedDbs.delete(key);
@@ -1494,12 +1531,17 @@ export default {
       // -------------------------------------------------------------- /health
       if (route === '/health' && request.method === 'GET') {
         const db = await getDb(env);
-        await db.prepare('SELECT 1 AS ok').first();
+        const [tableRow, appRow] = await Promise.all([
+          db.prepare("SELECT COUNT(*) AS cnt FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'").first<{ cnt: number }>(),
+          db.prepare("SELECT COUNT(*) AS cnt FROM ecosystem_apps WHERE redirect_uris != '[]'").first<{ cnt: number }>(),
+        ]);
         return withCors(
           json({
             status: 'ok',
             service: 'gothwad-auth-api',
             engine: 'cloudflare-d1-native',
+            tables: Number(tableRow?.cnt ?? 0),
+            oauth_apps: Number(appRow?.cnt ?? 0),
             time: new Date().toISOString(),
           }),
         );
