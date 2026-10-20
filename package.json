@@ -1,12 +1,12 @@
 {
   "name": "gothwad-accounts",
-  "version": "1.0.0",
-  "description": "Gothwad Accounts — central auth and unified identity provider for the Gothwad ecosystem",
+  "version": "2.0.0",
+  "description": "Gothwad Accounts — 100% Cloudflare Native (D1 + Worker Auth + OAuth 2.0) central identity provider",
   "type": "module",
   "scripts": {
     "dev": "node --experimental-strip-types server.js",
     "build": "node tools/bundle-css.js",
-    "test": "node --experimental-strip-types --test tests/*.test.mjs",
+    "test": "node --experimental-strip-types --test tests/*.test.mjs tools/test-oauth-*.mjs",
     "start": "node --experimental-strip-types server.js"
   },
   "devDependencies": {

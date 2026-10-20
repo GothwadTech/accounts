@@ -1,18 +1,14 @@
 node_modules/
-build/
-dist/
-coverage/
-.DS_Store
-*.log
-.env*
-!.env.example
-# Wrangler local secrets (real keys — never commit!)
-.dev.vars
-# Local test harness data
-tools/.mock-data.json
-
-# Wrangler build artifacts
+cloudflare-worker/node_modules/
+cloudflare-worker/.wrangler/
+cloudflare-worker/.dev.vars
 .wrangler/
-
-# Config-derived deployment SQL (regenerate with tools/generate-store-oauth-sql.mjs)
+.env
+.env.*
+!.env.example
+.local-d1.sqlite
+.local-d1.sqlite-shm
+.local-d1.sqlite-wal
 Store-OAuth-Setup.sql
+dist/
+.DS_Store
