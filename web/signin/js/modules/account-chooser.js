@@ -8,10 +8,13 @@ import {
   safeNextUrl,
   addAccountHref,
 } from '../../../js/accounts.js';
+import { isInternalAccountHubPath, mePathForAuthuser } from '../../../js/authuser.js';
 
-function destAfterPick() {
+function destAfterPick(authuser = 0) {
   const next = new URLSearchParams(location.search).get('next');
-  return safeNextUrl(next, '/me');
+  const fallback = mePathForAuthuser(authuser);
+  if (!next || isInternalAccountHubPath(next)) return fallback;
+  return safeNextUrl(next, fallback);
 }
 
 export async function initAccountChooser(preloadedState = null) {
@@ -42,12 +45,13 @@ export async function initAccountChooser(preloadedState = null) {
     const { activeId, accounts } = state;
 
     listEl.innerHTML = accounts
-      .map((a) => {
+      .map((a, idx) => {
         const name = `${a.firstName || ''} ${a.lastName || ''}`.trim() || a.username;
         const activeBadge = a.id === activeId ? ' · Signed in' : '';
+        const authuserIdx = Number.isInteger(a.authuser) ? a.authuser : idx;
         return `
       <div class="chooser-row" style="cursor:default;gap:10px;">
-        <button type="button" class="chooser-pick" data-id="${escapeAttr(a.id)}"
+        <button type="button" class="chooser-pick" data-id="${escapeAttr(a.id)}" data-authuser="${authuserIdx}"
           style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;background:none;border:0;padding:0;color:inherit;text-align:left;cursor:pointer;font:inherit;">
           <span class="avatar sm">${escapeAttr(initialsFor(a))}</span>
           <span class="chooser-meta">
@@ -79,7 +83,7 @@ export async function initAccountChooser(preloadedState = null) {
           btn.disabled = false;
           return;
         }
-        location.href = destAfterPick();
+        location.href = destAfterPick(sw.authuser || 0);
       });
     });
 
@@ -126,7 +130,6 @@ export async function initAccountChooser(preloadedState = null) {
   const addBtn = document.getElementById('chooser-add');
   if (addBtn) addBtn.onclick = goAddAnother;
 
-  // "Use another account" -> routes to `/signin?choose=1&add=1` (preserving `&next=`)
   const useOther = document.getElementById('chooser-other');
   if (useOther) useOther.onclick = goAddAnother;
 

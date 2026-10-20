@@ -4,17 +4,20 @@
  * =============================================================================
  * Modular Worker router (< 120 lines) dispatching cleanly across cohesive
  * domain modules while preserving 100% public re-export compatibility:
- *   - `types.ts`                  — D1, R2, Env & Multi-Account models
+ *   - `types.ts`                  — D1, R2, Env & Multi-Account (`u/0..5`) models
  *   - `db.ts`                     — Cold-start WeakMap D1 bootstrap & error isolation
  *   - `http.ts`                   — JSON/Form parsers, validators & CORS
  *   - `crypto.ts`                 — PBKDF2-SHA256, SHA-256 tokens & HS256 JWTs
  *   - `cookies.ts`                — Subdomain SSO cookies (`a`..`f`) & CSRF checks
  *   - `users.ts`                  — Account lookup, profile formatting & Resend mail
- *   - `sessions.ts`               — Atomic token rotation & multi-account slot engine
+ *   - `sessions.ts`               — Atomic rotation, `authuser` & multi-tab resilience
+ *   - `browser-slots.ts`          — Browser slot inspection, ordering & sign-in cookies
  *   - `oauth-helpers.ts`          — S256 PKCE & OAuth consent UI renderer
  *   - `routes/public-internal.ts` — `/internal/usernames/*`, `/avatars/*`, `/health`
- *   - `routes/auth-entry.ts`      — `/auth/check-*`, `/auth/signup`, `/auth/signin`, `/auth/signout`, `/auth/refresh`
- *   - `routes/auth-accounts.ts`   — `/auth/me`, `/auth/accounts`, `/auth/switch`, `/auth/accounts/:id/signout`, recovery
+ *   - `routes/auth-entry.ts`      — `/auth/check-*`, `/auth/signup`
+ *   - `routes/auth-session.ts`    — `/auth/signin`, `/auth/signout`, `/auth/refresh`
+ *   - `routes/auth-switch.ts`     — `/auth/accounts`, `/auth/switch` (`GET`/`POST`), slot signout
+ *   - `routes/auth-accounts.ts`   — `/auth/me`, `/auth/forgot-password`, `/auth/reset-password`
  *   - `routes/auth-profile.ts`    — `/auth/update-profile`, `/auth/sessions`, `/auth/avatar`, `/auth/export`, `/auth/delete-account`
  *   - `routes/oauth.ts`           — `/oauth/*` OAuth 2.0 + S256 PKCE provider endpoints
  * =============================================================================
@@ -26,6 +29,7 @@ import { apiError, buildCorsHeaders, json } from './http.ts';
 import { handleInternalRoute, handlePublicRoute } from './routes/public-internal.ts';
 import { handleAuthEntryRoute } from './routes/auth-entry.ts';
 import { handleAuthSessionRoute } from './routes/auth-session.ts';
+import { handleAuthSwitchRoute } from './routes/auth-switch.ts';
 import { handleAuthAccountsRoute } from './routes/auth-accounts.ts';
 import { handleAuthProfileRoute } from './routes/auth-profile.ts';
 import { handleOAuthRoute } from './routes/oauth.ts';
@@ -53,6 +57,7 @@ export {
   verifyAccountsCookieValue,
   isTrustedGothwadOrigin,
   verifyCsrfOrigin,
+  resolveSafeRedirectTarget,
 } from './cookies.ts';
 
 export default {
@@ -90,10 +95,11 @@ export default {
         ? await oauthQuery(() => getDb(env))
         : await getDb(env);
 
-      // 3. Auth Entry, Session, Multi-Account, Profile & OAuth 2.0 Routes
+      // 3. Auth Entry, Session, Multi-Account Switcher, Profile & OAuth 2.0 Routes
       return (
         (await handleAuthEntryRoute(request, url, db, env, route, withCors)) ??
         (await handleAuthSessionRoute(request, url, db, env, route, withCors)) ??
+        (await handleAuthSwitchRoute(request, url, db, env, route, withCors)) ??
         (await handleAuthAccountsRoute(request, db, env, route, withCors)) ??
         (await handleAuthProfileRoute(request, db, env, route, withCors)) ??
         (await handleOAuthRoute(request, url, db, env, route, withCors, (c) => {

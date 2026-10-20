@@ -1,0 +1,10 @@
+# =============================================================================
+# CLOUDFLARE PAGES REWRITES — Google-style Session Index URLs (`/u/0` .. `/u/5`)
+# =============================================================================
+# `200` status performs an invisible edge rewrite (zero redirect round-trip!),
+# keeping `https://accounts.gothwadtech.com/u/0/me` & `/u/1/me` in the URL bar.
+
+/u/:authuser/me     /me/index.html   200
+/u/:authuser/me/    /me/index.html   200
+/u/:authuser        /me/index.html   200
+/u/:authuser/       /me/index.html   200

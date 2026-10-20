@@ -46,7 +46,7 @@ export async function handleAuthSessionRoute(
     const body = await readJson(request);
     const rawIdentifier = String(body.identifier || '').trim();
     const password = String(body.password || '');
-    const remember = body.remember === true;
+    const remember = body.remember !== false;
     const addMode =
       url.searchParams.get('add') === '1' ||
       body.add === true ||
@@ -169,6 +169,7 @@ export async function handleAuthSessionRoute(
       sessionId,
       remember,
       addMode,
+      sessionCreatedAt: nowIso,
     });
     if (!slotResult.ok) {
       return withCors(json({ error: slotResult.error, message: slotResult.message }, 409));
@@ -178,6 +179,8 @@ export async function handleAuthSessionRoute(
       json(
         {
           ok: true,
+          activeId: slotResult.slot,
+          authuser: slotResult.authuser,
           user: presentUser(profile, env),
           access_token: accessToken,
           refresh_token: rawRefresh,

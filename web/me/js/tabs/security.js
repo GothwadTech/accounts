@@ -5,75 +5,87 @@
 import { api } from '../../../js/api.js';
 import { setBusy, toast, escapeHtml, formatDate } from '../../../js/common.js';
 import { getActivity, getAuthorizations } from '../store.js';
-import { gothwadEmail } from '../../../js/config.js';
 import { renderActivity } from './activity.js';
 import { setDialogUser, dialogPassword } from '../dialogs.js';
 
 let user = null;
 let onUserUpdated = () => {};
+let bound = false;
 
-export function initSecurity(currentUser, cb) {
-  user = currentUser;
-  if (cb) onUserUpdated = cb;
-
-  // Dialogs (password yahan se bhi khulta hai)
+export function syncSecurityUser(nextUser) {
+  user = nextUser;
   setDialogUser(user, (updated) => {
     user = updated;
     onUserUpdated(updated);
     refreshRows();
   });
-
-  // Password row → dialog
-  document
-    .querySelectorAll('#section-security [data-dialog="password"]')
-    .forEach((row) => row.addEventListener('click', dialogPassword));
-
-  // Recovery row (security section mein bhi hai)
-  document
-    .querySelectorAll('#section-security [data-dialog="recovery"]')
-    .forEach((row) => row.addEventListener('click', () => import('../dialogs.js').then((m) => m.openDialog('recovery'))));
-
-  // Sign out other devices
-  const revokeOthersBtn = document.getElementById('btn-revoke-others');
-  revokeOthersBtn?.addEventListener('click', async (e) => {
-    const btn = e.currentTarget;
-    setBusy(btn, true, 'Signing out...');
-    const res = await api.post('/auth/sessions/revoke-others', {});
-    setBusy(btn, false);
-    if (res.ok) {
-      toast('All other devices signed out');
-      loadSessions();
-      loadActivity();
-    } else {
-      toast(res.error || 'Could not sign out devices', 'error');
-    }
-  });
-
   refreshRows();
   loadSessions();
   loadActivity();
   loadAppsSummary();
 }
 
-function refreshRows() {
-  if (!user) return;
-  document.getElementById('sec-recovery').textContent = user.recovery_email || 'Not set';
+export function initSecurity(currentUser, cb) {
+  if (cb) onUserUpdated = cb;
+
+  if (!bound) {
+    bound = true;
+
+    document
+      .querySelectorAll('#section-security [data-dialog="password"]')
+      .forEach((row) => row.addEventListener('click', dialogPassword));
+
+    document
+      .querySelectorAll('#section-security [data-dialog="recovery"]')
+      .forEach((row) =>
+        row.addEventListener('click', () => import('../dialogs.js').then((m) => m.openDialog('recovery'))),
+      );
+
+    const revokeOthersBtn = document.getElementById('btn-revoke-others');
+    revokeOthersBtn?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      setBusy(btn, true, 'Signing out...');
+      const res = await api.post('/auth/sessions/revoke-others', {});
+      setBusy(btn, false);
+      if (res.ok) {
+        toast('All other devices signed out');
+        loadSessions();
+        loadActivity();
+      } else {
+        toast(res.error || 'Could not sign out devices', 'error');
+      }
+    });
+  }
+
+  syncSecurityUser(currentUser);
 }
 
-/** Password change hone par "last changed" turant update. */
+function refreshRows() {
+  if (!user) return;
+  const el = document.getElementById('sec-recovery');
+  if (el) el.textContent = user.recovery_email || 'Not set';
+}
+
 export function markPasswordChanged() {
   const el = document.getElementById('sec-pw-last');
   if (el) el.textContent = 'just now';
 }
 
-/** Recent security activity feed (sirf security-relevant events). */
 export async function loadActivity() {
   const rows = await getActivity();
-  const securityTypes = ['signin', 'signout', 'password_change', 'password_reset', 'session_revoked', 'app_authorized', 'app_revoked', 'signup'];
+  const securityTypes = [
+    'signin',
+    'signout',
+    'password_change',
+    'password_reset',
+    'session_revoked',
+    'app_authorized',
+    'app_revoked',
+    'signup',
+  ];
   renderActivity('sec-activity', rows.filter((r) => securityTypes.includes(r.type)).slice(0, 10));
 }
 
-/** Devices (sessions) list + per-device sign out. */
 export async function loadSessions() {
   const list = document.getElementById('device-list');
   if (!list) return;
@@ -132,7 +144,6 @@ export async function loadSessions() {
   });
 }
 
-/** "Signing in with other sites" summary. */
 async function loadAppsSummary() {
   const box = document.getElementById('sec-apps-summary');
   if (!box) return;

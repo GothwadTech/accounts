@@ -52,7 +52,7 @@ export function sessionCookies(
     remember: boolean;
   },
 ): string[] {
-  const maxAge = tokens.remember ? 60 * 60 * 24 * 30 : null;
+  const maxAge = tokens.remember ? MULTI_ACCOUNT_MAX_AGE : null;
   const cookies = [
     makeCookie(request, env, 'gothwad_at', tokens.access_token, tokens.remember ? ACCESS_TOKEN_TTL_SECONDS : null),
     makeCookie(request, env, 'gothwad_rt', tokens.refresh_token, maxAge),
@@ -248,13 +248,41 @@ export function verifyCsrfOrigin(
   }
   const referer = request.headers.get('Referer');
   if (referer !== null) {
-    try {
-      return isTrustedGothwadOrigin(new URL(referer.trim()).origin, request, env);
-    } catch {
-      return false;
-    }
+    return isTrustedGothwadOrigin(referer.trim(), request, env);
   }
+
+  const secFetchSite = (request.headers.get('Sec-Fetch-Site') || '').trim().toLowerCase();
+  if (secFetchSite && secFetchSite !== 'same-origin' && secFetchSite !== 'same-site' && secFetchSite !== 'none') {
+    return false;
+  }
+
+  // Server-to-server Gothwad Worker proxy subrequests (e.g. Gothwad Mail Worker `callAccounts`)
+  // omit browser `Origin`/`Referer` headers and send explicit `Accept: application/json`.
+  const accept = (request.headers.get('Accept') || '').trim().toLowerCase();
+  if (accept === 'application/json') {
+    return true;
+  }
+
   return !opts.requireHeader;
+}
+
+export function resolveSafeRedirectTarget(rawNext: string | null | undefined, request: Request, env: Env): string {
+  const hubBase = (env.AUTH_HUB_URL || '').replace(/\/+$/, '');
+  const fallback = `${hubBase || new URL(request.url).origin}/u/0/me`;
+  if (!rawNext || typeof rawNext !== 'string') return fallback;
+
+  if (rawNext.startsWith('/') && !rawNext.startsWith('//')) {
+    return `${hubBase || new URL(request.url).origin}${rawNext}`;
+  }
+  try {
+    const candidate = new URL(rawNext);
+    if (isTrustedGothwadOrigin(candidate.origin, request, env)) {
+      return candidate.toString();
+    }
+  } catch {
+    // Reject untrusted or malformed destination
+  }
+  return fallback;
 }
 
 export function refererHasQueryParam(request: Request, key: string, expectedValue: string): boolean {

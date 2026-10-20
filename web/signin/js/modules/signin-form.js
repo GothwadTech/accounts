@@ -7,6 +7,7 @@
 import { api, clearTokens } from '../../../js/api.js';
 import { setBusy, toast } from '../../../js/common.js';
 import { safeNextUrl } from '../../../js/accounts.js';
+import { isInternalAccountHubPath, mePathForAuthuser } from '../../../js/authuser.js';
 import { GOTHWAD_CONFIG } from '../../../js/config.js';
 
 export function validateIdentifier(raw) {
@@ -208,7 +209,9 @@ export function initSigninForm(showAlert, hideAlert) {
 
     toast(`Welcome back, ${res.data.user.first_name || res.data.user.username}!`);
 
+    const authuser = Number.isInteger(res.data?.authuser) ? res.data.authuser : 0;
+    const defaultMe = mePathForAuthuser(authuser);
     const next = params.get('next');
-    location.href = safeNextUrl(next, '/me');
+    location.href = !next || isInternalAccountHubPath(next) ? defaultMe : safeNextUrl(next, defaultMe);
   });
 }

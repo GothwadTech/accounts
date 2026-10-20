@@ -1,6 +1,7 @@
 import { api, clearTokens } from '../../../js/api.js';
 import { setBusy, toast } from '../../../js/common.js';
 import { safeNextUrl } from '../../../js/accounts.js';
+import { isInternalAccountHubPath, mePathForAuthuser } from '../../../js/authuser.js';
 
 export function initSignupSubmit(form, submitBtn, showError, clearError) {
   if (!form || !submitBtn) return;
@@ -57,8 +58,10 @@ export function initSignupSubmit(form, submitBtn, showError, clearError) {
     toast(`Account created! Welcome to Gothwad, ${firstName}!`);
 
     setTimeout(() => {
+      const authuser = Number.isInteger(res.data?.authuser) ? res.data.authuser : 0;
+      const defaultMe = mePathForAuthuser(authuser);
       const next = params.get('next');
-      location.href = safeNextUrl(next, '/me');
+      location.href = !next || isInternalAccountHubPath(next) ? defaultMe : safeNextUrl(next, defaultMe);
     }, 600);
   });
 }

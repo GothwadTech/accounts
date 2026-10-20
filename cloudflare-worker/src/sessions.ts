@@ -1,7 +1,14 @@
 /**
  * =============================================================================
- * SESSION ENGINE — Atomic Refresh Rotation, 10s Race Grace & Active Resolution
+ * SESSION ENGINE — Atomic Rotation, Multi-Tab Cookie Resilience & `authuser`
  * =============================================================================
+ * Supports Google-style multi-account resolution across:
+ *   1. Explicit `?authuser=<0..5|slot|username|email>`, `?u=<0..5>`, or
+ *      `X-Gothwad-Authuser` header (enables independent `/u/0` & `/u/1` tabs!)
+ *   2. Active browser slot cookie (`gothwad_active` -> `gothwad_sess_<slot>`)
+ *   3. Automatic self-healing promotion if `gothwad_active` slot was revoked
+ *      while other browser slots (`a`..`f`) remain valid in D1
+ *   4. Bearer / `gothwad_at` + `gothwad_rt` fallback
  */
 
 import {
@@ -25,10 +32,25 @@ import {
   decodeSlotCredentials,
   getCookie,
   isAccountSlot,
+  makeActiveCookie,
   makeSlotSessionCookie,
   sessionCookies,
   slotCookieName,
 } from './cookies.ts';
+import { inspectBrowserAccounts, pickMostRecentSlot, selectSlotBySelector } from './browser-slots.ts';
+
+export function extractRequestedAuthuser(request: Request): string | null {
+  try {
+    const url = new URL(request.url);
+    const queryVal = url.searchParams.get('authuser') ?? url.searchParams.get('u');
+    if (queryVal !== null && queryVal.trim() !== '') return queryVal.trim();
+  } catch {
+    // Ignore malformed URL
+  }
+  const headerVal = request.headers.get('X-Gothwad-Authuser');
+  if (headerVal !== null && headerVal.trim() !== '') return headerVal.trim();
+  return null;
+}
 
 export async function rotateSessionRefreshToken(
   db: D1Database,
@@ -100,7 +122,13 @@ export async function rotateSessionRefreshToken(
 export async function validateCredentialsAgainstDb(
   db: D1Database,
   env: Env,
-  creds: { accessToken?: string | null; refreshToken?: string | null; sessionId?: string | null; remember?: boolean },
+  creds: {
+    accessToken?: string | null;
+    refreshToken?: string | null;
+    sessionId?: string | null;
+    remember?: boolean;
+    cookieSlot?: boolean;
+  },
 ): Promise<{
   ok: boolean;
   authUser?: SessionUser;
@@ -168,18 +196,29 @@ export async function validateCredentialsAgainstDb(
 
       const userId = String(prevRow.user_id);
       const sid = String(prevRow.session_id);
-      const cutoffIso = new Date(Date.now() - 10_000).toISOString();
+      const nowIso = new Date().toISOString();
+      // Browser multi-account cookies (`gothwad_sess_*` / `gothwad_rt`) are shared across tabs &
+      // subdomains (`accounts.` + `mail.`). As long as the underlying `user_sessions` row AND an
+      // unexpired sibling token are still active in D1, never kick a sibling tab out!
+      const siblingQuery = creds.cookieSlot
+        ? db
+            .prepare(
+              `SELECT token_hash FROM auth_refresh_tokens
+                WHERE user_id = ? AND session_id = ? AND revoked = 0 AND expires_at > ?
+                LIMIT 1`,
+            )
+            .bind(userId, sid, nowIso)
+        : db
+            .prepare(
+              `SELECT token_hash FROM auth_refresh_tokens
+                WHERE user_id = ? AND session_id = ? AND revoked = 0 AND created_at >= ?
+                LIMIT 1`,
+            )
+            .bind(userId, sid, new Date(Date.now() - 10_000).toISOString());
 
       const [sessRow, freshSibling, userRow] = await Promise.all([
         db.prepare('SELECT id FROM user_sessions WHERE id = ? AND user_id = ? LIMIT 1').bind(sid, userId).first(),
-        db
-          .prepare(
-            `SELECT token_hash FROM auth_refresh_tokens
-              WHERE user_id = ? AND session_id = ? AND revoked = 0 AND created_at >= ?
-              LIMIT 1`,
-          )
-          .bind(userId, sid, cutoffIso)
-          .first(),
+        siblingQuery.first(),
         db.prepare('SELECT id, username FROM users WHERE id = ? LIMIT 1').bind(userId).first(),
       ]);
 
@@ -211,17 +250,43 @@ export async function resolveSession(
   newTokens?: { access_token: string; refresh_token: string };
   authUser?: SessionUser;
   slot?: AccountSlot;
+  authuser?: number;
 }> {
   const authHeader = request.headers.get('Authorization') || '';
   const headerAccess = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
   const headerRefresh = (request.headers.get('X-Gothwad-Refresh') || '').trim();
 
   if (!headerAccess && !headerRefresh) {
+    const requestedSelector = extractRequestedAuthuser(request);
+    if (requestedSelector !== null) {
+      const inspected = await inspectBrowserAccounts(request, db, env);
+      if (inspected.validSlots.length > 0) {
+        const matched = selectSlotBySelector(inspected.validSlots, requestedSelector, env);
+        const chosen = matched || inspected.validSlots[0];
+        const chosenIndex = inspected.validSlots.indexOf(chosen);
+        return {
+          ok: true,
+          slot: chosen.slot,
+          authuser: chosenIndex >= 0 ? chosenIndex : 0,
+          accessToken: chosen.creds.accessToken,
+          authUser: {
+            id: chosen.userId,
+            username: chosen.username,
+            sessionId: chosen.creds.sessionId || null,
+          },
+          newCookies: inspected.cookiesToSet.length > 0 ? inspected.cookiesToSet : undefined,
+        };
+      }
+    }
+
     const rawActive = getCookie(request, ACTIVE_COOKIE_NAME);
     if (isAccountSlot(rawActive)) {
       const slotCreds = decodeSlotCredentials(getCookie(request, slotCookieName(rawActive)));
       if (slotCreds) {
-        const slotCheck = await validateCredentialsAgainstDb(db, env, slotCreds);
+        const slotCheck = await validateCredentialsAgainstDb(db, env, {
+          ...slotCreds,
+          cookieSlot: true,
+        });
         if (slotCheck.ok && slotCheck.authUser) {
           if (slotCheck.rotated) {
             const newTokens = {
@@ -259,18 +324,49 @@ export async function resolveSession(
           };
         }
       }
+
+      // Active slot cookie expired/revoked — heal automatically if another slot is still alive!
+      const healed = await inspectBrowserAccounts(request, db, env);
+      if (healed.validSlots.length > 0) {
+        const nextSlot = pickMostRecentSlot(healed.validSlots);
+        const nextIndex = healed.validSlots.indexOf(nextSlot);
+        return {
+          ok: true,
+          slot: nextSlot.slot,
+          authuser: nextIndex >= 0 ? nextIndex : 0,
+          accessToken: nextSlot.creds.accessToken,
+          authUser: {
+            id: nextSlot.userId,
+            username: nextSlot.username,
+            sessionId: nextSlot.creds.sessionId || null,
+          },
+          newCookies: [
+            ...healed.cookiesToSet,
+            makeActiveCookie(request, env, nextSlot.slot),
+            ...sessionCookies(request, env, {
+              access_token: nextSlot.creds.accessToken,
+              refresh_token: nextSlot.creds.refreshToken,
+              session_id: nextSlot.creds.sessionId,
+              remember: nextSlot.creds.remember,
+            }),
+          ],
+        };
+      }
+      return { ok: false };
     }
   }
 
   const accessToken = headerAccess || getCookie(request, 'gothwad_at');
   const refreshToken = headerRefresh || getCookie(request, 'gothwad_rt');
   const cookieSid = getCookie(request, 'gothwad_sid');
+  const isCookieCall = !headerAccess && !headerRefresh;
 
   const fallbackCheck = await validateCredentialsAgainstDb(db, env, {
     accessToken,
     refreshToken,
     sessionId: cookieSid,
     remember: true,
+    cookieSlot: isCookieCall,
   });
 
   if (fallbackCheck.ok && fallbackCheck.authUser) {

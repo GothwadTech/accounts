@@ -1,6 +1,6 @@
 /**
  * =============================================================================
- * BROWSER MULTI-ACCOUNT SLOTS (`a`..`f`) — Inspection, Legacy Promotion & Sign-In
+ * BROWSER MULTI-ACCOUNT SLOTS (`a`..`f` / `u/0..5`) — Inspection & Selection
  * =============================================================================
  */
 
@@ -19,6 +19,7 @@ import { authQuery } from './db.ts';
 import {
   decodeSlotCredentials,
   getCookie,
+  isAccountSlot,
   makeAccountsCookie,
   makeActiveCookie,
   makeCookie,
@@ -73,7 +74,10 @@ export async function inspectBrowserAccounts(
       continue;
     }
 
-    const check = await validateCredentialsAgainstDb(db, env, slotCreds);
+    const check = await validateCredentialsAgainstDb(db, env, {
+      ...slotCreds,
+      cookieSlot: true,
+    });
     if (!check.ok || !check.authUser) {
       droppedAnySlot = true;
       cookiesToSet.push(makeCookie(request, env, slotCookieName(slot), '', 0));
@@ -106,6 +110,7 @@ export async function inspectBrowserAccounts(
       username: String(profile?.username || check.authUser.username),
       firstName: String(profile?.first_name || prevMeta?.firstName || ''),
       lastName: String(profile?.last_name || prevMeta?.lastName || ''),
+      avatarUrl: profile?.avatar_url ? String(profile.avatar_url) : null,
       addedAt: prevMeta?.addedAt || nowIso,
       lastUsedAt: prevMeta?.lastUsedAt || nowIso,
       creds: updatedCreds,
@@ -123,9 +128,17 @@ export async function inspectBrowserAccounts(
         refreshToken: legacyRt,
         sessionId: legacySid,
         remember: true,
+        cookieSlot: true,
       });
       if (legacyCheck.ok && legacyCheck.authUser) {
         const profile = await authQuery(() => fetchProfile(db, legacyCheck.authUser!.id));
+        const sessId = legacyCheck.authUser.sessionId || legacySid || '';
+        const sessRow = sessId
+          ? await authQuery(() =>
+              db.prepare('SELECT last_active, created_at FROM user_sessions WHERE id = ? LIMIT 1').bind(sessId).first(),
+            )
+          : null;
+        const legacyUsedAt = String(sessRow?.last_active || sessRow?.created_at || profile?.created_at || nowIso);
         const promotedCreds: SlotCredentials = legacyCheck.rotated
           ? {
               accessToken: legacyCheck.rotated.access_token,
@@ -156,8 +169,9 @@ export async function inspectBrowserAccounts(
           username: String(profile?.username || legacyCheck.authUser.username),
           firstName: String(profile?.first_name || ''),
           lastName: String(profile?.last_name || ''),
-          addedAt: nowIso,
-          lastUsedAt: nowIso,
+          avatarUrl: profile?.avatar_url ? String(profile.avatar_url) : null,
+          addedAt: legacyUsedAt,
+          lastUsedAt: legacyUsedAt,
           creds: promotedCreds,
           rotated: !!legacyCheck.rotated,
         });
@@ -181,13 +195,43 @@ export async function inspectBrowserAccounts(
   return { validSlots, cookiesToSet, hadValidAccountsCookie };
 }
 
-export function toPublicAccountSummary(slotInfo: VerifiedBrowserSlot, env: Env): PublicAccountSummary {
+export function selectSlotBySelector(
+  validSlots: VerifiedBrowserSlot[],
+  rawSelector: string,
+  env: Env,
+): VerifiedBrowserSlot | undefined {
+  const selector = rawSelector.trim().toLowerCase();
+  if (!selector) return undefined;
+
+  if (/^\d+$/.test(selector)) {
+    const index = Number.parseInt(selector, 10);
+    return validSlots[index];
+  }
+  if (isAccountSlot(selector)) {
+    return validSlots.find((s) => s.slot === selector);
+  }
+  const domainSuffix = `@${(env.APP_DOMAIN || 'gothwadtech.com').toLowerCase()}`;
+  const normalizedUsername = selector.endsWith(domainSuffix)
+    ? selector.slice(0, -domainSuffix.length)
+    : selector;
+  return validSlots.find((s) => s.username.toLowerCase() === normalizedUsername);
+}
+
+export function toPublicAccountSummary(
+  slotInfo: VerifiedBrowserSlot,
+  env: Env,
+  authuserIndex = 0,
+): PublicAccountSummary {
+  const hubBase = (env.AUTH_HUB_URL || `https://accounts.${env.APP_DOMAIN}`).replace(/\/+$/, '');
   return {
     id: slotInfo.slot,
+    authuser: authuserIndex,
     username: slotInfo.username,
     firstName: slotInfo.firstName,
     lastName: slotInfo.lastName,
     email: `${slotInfo.username}@${env.APP_DOMAIN}`,
+    avatarUrl: slotInfo.avatarUrl || null,
+    accountUrl: `${hubBase}/u/${authuserIndex}/me`,
     lastUsedAt: slotInfo.lastUsedAt,
   };
 }
@@ -212,9 +256,13 @@ export async function buildSignInCookies(
     sessionId: string;
     remember: boolean;
     addMode: boolean;
+    sessionCreatedAt?: string;
   },
-): Promise<{ ok: true; slot: AccountSlot; cookies: string[] } | { ok: false; error: string; message: string }> {
-  const nowIso = new Date().toISOString();
+): Promise<
+  | { ok: true; slot: AccountSlot; authuser: number; cookies: string[] }
+  | { ok: false; error: string; message: string }
+> {
+  const nowIso = opts.sessionCreatedAt || new Date().toISOString();
   const newCreds: SlotCredentials = {
     accessToken: opts.accessToken,
     refreshToken: opts.refreshToken,
@@ -249,7 +297,7 @@ export async function buildSignInCookies(
       },
     ];
     cookies.push(makeAccountsCookie(request, env, await signAccountsCookieValue(entries, env)));
-    return { ok: true, slot: 'a', cookies };
+    return { ok: true, slot: 'a', authuser: 0, cookies };
   }
 
   const inspected = await inspectBrowserAccounts(request, db, env);
@@ -292,6 +340,7 @@ export async function buildSignInCookies(
     lastUsedAt: nowIso,
   });
 
+  const authuserIndex = entries.findIndex((e) => e.slot === targetSlot);
   const keptAuxCookies = inspected.cookiesToSet.filter((c) => !c.startsWith(`${ACCOUNTS_COOKIE_NAME}=`));
   const cookies: string[] = [
     ...keptAuxCookies,
@@ -306,5 +355,5 @@ export async function buildSignInCookies(
     makeAccountsCookie(request, env, await signAccountsCookieValue(entries, env)),
   ];
 
-  return { ok: true, slot: targetSlot, cookies };
+  return { ok: true, slot: targetSlot, authuser: authuserIndex >= 0 ? authuserIndex : 0, cookies };
 }

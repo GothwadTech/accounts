@@ -199,10 +199,10 @@ export async function handleAuthProfileRoute(
     const sessionId = String(body.session_id || '');
     if (!sessionId) return withCors(apiError('session_id is required'));
 
-    await db
-      .prepare('DELETE FROM user_sessions WHERE id = ? AND user_id = ?')
-      .bind(sessionId, session.authUser.id)
-      .run();
+    await db.batch([
+      db.prepare('UPDATE auth_refresh_tokens SET revoked = 1 WHERE session_id = ? AND user_id = ?').bind(sessionId, session.authUser.id),
+      db.prepare('DELETE FROM user_sessions WHERE id = ? AND user_id = ?').bind(sessionId, session.authUser.id),
+    ]);
 
     await logActivity(
       db,
@@ -220,10 +220,10 @@ export async function handleAuthProfileRoute(
     if (!session.ok || !session.authUser) return withCors(apiError('Please sign in first', 401));
 
     const currentSid = session.authUser.sessionId || getCookie(request, 'gothwad_sid') || '';
-    await db
-      .prepare('DELETE FROM user_sessions WHERE user_id = ? AND id != ?')
-      .bind(session.authUser.id, currentSid)
-      .run();
+    await db.batch([
+      db.prepare('UPDATE auth_refresh_tokens SET revoked = 1 WHERE user_id = ? AND session_id != ?').bind(session.authUser.id, currentSid),
+      db.prepare('DELETE FROM user_sessions WHERE user_id = ? AND id != ?').bind(session.authUser.id, currentSid),
+    ]);
 
     await logActivity(
       db,

@@ -1,18 +1,23 @@
 /**
- * /me — chhota data store: activity + authorizations ek hi baar fetch hote
- * hain aur 15 second cache ke saath share hote hain (free-tier friendly).
+ * /me — Shared 15-second data cache (`activity` + `authorizations`), reset on account switch.
  */
 
 import { api } from '../../js/api.js';
 
-const TTL = 15000; // 15s — is window mein dobara fetch nahi hota
+const TTL = 15000;
 
 let activityPromise = null;
 let activityAt = 0;
 let authzPromise = null;
 let authzAt = 0;
 
-/** Recent activity (cached). force=true → fresh fetch. */
+export function resetMeStore() {
+  activityPromise = null;
+  activityAt = 0;
+  authzPromise = null;
+  authzAt = 0;
+}
+
 export function getActivity(force = false) {
   const fresh = Date.now() - activityAt < TTL;
   if (!force && fresh && activityPromise) return activityPromise;
@@ -23,7 +28,6 @@ export function getActivity(force = false) {
   return activityPromise;
 }
 
-/** OAuth authorizations (cached). Response: { connected, apps }. */
 export function getAuthorizations(force = false) {
   const fresh = Date.now() - authzAt < TTL;
   if (!force && fresh && authzPromise) return authzPromise;

@@ -235,6 +235,7 @@ export async function handleAuthEntryRoute(
       sessionId,
       remember,
       addMode,
+      sessionCreatedAt: nowIso,
     });
     const cookies = slotResult.ok
       ? slotResult.cookies
@@ -249,6 +250,8 @@ export async function handleAuthEntryRoute(
       json(
         {
           ok: true,
+          activeId: slotResult.ok ? slotResult.slot : 'a',
+          authuser: slotResult.ok ? slotResult.authuser : 0,
           user: presentUser(profile, env),
           access_token: accessToken,
           refresh_token: rawRefresh,

@@ -1,21 +1,19 @@
 /**
  * =============================================================================
- * SHARED WORKER TYPES — D1, R2, Env Bindings & Multi-Account Session Models
+ * GOTHWAD ACCOUNTS — CORE TYPES & MULTI-ACCOUNT SESSION MODELS (`a`..`f` / `u/0..5`)
  * =============================================================================
  */
 
 export interface D1Meta {
   changes?: number;
-  last_row_id?: number;
   duration?: number;
-  rows_read?: number;
-  rows_written?: number;
+  last_row_id?: number;
 }
 
 export interface D1Result<T = Record<string, any>> {
+  results?: T[];
   success: boolean;
-  results: T[];
-  meta: D1Meta;
+  meta?: D1Meta;
 }
 
 export interface D1PreparedStatement {
@@ -23,55 +21,43 @@ export interface D1PreparedStatement {
   first<T = Record<string, any>>(colName?: string): Promise<T | null>;
   all<T = Record<string, any>>(): Promise<D1Result<T>>;
   run(): Promise<D1Result>;
-  raw<T = unknown[]>(): Promise<T[]>;
 }
 
 export interface D1Database {
   prepare(query: string): D1PreparedStatement;
   batch<T = unknown>(statements: D1PreparedStatement[]): Promise<D1Result<T>[]>;
-  exec(query: string): Promise<{ count: number; duration: number }>;
+  exec?(query: string): Promise<unknown>;
 }
 
 export interface R2ObjectBody {
-  body: ReadableStream | null;
+  httpEtag: string;
   httpMetadata?: { contentType?: string };
-  httpEtag?: string;
+  size: number;
   arrayBuffer(): Promise<ArrayBuffer>;
 }
 
 export interface R2Bucket {
   put(
     key: string,
-    value: ReadableStream | ArrayBuffer | ArrayBufferView | string | Blob,
+    value: ArrayBuffer | Uint8Array | string,
     options?: { httpMetadata?: { contentType?: string } },
   ): Promise<unknown>;
   get(key: string): Promise<R2ObjectBody | null>;
-  delete(keys: string | string[]): Promise<void>;
+  delete(key: string): Promise<void>;
 }
 
 export interface Env {
-  /** Primary Cloudflare D1 SQLite database binding (`accounts`) */
   DB: D1Database;
-  /** Optional Cloudflare R2 bucket for avatars; falls back to D1 `user_avatars` automatically */
   AVATARS_BUCKET?: R2Bucket;
-  /** Root domain, e.g. "gothwadtech.com" — email is always derived: username@APP_DOMAIN */
   APP_DOMAIN: string;
-  /** Public URL of Accounts frontend, e.g. "https://accounts.gothwadtech.com" */
   AUTH_HUB_URL: string;
-  /** Dedicated Worker Custom Domain for server-to-server calls, e.g. "api.gothwadtech.com" */
-  API_DOMAIN?: string;
-  /** Strong random secret for signing HS256 Session & OAuth JWTs (`wrangler secret put JWT_SECRET`) */
-  JWT_SECRET?: string;
-  /** Shared secret for Mail Worker -> Accounts internal lookup (`wrangler secret put MAIL_INTERNAL_TOKEN`) */
-  MAIL_INTERNAL_TOKEN?: string;
-  /** Optional Resend API key for outbound password-reset emails (`wrangler secret put RESEND_API_KEY`) */
-  RESEND_API_KEY?: string;
-  /** Optional sender address for Resend password-reset emails */
-  RESEND_FROM?: string;
-  /** "true" = local dev helpers (localhost OAuth URIs + dev reset link fallback). MUST be "false" in prod! */
-  DEV_MODE?: string;
-  /** Optional extra CORS origins (comma-separated) for local/preview testing */
+  API_DOMAIN: string;
+  RESEND_FROM: string;
+  DEV_MODE: string;
   ALLOWED_ORIGINS?: string;
+  JWT_SECRET: string;
+  RESEND_API_KEY?: string;
+  MAIL_INTERNAL_TOKEN?: string;
 }
 
 export const ACCOUNT_SLOTS = ['a', 'b', 'c', 'd', 'e', 'f'] as const;
@@ -89,15 +75,6 @@ export interface AccountCookieEntry {
   lastUsedAt: string;
 }
 
-export interface PublicAccountSummary {
-  id: AccountSlot;
-  username: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  lastUsedAt: string;
-}
-
 export interface SlotCredentials {
   accessToken: string;
   refreshToken: string;
@@ -105,10 +82,16 @@ export interface SlotCredentials {
   remember: boolean;
 }
 
-export interface SessionUser {
-  id: string;
+export interface PublicAccountSummary {
+  id: AccountSlot;
+  authuser: number;
   username: string;
-  sessionId: string | null;
+  firstName: string;
+  lastName: string;
+  email: string;
+  avatarUrl: string | null;
+  accountUrl: string;
+  lastUsedAt: string;
 }
 
 export interface VerifiedBrowserSlot {
@@ -117,10 +100,17 @@ export interface VerifiedBrowserSlot {
   username: string;
   firstName: string;
   lastName: string;
+  avatarUrl: string | null;
   addedAt: string;
   lastUsedAt: string;
   creds: SlotCredentials;
   rotated: boolean;
+}
+
+export interface SessionUser {
+  id: string;
+  username: string;
+  sessionId: string | null;
 }
 
 export type ResponseWrapper = (res: Response, newCookies?: string[]) => Response;

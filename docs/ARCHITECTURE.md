@@ -1,6 +1,6 @@
-# 🏗️ ARCHITECTURE.md — Technical Deep Dive (v2.2 — Modular 100% Cloudflare Native)
+# 🏗️ ARCHITECTURE.md — Technical Deep Dive (v2.3 — Google-Grade `u/0..5` Multi-Account Cloudflare Native)
 
-> **Updated: 2026-10-20 — Modular Zero-Supabase Architecture (`<= 500` Lines Per File Enforced)**
+> **Updated: 2026-10-20 — Google Session-Indexed Multi-Account Routing (`/u/0..5`, `?authuser=`) + Modular `<= 500`-Line Standard**
 > Gothwad Accounts runs **100% on Cloudflare (`Pages` + `Workers` + `D1 SQLite` + `Global Edge Cache` + optional `R2`)**.
 > Master roadmap: [`CLOUDFLARE_NATIVE_PLAN.md`](CLOUDFLARE_NATIVE_PLAN.md) · Setup: [`SETUP.md`](SETUP.md) · OAuth: [`OAUTH.md`](OAUTH.md) · Mail Contract: [`MAIL_INTERNAL.md`](MAIL_INTERNAL.md)
 
@@ -12,17 +12,18 @@
 ┌────────────────────────────────────────────────────────┐
 │  BROWSER (Modular Static Vanilla HTML + CSS + ESM JS)  │
 │  accounts.gothwadtech.com  (Cloudflare Pages + ETag)   │
-│  Routes: /signin · /signup · /me (+ /privacy · /terms) │
-│  web/_headers: Cache-Control: max-age=0,must-revalidate│
+│  Routes: /u/0/me .. /u/5/me · /signin · /signup        │
+│  web/_redirects (`200` rewrite) + web/_headers (`304`) │
 └───────────────────────────┬────────────────────────────┘
-                            │ fetch('/api/*') — HttpOnly `.gothwadtech.com` Slot Cookies (`a`..`f`)
+                            │ fetch('/api/*') — HttpOnly `.gothwadtech.com` Slots (`a`..`f`) + `X-Gothwad-Authuser`
 ┌───────────────────────────▼────────────────────────────┐
-│  CLOUDFLARE WORKER (`accounts` — 14 Modular TS Files)  │
-│  cloudflare-worker/src/index.ts (~28 KiB gzip bundle)  │
+│  CLOUDFLARE WORKER (`accounts` — 17 Modular TS Files)  │
+│  cloudflare-worker/src/index.ts (~30 KiB gzip bundle)  │
 │  • types · db · http · crypto · cookies · users        │
 │  • sessions · browser-slots · oauth-helpers            │
 │  • routes/{public-internal,auth-entry,auth-session,    │
-│            auth-accounts,auth-profile,oauth}.ts        │
+│            auth-switch,auth-accounts,auth-profile,     │
+│            oauth}.ts                                   │
 └─────────────┬──────────────────────────┬───────────────┘
               │ `env.DB` (1–5ms SQLite)  │ Optional `env.AVATARS_BUCKET` / Edge Cache
 ┌─────────────▼─────────────┐  ┌─────────▼─────────────────────────────┐
