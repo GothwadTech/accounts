@@ -1,47 +1,42 @@
 /**
- * Print owner-reviewed Store callback SQL; never connect to a database.
- * Domain comes only from wrangler.toml. Run: node tools/generate-store-oauth-sql.mjs
+ * Print owner-reviewed Cloudflare D1 OAuth callback SQL for Store + Ecosystem apps.
+ * Never connects to any live database. Domain comes strictly from `wrangler.toml`.
+ *
+ * Usage:
+ *   node tools/generate-store-oauth-sql.mjs > Store-OAuth-Setup.sql
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
+const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 
 export function generateStoreOAuthSql(domain) {
-  // Reject URLs, wildcards, quotes, ports and paths before interpolating SQL.
   const labels = typeof domain === 'string' ? domain.split('.') : [];
-  if (labels.length < 2 || domain.length > 253 || labels.some(label =>
-    !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))) {
+  if (
+    labels.length < 2 ||
+    domain.length > 253 ||
+    labels.some((label) => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))
+  ) {
     throw new Error('APP_DOMAIN must be a lowercase hostname, not a URL, wildcard or SQL fragment');
   }
+
   const nativeSql = read('../sql/05_store_android_oauth.sql');
   const guide = read('../docs/STORE_OAUTH.md');
   const template = guide.match(/```sql\n([\s\S]*?)\n```/)?.[1];
-  const placeholder = "app_domain text := 'YOUR_APP_DOMAIN'";
-  if (!template?.includes(placeholder)) throw new Error('Store web SQL template missing from docs/STORE_OAUTH.md');
-  const webSql = template.replace(placeholder, `app_domain text := '${domain}'`);
-  return `-- Generated from Accounts config for ${domain}. Review the four owned web sites first.
--- ACCOUNTS Supabase SQL Editor only; never the Store project's database.
--- Preserves existing callbacks and secrets. No wildcard/localhost registration.
--- This file must be run manually. Git changes do not apply database migrations.
-BEGIN;
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM public.ecosystem_apps WHERE id = 'kiwi-store') THEN
-    RAISE EXCEPTION 'Run Accounts sql/01_core_schema.sql first; kiwi-store is missing';
-  END IF;
-  IF EXISTS (SELECT 1 FROM public.ecosystem_apps WHERE id = 'kiwi-store' AND secret_hash IS NOT NULL) THEN
-    RAISE EXCEPTION 'Store must be a reviewed public PKCE client; do not clear an existing secret automatically';
-  END IF;
-  IF EXISTS (SELECT 1 FROM public.ecosystem_apps WHERE client_id = 'kiwi-store' AND id <> 'kiwi-store') THEN
-    RAISE EXCEPTION 'Another row owns the Store client_id; review the registry before changing callbacks';
-  END IF;
-END $$;
+  const placeholder = 'YOUR_APP_DOMAIN';
+  if (!template?.includes(placeholder)) {
+    throw new Error('Store web SQL template missing from docs/STORE_OAUTH.md');
+  }
+  const webSql = template.replaceAll(placeholder, domain);
+
+  return `-- Generated from Gothwad Accounts config for ${domain} (Cloudflare D1 SQLite).
+-- Run in Cloudflare Dashboard -> D1 -> gothwad-accounts-db -> Console.
+-- Safe to re-run: preserves existing callbacks and never overwrites secret_hash.
 
 ${nativeSql}
+
 ${webSql}
-COMMIT;
 `;
 }
 

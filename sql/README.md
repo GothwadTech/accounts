@@ -1,120 +1,41 @@
-# 🗄️ sql/ — Gothwad Accounts Database (Numbered SQL Files)
+# 🗄️ `sql/` — Gothwad Accounts Database (100% Cloudflare D1 Native)
 
-Yeh folder **Gothwad Accounts** ka poora database hai — tables, security,
-triggers, storage bucket, sab kuch. Files **number wise** hain, sequence mein
-run karni hain.
-
----
-
-## ⚠️ SABSE PEHLE YEH PADHO — Kaunsa Supabase Project?
-
-Gothwad ecosystem mein **har app ka APNA alag Supabase project/database hai**:
-
-| App | Supabase Project | Yeh SQL chalao? |
-|-----|------------------|-----------------|
-| **Gothwad Accounts** | Accounts wala project | ✅ **HAAN — sirf yahin** |
-| GrixChat | GrixChat ka apna alag project | ❌ NAHI |
-| Indogram | Indogram ka apna alag project | ❌ NAHI |
-| Gothwad Mail | Mail ka apna alag project | ❌ NAHI |
-| Kiwi Store / Android Store | Store ka apna alag project | ❌ NAHI — OAuth registration bhi **Accounts** mein hoti hai |
-
-**Is folder ki SQL files SIRF "Gothwad Accounts" wale Supabase project mein
-chalani hain.** GrixChat / Indogram / Gothwad Mail ke databases mein mat
-chalana — unke apne projects mein unki apni SQL hoti hai, aur yahan ki tables
-wahan exist hi nahi karti (aur karna chahiye bhi nahi).
-
-**Kaise pata karein ki sahi project khola hai?** Supabase Dashboard ke top par
-project ka naam dekho (jaise "accounts", "gothwad-accounts" waghera). Connection
-string / Project Settings → Database mein bhi project ka reference dikhta hai.
-Agar doubt ho to `public.profiles` table Test/SQL Editor mein check karo —
-Accounts project mein yeh table milti hai.
+> **🎉 ZERO SUPABASE:** Gothwad Accounts ab **100% Cloudflare Native (`Cloudflare D1` SQLite + Worker WebCrypto Auth)** par chalta hai!
+> Supabase ki ab **kisi bhi table, auth service ya storage bucket ki zaroorat NAHI hai**.
 
 ---
 
-## 📁 Files (is order mein run karo)
+## ⚡ SABSE BADI KHOOBI: Auto-Bootstrap + Manual SQL Support!
 
-| # | File | Kya karta hai | Lines (approx) |
-|---|------|---------------|----------------|
-| 1 | `01_core_schema.sql` | Core tables + RLS + triggers + helpers + seed apps | ~470 |
-| 2 | `02_account_activity.sql` | "Recent activity" log (Google-style security feed) | ~120 |
-| 3 | `03_avatars_storage.sql` | Profile photo bucket (Supabase Storage) | ~90 |
-| 4 | `04_kiwi_store_oauth_migration.sql` | Kiwi Store OAuth client migration (purana pre-rename client → `kiwi-store`) — sirf Accounts project | ~150 |
-| 5 | `05_store_android_oauth.sql` | Android Store native callback append (`gothwadstore://oauth/callback`) | ~25 |
-
+1. **Automatic First-Boot Setup:** Jab aap Cloudflare Dashboard mein `gothwad-accounts-db` bana kar Worker ke saath bind karte ho, **Accounts Worker pehli API request par hi core tables, indexes aur app seeds automatically bana leta hai!**
+2. **Manual D1 Console Control:** Phir bhi saari database structure is `sql/` folder mein clean, numbered, **100% idempotent** SQL files ke roop mein rakhi gayi hai taaki aap **Cloudflare Dashboard → Storage & Databases → D1 → `gothwad-accounts-db` → Console** mein kabhi bhi inspect ya re-run kar sako.
 
 ---
 
-## ▶️ Kaise Run Karein (Supabase SQL Editor)
+## 📁 Numbered SQL Files (Order: `01` → `05`)
 
-1. Supabase Dashboard kholo → apna **Gothwad Accounts** project select karo
-2. Left menu → **SQL Editor**
-3. `01_core_schema.sql` ka **poora content** copy-paste karo → **Run** dabao
-4. Phir `02_account_activity.sql` → Run
-5. Phir `03_avatars_storage.sql` → Run
-6. Phir `04_kiwi_store_oauth_migration.sql` → Run
-7. Phir `05_store_android_oauth.sql` → Run
+| # | File | Kya banata hai |
+|---|------|----------------|
+| 1 | `01_core_schema.sql` | `users` (pure username + PBKDF2-SHA256 hash), `profiles`, `user_sessions`, `auth_refresh_tokens`, `password_reset_tokens`, `ecosystem_apps`, `app_authorizations`, `oauth_auth_codes`, `oauth_refresh_tokens` |
+| 2 | `02_account_activity.sql` | `account_activity` (Google-style Security & Recent Activity log) |
+| 3 | `03_avatars_storage.sql` | `user_avatars` (256×256 profile photo storage in D1 + Cloudflare Edge CDN cache; optional R2 ready) |
+| 4 | `04_kiwi_store_oauth_migration.sql` | `kiwi-store` web + Android OAuth callbacks setup & legacy grant migration |
+| 5 | `05_store_android_oauth.sql` | Ensures Android native callbacks (`gothwadstore://oauth/callback`, `kiwistore://oauth/callback`) stay registered without dropping web URLs |
 
-
-Verify kaise karein: **Table Editor** mein jaao — `profiles`,
-`user_sessions`, `ecosystem_apps`, `app_authorizations`, `oauth_auth_codes`,
-`oauth_refresh_tokens`, `account_activity` tables dikhni chahiye.
-
----
-
-## 🔁 DOBARA RUN KARNE PAR ERROR NAHI AAYEGA (Idempotent)
-
-Har file **idempotent** banai gayi hai — matlab:
-
-- **First time** run → sab kuch fresh ban jata hai. ✅
-- **Dobara** run (database pehle se bani ho) → **koi error nahi**, kuch duplicate
-  nahi banega. Jo cheezein update hui hon (naye columns, naye policies) wo
-  smooth update ho jayengi. ✅
-
-Yeh isliye possible hai kyunki har jagah yeh patterns use hue hain:
-
-| Kaam | Idempotent Pattern |
-|------|--------------------|
-| Table | `CREATE TABLE IF NOT EXISTS` |
-| Column | `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` |
-| Index | `CREATE INDEX IF NOT EXISTS` |
-| Policy (RLS) | `DROP POLICY IF EXISTS ... ; CREATE POLICY ...` |
-| Trigger | `DROP TRIGGER IF EXISTS ... ; CREATE TRIGGER ...` |
-| Function | `CREATE OR REPLACE FUNCTION` |
-| Seed data | `INSERT ... ON CONFLICT (id) DO UPDATE/NOTHING` |
-
-**Isliye jab bye hum (ya koi AI agent) naya column/feature add kare, toh SQL
-yahan hi numbered file mein aisi likho ki dobara run par bhi error na aaye.**
+> Bonus: Apne `APP_DOMAIN` ke hisaab se Store + Mail + Ecosystem callbacks ki ready SQL nikalne ke liye:
+> ```bash
+> node tools/generate-store-oauth-sql.mjs
+> ```
 
 ---
 
-## 🧠 Design Rules (jo database follow karti hai)
+## 🧠 Core Database Rules (Never Break These!)
 
-1. **Username-only (Rule #2):** `profiles` mein sirf `username` store hota hai.
-   Email KABHI database mein nahi — `username@APP_DOMAIN` API layer par
-   calculate hota hai. Isliye domain badalne par database mein kuch nahi badalna
-   padta.
-2. **RLS ON everywhere:** har table par Row Level Security hai. User sirf apna
-   data dekh sakta hai. `oauth_*` + `account_activity` par write policy hi nahi
-   hai — sirf Worker (service_role) likh sakta hai.
-3. **Domain-agnostic:** kahin bhi `gothwadtech.com` hardcoded nahi hai.
-   `ecosystem_apps.redirect_uris` deploy ke waqt UPDATE se bhari jaati hain
-   (example `docs/OAUTH.md` mein).
-4. **Free tier friendly:** purani activity rows limit (100/user) — storage
-   bachane ke liye `cleanup_old_activity()` helper bana rakha hai.
-
----
-
-## ❓ FAQ
-
-**Q: Supabase project banaya hi nahi hai, kaha se banau?**
-→ `docs/SETUP.md` ka STEP 1 follow karo (poora deploy guide hai).
-
-**Q: Galti se GrixChat wale project mein chal gayi?**
-→ Koi data loss nahi hoga — bas Accounts ke saare tables wahan ban jayenge.
-Unhe delete karna ho to Table Editor se manually hata sakte ho. Lekin dhyan
-rakho next time! 😅
-
-**Q: Naya column add karna hai profiles mein?**
-→ `01_core_schema.sql` mein CREATE TABLE mein column add karo AUR ek
-`ALTER TABLE ... ADD COLUMN IF NOT EXISTS` line bhi (purane databases ke liye).
-Phir is README ke table mein note kar do.
+1. **100% Pure Username-Only (`Rule #2`):** `users` aur `profiles` dono mein **koi `email` column hai hi nahi!** Email hamesha runtime par `username + "@" + APP_DOMAIN` calculate hota hai. Kal domain `gothwad.in` karne par **0 SQL lines** badalni padengi!
+2. **Zero Raw Secrets in DB:**
+   - Passwords = `pbkdf2_sha256$100000$<salt>$<hash>`
+   - Session Refresh Tokens = `SHA-256(token)`
+   - Password Reset Tokens = `SHA-256(token)` (15 min expiry, single-use)
+   - OAuth Refresh Tokens = `SHA-256(token)`
+   - Confidential Client Secrets = `SHA-256(secret)`
+3. **Zero Browser DB Access:** Browser kabhi D1 ko touch nahi kar sakta — D1 binding (`env.DB`) sirf Cloudflare Worker ke andar private network par available hoti hai!
