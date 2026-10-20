@@ -78,9 +78,9 @@ test('full account lifecycle: signup, pure username DB, domain switch, signin vi
   assert.equal(availBefore.available, true);
   assert.equal(availBefore.email, 'pawan@gothwadtech.com');
 
-  // 2. Signed-out `/api/auth/me` behavior: 200 `{authenticated:false}` on browser host vs 401 on `api.` host
+  // 2. Signed-out `/api/auth/me` behavior: 401 `{authenticated:false}` consistently across all hosts
   const meBrowserOut = await apiCall(env, '/api/auth/me');
-  assert.equal(meBrowserOut.status, 200);
+  assert.equal(meBrowserOut.status, 401);
   assert.equal((await meBrowserOut.json()).authenticated, false);
 
   const meApiOut = await apiCall(env, '/api/auth/me', { host: 'api.gothwadtech.com' });
