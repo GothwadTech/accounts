@@ -1,236 +1,69 @@
-# 🏗️ ARCHITECTURE.md — Technical Deep Dive
+# 🏗️ ARCHITECTURE.md — Technical Deep Dive (100% Cloudflare Native v2.0)
 
-> Gothwad Accounts ka poora technical design. Naya AI yahan se flows samjhe.
-> Setup: [`SETUP.md`](SETUP.md) · OAuth integration: [`OAUTH.md`](OAUTH.md)
-
-**Last updated:** 2026-10-09
-
----
-
-## 1. System Overview
-
-```
-┌──────────────────────────────┐
-│   BROWSER (user)             │
-│   accounts.gothwadtech.com   │
-│   web/ — static HTML/CSS/JS  │        Cloudflare Pages (free)
-└──────────────┬───────────────┘
-               │  fetch /api/*  (same-origin in dev via proxy;
-               │                 in prod: cross-origin, CORS + credentials)
-┌──────────────▼───────────────┐
-│   CLOUDFLARE WORKER          │
-│   cloudflare-worker/         │        accounts.gothwadtech.com/api/*
-│   /api/auth/*  /api/oauth/*  │        (route; alt: api.gothwadtech.com)
-└──────────────┬───────────────┘
-               │  REST (PostgREST) + Auth Admin API
-┌──────────────▼───────────────┐
-│   SUPABASE                   │
-│   • GoTrue Auth (users/JWT)  │        passwords hash, tokens
-│   • Postgres (profiles,      │        RLS ON everywhere
-│     sessions, oauth tables)  │
-└──────────────────────────────┘
-```
-
-**Key idea:** Frontend **kabhi** Supabase se directly baat nahi karta —
-sirf Worker se. Isliye service_role key safe rehti hai (Rule #3).
+> **Updated: 2026-10-20 — Zero Supabase Architecture**
+> Gothwad Accounts now runs **100% on Cloudflare (`Pages` + `Workers` + `D1 SQLite` + `Global Edge Cache` + optional `R2`)**.
+> Master ecosystem roadmap: [`CLOUDFLARE_NATIVE_PLAN.md`](CLOUDFLARE_NATIVE_PLAN.md) · Setup: [`SETUP.md`](SETUP.md) · OAuth: [`OAUTH.md`](OAUTH.md)
 
 ---
 
-## 2. Auth Flow (signup/login)
+## 1. System Topology
 
-### Signup
-```
-POST /api/auth/signup {first_name, last_name, username, password, recovery_email}
-  1. Validate (username regex, reserved list, password >= 8)
-  2. Check username free (profiles?username=eq.X)
-  3. POST /auth/v1/admin/users  (service_role)
-       email = username@APP_DOMAIN   ← derived! DB mein username only (Rule #2)
-       email_confirm: true           ← custom mail abhi live nahi, isliye skip
-       user_metadata: {username, first_name, last_name, recovery_email}
-  4. Trigger handle_new_gothwad_user() → profiles row auto-create
-  5. Password grant → session tokens
-  6. user_sessions row insert (device info from User-Agent)
-  7. Set cookies → response {user} (user.email derived in presentUser())
-```
-
-### Signin
-```
-POST /api/auth/signin {identifier, password, remember}
-  identifier "pawan" → pawan@APP_DOMAIN ; "pawan@x.com" → as-is
-  → POST /auth/v1/token?grant_type=password (apikey = anon key)
-  → session row + cookies
-```
-
-### Session check (page load par)
-```
-GET /api/auth/me
-  cookie gothwad_at → GET /auth/v1/user
-  401 + gothwad_rt → POST /auth/v1/token?grant_type=refresh_token
-                     (rotation: naya refresh token cookie mein)
-  → {authenticated: true, user}  (profile fresh from DB)
+```text
+┌────────────────────────────────────┐
+│  BROWSER (Static Vanilla JS UI)    │
+│  accounts.gothwadtech.com          │   Cloudflare Pages (Unlimited Free)
+│  Routes: /signin · /signup · /me   │
+└─────────────────┬──────────────────┘
+                  │  fetch('/api/*') — Hybrid Cookies + Bearer Header
+┌─────────────────▼──────────────────┐
+│  CLOUDFLARE WORKER (`accounts`)    │
+│  cloudflare-worker/src/index.ts    │   ~21 KiB gzipped · 0 NPM runtime deps
+│  • WebCrypto PBKDF2-SHA256 Auth    │   Routes: accounts.*/api/* + api.*
+│  • HS256 Session & OAuth 2.0 JWTs  │
+│  • Auto-Bootstrap D1 Schema Engine │
+└────────┬──────────────────┬────────┘
+         │ `env.DB` (1-5ms) │ Optional `env.AVATARS_BUCKET` / Edge Cache
+┌────────▼────────┐  ┌──────▼────────────────────────┐
+│  CLOUDFLARE D1  │  │  AVATAR DELIVERY ENGINE       │
+│  SQLite Vault   │  │  D1 `user_avatars` BLOB       │
+│  10 Core Tables │  │  + Cloudflare Edge CDN Cache  │
+│  Pure Username! │  │  (or R2 drop-in zero change!) │
+└─────────────────┘  └───────────────────────────────┘
 ```
 
 ---
 
-## 3. Auth Model — HYBRID (cookies + tokens)
+## 2. Cryptographic & Security Architecture
 
-Session **2 tarike se** chalta hain (dono ek saath active):
-
-| Channel | Kaise | Kyun |
-|---------|-------|------|
-| **Tokens** (sessionStorage + `Authorization: Bearer` header + `X-Gothwad-Refresh`) | signin/signup/me ke response body mein tokens aate hain; frontend save karke HAR request par bhejta hai | **Iframe/webview environments** (jaise Arena preview) mein browsers third-party cookies BLOCK karte hain — header auth wahan kaam karta hai |
-| **HttpOnly cookies** (`gothwad_at` / `gothwad_rt` / `gothwad_sid`) | fetch `credentials: 'include'` — automatic | **Production SSO** ke liye best (Domain=.APP_DOMAIN share across subdomains) |
-
-Worker `resolveSession()` pehle headers padhta hai, phir cookies. Refresh
-rotation par DONO update hote hain (Set-Cookie + body tokens).
-
-**Refresh = SINGLE FLIGHT (rotation race protection):** frontend access token
-dead hone par SIRF EK dafa `POST /api/auth/refresh` karta hai — jitni bhi
-parallel requests hon, sab uske poore hone ka intezaar karti hain phir naye
-token se retry karti hain. (Warna parallel refresh race mein 1 request jeetti
-thi, baaki 401 → header "logged-in" + dashboard bounce!). Mock/Supabase mein
-~60s ka refresh-reuse grace window bhi hai (Supabase
-`refresh_token_reuse_interval` jaisa) — true simultaneity bhi safe.
-
-### Cookies
-
-| Cookie | Kya hai | Lifetime |
-|--------|---------|----------|
-| `gothwad_at` | Supabase access token (JWT, ~1h) | remember? 1h : session |
-| `gothwad_rt` | Supabase refresh token (rotation) | remember? 30d : session |
-| `gothwad_sid` | user_sessions row id (device mgmt) | remember? 30d : session |
-
-- **HttpOnly + Secure + SameSite=Lax** — JS cookies nahi padh sakta
-- **Domain:** `.APP_DOMAIN` (subdomains share — SSO!). Localhost/preview par host-only
-- **Remember me:** false = browser-session cookies (band karo to logout)
-- **Signout:** token family revoke (Supabase logout) + session row delete
-  (body `session_id` ya cookie) + cookies clear + frontend sessionStorage clear
-
-## 4. JWT Access Tokens (OAuth ke liye)
-
-- HS256, signed with `JWT_SECRET` (fallback: service_role key)
-- Claims: `iss` (AUTH_HUB_URL), `sub` (user id), `aud`/`client_id`, `username`,
-  `scope`, `iat`, `exp` (1h), `jti`
-- `/oauth/userinfo` signature verify karke profile deta hai (scopes ke hisaab se)
-- Apps ko JWT verify karne ki zaroorat nahi — userinfo call karo
-
-## 5. OAuth 2.0 Flow (Step 2)
-
-Standard **Authorization Code + PKCE (S256)**:
-
-1. `GET /oauth/authorize?client_id&redirect_uri&scope&state&code_challenge`
-   - Validate: client registered, redirect_uri EXACT match (DEV_MODE: localhost ok),
-     scopes valid, PKCE required for public clients
-   - Not logged in → 302 `/signin?next=<full authorize URL>`
-   - Logged in → **consent HTML (Worker-rendered)** → Allow/Deny
-2. `POST /oauth/decision` (session cookie) → one-time code (5 min) stored in
-   `oauth_auth_codes` + grant in `app_authorizations`
-3. `POST /oauth/token` (grant_type=authorization_code):
-   - Checks: code unused/expired/client/redirect + PKCE verifier + client_secret
-   - Code burn (used=true) → JWT access_token (+ refresh_token if `offline_access`)
-4. `GET /oauth/userinfo` (Bearer JWT) → scoped profile
-5. Refresh: `grant_type=refresh_token` → **rotation** (purana revoke, naya)
-
-**Security properties:** one-time codes, PKCE (public clients mandatory),
-refresh rotation, hashes-only in DB, exact redirect match, anti-enumeration
-forgot-password, reserved usernames.
-
-## 6. Database Schema (sql/ folder — numbered, idempotent)
-
-| Table | Purpose | RLS |
-|-------|---------|-----|
-| `profiles` | User profile (username UNIQUE, no email column!) | select/update own |
-| `user_sessions` | Device sessions (dashboard security tab) | own rows |
-| `ecosystem_apps` | Registered OAuth clients (client_id, secret_hash, redirect_uris) | public read |
-| `app_authorizations` | User ↔ app grants + scopes | own rows |
-| `oauth_auth_codes` | One-time auth codes | **none** (worker-only) |
-| `oauth_refresh_tokens` | Hashed refresh tokens | **none** (worker-only) |
-| `account_activity` | Recent activity feed (sql/02) | select own only |
-| `storage.buckets[avatars]` | Profile photo bucket (sql/03) | public read, worker write |
-
-- **Trigger:** `on_auth_user_created` → profile auto-create (SECURITY DEFINER,
-  DOB + gender bhi user_metadata se leta hai)
-- **Helpers:** `is_username_available()` (anon-callable), `get_my_app_grants()`,
-  `cleanup_old_activity()` (100 events per user limit)
-- **Files:** `sql/01_core_schema.sql` → `sql/02_account_activity.sql` →
-  `sql/03_avatars_storage.sql` (number-wise; idempotent — re-run safe)
-- Username CHECK regex: `^[a-z0-9](?:[a-z0-9._-]{1,22}[a-z0-9])?$`
-
-## 7. API Endpoints (Worker)
-
-| Method | Route | Auth | Kya |
-|--------|-------|------|-----|
-| GET | `/api/health` | — | Health check |
-| GET | `/api/auth/check-username` | — | Username availability |
-| POST | `/api/auth/signup` | — | Create account + auto-login |
-| POST | `/api/auth/signin` | — | Login (remember me) |
-| GET | `/api/auth/activity` | session | Recent activity feed (30 events) |
-| POST | `/api/auth/avatar` | session | Profile photo upload (256×256 → Storage) |
-| GET | `/api/auth/export` | session | Poora account data JSON download |
-| POST | `/api/auth/delete-account` | session + password | Account permanently delete |
-| POST | `/api/auth/signout` | cookie | Logout + revoke |
-| GET | `/api/auth/me` | cookie | Current session (auto-refresh) |
-| POST | `/api/auth/forgot-password` | — | Reset link → recovery email |
-| POST | `/api/auth/reset-password` | reset token | Set new password |
-| POST | `/api/auth/change-password` | cookie | Change password |
-| POST | `/api/auth/update-profile` | cookie | Profile edit |
-| GET | `/api/auth/sessions` | cookie | Device list |
-| POST | `/api/auth/sessions/revoke` | cookie | Remote sign-out |
-| POST | `/api/auth/sessions/revoke-others` | cookie | Sign out others |
-| GET | `/oauth/app-info` | — | App name/icon (consent ke liye) |
-| GET | `/oauth/authorize` | cookie* | Consent screen (HTML) |
-| POST | `/oauth/decision` | cookie | Allow/Deny → code |
-| POST | `/oauth/token` | client | Code/refresh → tokens |
-| GET | `/oauth/userinfo` | Bearer | Profile (scoped) |
-| GET | `/oauth/authorizations` | cookie | Connected apps (dashboard) |
-| POST | `/oauth/revoke` | cookie | Disconnect app |
-| GET | `/api/internal/usernames/:username` | Bearer `MAIL_INTERNAL_TOKEN` | **Internal** — Mail → Accounts username existence check (no CORS, no cookies, `{"exists": bool}`). Mail side base = `https://api.gothwadtech.com`, secret name = `ACCOUNTS_INTERNAL_TOKEN` |
-
-Route matching: `/api/x` aur `/x` dono chalte hain (frontend `/api` prefix
-use karta hai; external OAuth apps `/oauth/*`). Internal endpoint `/api/internal/*`
-is server-to-server only — no CORS, no cookies, `Cache-Control: no-store`, constant-time token compare.
-
-## 8. Frontend Design System
-
-- **CSS variables** (`web/css/styles.css` `:root`): colors, radius, fonts
-- Dark: bg `#0d1117`, panel `#161b22`, border `#2a3140`, text `#e6edf3`
-- **Accent: brand blue `#2f80ed`** (asli logo `icon-192.png` se match)
-- Font: Inter (Google Fonts) + system-ui fallback
-- JS modules: `config.js` (env) → `api.js` (fetch) → `common.js` (session/toasts)
-  → page scripts (`signin.js`, `signup.js`, `me.js`)
-
-## 9. Deployment Topology (production)
-
-| Kahan | Kya | Kaise |
-|-------|-----|-------|
-| `accounts.gothwadtech.com` | Pages → `web/` folder | Connect Git, output=`web` |
-| `accounts.gothwadtech.com/api/*` | Worker route `accounts` (recommended, same-origin) | Worker → Settings → Domains & Routes → Add Route |
-| `api.gothwadtech.com` | Worker custom domain (alternative) | Worker → Domains & Routes → Custom Domain |
-| Supabase | DB + Auth | schema.sql in SQL Editor |
-
-Dev mein: `tools/dev-server.js` (port 3000) `/api`+`/oauth` ko
-`wrangler dev` (8787) par proxy karta hai — same-origin, CORS-free.
-
-## 10. Testing Strategy
-
-- **Offline:** `tools/mock-supabase.js` (fake auth/DB — NEVER deploy)
-- **API smoke:** signup → me → signout → signin → forgot → reset →
-  sessions → OAuth decision/token/userinfo (curl scripts in TASK.md history)
-- **UI:** pages load, form validation, redirect guards, tabs
-- Worker compile: `npx wrangler deploy --dry-run`
-- JS syntax: `node --check web/js/*.js tools/*.js`
+| Layer | Algorithm / Design | Security Guarantee |
+| :--- | :--- | :--- |
+| **Password Storage** | `PBKDF2-HMAC-SHA256` (`100,000` iterations, 16-byte random salt per user) | Stored as `pbkdf2_sha256$100000$<salt>$<hash>`; verified via constant-time `timingSafeBytesEqual`. Compatible with Cloudflare Workers V8 WebCrypto limits. |
+| **Account Access JWT (`gothwad_at`)** | `HS256` with `token_use: "session"`, `sub`, `sid`, `username`, `exp` (1h) | Verified against both HMAC signature AND live `users` + `user_sessions` rows in D1 — revoking a device kills access **immediately**! |
+| **Account Refresh Token (`gothwad_rt`)** | 256-bit CSPRNG hex token; only `SHA-256` stored in `auth_refresh_tokens` | Single-winner atomic rotation (`UPDATE ... WHERE token_hash = ? AND revoked = 0 AND expires_at > ? RETURNING *`). Cascades on device delete. |
+| **Password Recovery Link** | 256-bit CSPRNG token in URL hash `#access_token=...`; `SHA-256` in `password_reset_tokens` | 15-minute TTL, atomic single-use (`RETURNING user_id`), fragment never sent in HTTP `Referer`, invalidates all old sessions on reset. |
+| **OAuth 2.0 Access JWT** | `HS256` with `token_use: "oauth_access"`, `aud`, `client_id`, `scope`, `exp` (1h) | Strictly isolated: accepted ONLY by `/oauth/userinfo`; rejected by all `/api/auth/*` account endpoints! |
+| **OAuth Code & Refresh Rotation** | Mandatory S256 PKCE for public clients; `SHA-256` refresh hashes in `oauth_refresh_tokens` | Atomic `UPDATE ... RETURNING` guarantees concurrent exchange attempts have strictly one winner (`200` vs `400`). |
+| **Internal Mail Lookup** | `GET /api/internal/usernames/:username` with `Bearer MAIL_INTERNAL_TOKEN` | Constant-time SHA-256 digest compare, strict input regex before DB query, `Cache-Control: no-store`, zero CORS/cookies. |
 
 ---
 
-> **Future steps ke liye:** Mail (Step 3) ka design `PLAN.md` aur `docs/MAIL_INTERNAL.md` mein hai.
-> **Updated plan (2026-10-11):** Mail uses its **OWN Supabase project** — it does NOT read Accounts DB.
-> Inbound mail validation is done via `GET /api/internal/usernames/:username` (Bearer `MAIL_INTERNAL_TOKEN`).
-> Old docs that said Mail shares Accounts Supabase are superseded.
-> Architecture patterns (username-derived email, RLS, worker-only secrets) wahi rahenge.
->
-> **Naming (2026-10-11) — 3 alag naam, mix mat karo:** Mail ka Cloudflare Worker = **`mail`**
-> (dashboard + `GothwadTech/mail` ke `worker/wrangler.toml` mein `name = "mail"`; **`gothwad-mail-api`
-> nahi** — woh sirf `/api/health` JSON ka cosmetic `service` label hai). Accounts ka OAuth
-> `client_id` = **`gothwad-mail`** (change nahi hota). Mail → Accounts server calls ka base =
-> `https://api.gothwadtech.com` (Custom Domain) — `accounts.gothwadtech.com/api` sirf browser
-> traffic ke liye hai; same-zone Worker us route ko fetch nahi kar sakta (HTML milta hai).
+## 3. Cloudflare D1 Schema (10 Tables — `sql/01` to `sql/05`)
+
+1. **`users`** — `(id, username UNIQUE COLLATE NOCASE, password_hash, created_at, updated_at)` — **Zero email column (100% Pure Rule #2)!**
+2. **`profiles`** — Personal info (`first_name`, `last_name`, `recovery_email`, `phone_number`, `avatar_url`, `date_of_birth`, `gender`, storage quota)
+3. **`user_sessions`** — Device sessions shown under `/me → Security → Your devices`
+4. **`auth_refresh_tokens`** — Hashed session refresh tokens tied to `user_sessions(id) ON DELETE CASCADE`
+5. **`password_reset_tokens`** — Hashed 15-minute one-time password recovery tokens
+6. **`ecosystem_apps`** — Registered OAuth 2.0 clients (`id`, `client_id`, JSON `redirect_uris`, `secret_hash`)
+7. **`app_authorizations`** — Per-user OAuth consent grants & JSON `scopes`
+8. **`oauth_auth_codes`** — 5-minute single-use PKCE authorization codes
+9. **`oauth_refresh_tokens`** — Hashed 30-day rotating OAuth refresh tokens
+10. **`account_activity` & `user_avatars`** — Security event log (auto-trimmed to latest 100/user) & binary profile photos
+
+---
+
+## 4. Local Development & Automated Testing
+
+- **`npm start`** → Runs `server.js` with `tools/local-d1.mjs` (Node 22 built-in `node:sqlite`) against `.local-d1.sqlite` on `http://0.0.0.0:3000`.
+- **`npm test`** → Runs **62 automated security, SQL idempotency, OAuth PKCE, migration, and full account lifecycle tests** against real in-memory SQLite D1 instances in `< 2s`.
+- **`cd cloudflare-worker && npx tsc --noEmit && npx wrangler deploy --dry-run`** → Validates strict TypeScript types and compiles the production Worker bundle.

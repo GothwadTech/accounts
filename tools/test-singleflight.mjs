@@ -1,6 +1,7 @@
 /**
- * One-off test: SINGLE-FLIGHT refresh — browser jaisi parallel race.
- * (Run: node tools/test-singleflight.mjs — servers chal rahe hone chahiye)
+ * Live HTTP single-flight refresh test against `npm start` (port 3000).
+ * Verifies parallel browser requests with an expired access token rotate
+ * cleanly via a single `/api/auth/refresh` call with zero 401 bounce.
  */
 const store = new Map();
 globalThis.sessionStorage = {
@@ -11,25 +12,33 @@ globalThis.sessionStorage = {
 
 const { api, getTokens, saveTokens, clearTokens } = await import('../web/js/api.js');
 const { GOTHWAD_CONFIG } = await import('../web/js/config.js');
-GOTHWAD_CONFIG.API_URL = 'http://localhost:3000'; // Node fetch ko absolute URL chahiye
+GOTHWAD_CONFIG.API_URL = process.env.TEST_BASE_URL || 'http://127.0.0.1:3000';
 
-const BASE = 'http://localhost:3000';
 let fails = 0;
 const check = (name, cond) => {
   console.log(`  ${cond ? '✅' : '❌'} ${name}`);
   if (!cond) fails++;
 };
 
-// 1) Fresh login
-clearTokens();
-const login = await api.post('/auth/signin', { identifier: 'pawan', password: 'pawan3017@' });
-check('signin ok + tokens saved', login.ok && !!getTokens().access_token);
+const uname = `sf_${Date.now().toString(36).slice(-6)}`;
+const pw = 'SingleFlightPass!9';
 
-// 2) Access token "expire" kar do (browser mein 1h baad yahi hota hai)
+// 1) Create account & ensure fresh tokens
+clearTokens();
+const signup = await api.post('/auth/signup', {
+  first_name: 'Single',
+  last_name: 'Flight',
+  username: uname,
+  password: pw,
+  recovery_email: `${uname}@personal.example`,
+});
+check('signup ok + tokens saved', signup.ok && !!getTokens().access_token && !!getTokens().refresh_token);
+
+// 2) Simulate expired 1h access token while keeping valid refresh token
 const staleRefresh = getTokens().refresh_token;
 saveTokens({ access_token: 'EXPIRED_DEAD_TOKEN', refresh_token: staleRefresh });
 
-// 3) BILKUL browser jaisi PARALLEL calls (header + dashboard ek saath)
+// 3) Fire parallel browser-identical calls (topbar + dashboard + connected apps)
 const [a, b, c] = await Promise.all([
   api.get('/auth/me'),
   api.get('/auth/me'),
@@ -39,18 +48,21 @@ check(`parallel me#1 authenticated=${a.data?.authenticated}`, a.data?.authentica
 check(`parallel me#2 authenticated=${b.data?.authenticated}`, b.data?.authenticated === true);
 check(`parallel apps ok=${c.data?.ok}`, c.ok && c.data?.ok === true);
 
-// 4) Tokens refresh ho gaye? (single-flight rotation)
+// 4) Confirm access token rotated cleanly
 const now = getTokens();
-check('tokens rotated (naya access)', now.access_token && now.access_token !== 'EXPIRED_DEAD_TOKEN');
+check('tokens rotated (fresh access token)', !!now.access_token && now.access_token !== 'EXPIRED_DEAD_TOKEN');
 
-// 5) Ab DOBARA parallel — naye token se seedha (koi refresh nahi)
+// 5) Second parallel wave uses rotated token with zero extra refresh
 const [d, e] = await Promise.all([api.get('/auth/me'), api.get('/auth/me')]);
-check('second round dono authenticated', d.data?.authenticated === true && e.data?.authenticated === true);
+check('second round both authenticated', d.data?.authenticated === true && e.data?.authenticated === true);
 
-// 6) Genuinely logged-out state — consistent false (bounce hona chahiye, flash nahi)
+// 6) Clean up temporary test user so preview DB stays clean!
+await api.post('/auth/delete-account', { password: pw });
+
+// 7) Confirm logged-out parallel calls return consistent false
 clearTokens();
 const [f, g] = await Promise.all([api.get('/auth/me'), api.get('/auth/me')]);
-check('logged-out dono consistent false', f.data?.authenticated === false && g.data?.authenticated === false);
+check('logged-out both consistent false', f.data?.authenticated === false && g.data?.authenticated === false);
 
-console.log(fails === 0 ? '\n🎉 ALL PASS — browser symptom FIXED' : `\n💥 ${fails} FAILURES`);
+console.log(fails === 0 ? '\n🎉 ALL PASS — single-flight session rotation verified on D1!' : `\n💥 ${fails} FAILURES`);
 process.exit(fails ? 1 : 0);

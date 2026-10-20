@@ -1,80 +1,35 @@
-# 🛠️ tools/ — Local Dev Helpers (NEVER DEPLOY!)
+# 🛠️ `tools/` — Local Dev, Local D1 Engine & Security Tests (NEVER DEPLOY!)
 
-Yeh scripts sirf development/testing ke liye hain. Production mein kabhi
-mat chalao.
+Yeh folder local development, SQL generation aur automated security verification ke liye hai.
 
-## dev-server.js — Website + API proxy
+## 1. `local-d1.mjs` — Real SQLite D1 Adapter (Zero NPM Packages!)
 
-```bash
-node tools/dev-server.js          # → http://localhost:3000
-```
+Node 22 ke built-in `node:sqlite` (`DatabaseSync`) ko exact Cloudflare `D1Database` interface (`prepare`, `bind`, `first`, `all`, `run`, `batch`, `exec`) mein wrap karta hai.
+- **Koi fake plain-text mock nahi!** Local server (`npm start`) aur saare tests **100% asli SQLite constraints, Foreign Keys, `ON DELETE CASCADE`, aur `PBKDF2-SHA256` hashing** ke saath chalte hain!
 
-- `web/` folder serve karta hai (pretty URLs: `/signin` → `web/signin/index.html`)
-- `/api/*` aur `/oauth/*` ko Worker (`http://127.0.0.1:8787`) par proxy karta
-  hai — same origin, koi CORS issue nahi
-- Env vars (optional): `PORT=3000`, `WORKER_URL=http://127.0.0.1:8787`
-
-## mock-supabase.js — FAKE Supabase (offline testing)
-
-> NOTE: dono tools ab ES modules hain (repo ka `package.json` `"type": "module"`
-> hai). Mock mein ab Storage API (avatars), admin user-delete aur
-> `account_activity` table bhi supported hai — naye features offline test
-> karne ke liye.
-
-```bash
-node tools/mock-supabase.js       # → http://127.0.0.1:8788
-```
-
-> ⚠️ **YEH REAL AUTH NAHI HAI.** Passwords plain text file mein rehte hain
-> (`tools/.mock-data.json` — gitignored). Sirf isliye hai taaki bina Supabase
-> project ke poora signup/login/OAuth flow test ho sake.
-> **Production = hamesha asli Supabase** (docs/SETUP.md).
-
-- Worker `.dev.vars` mein `SUPABASE_URL=http://127.0.0.1:8788` set hota hai
-  (`.dev.vars.example` mein commented Option B dekho)
-- Data: `tools/.mock-data.json` mein save — reset karna ho to file delete karo
-- Kya emulate karta hai: auth (signup/login/refresh/logout/admin generate_link),
-  profiles, user_sessions, ecosystem_apps (seeded), oauth tables, grants
-
-## OAuth regression tests — offline, no production services
+## 2. Automated Test Suite (`npm test`)
 
 ```bash
 npm test
-# equivalent: node --experimental-strip-types --test tools/test-oauth-*.mjs
 ```
 
-Node 22+; no extra packages or running servers needed. Tests call the actual
-Worker against in-memory REST fixtures and execute the documented callback
-example. Coverage: redirect allowlists, PKCE bypass rejection, consent escaping,
-cookie refresh, code/refresh races, failed DB writes, state expiry/reuse and URL
-construction. Configuration tests cover the SQL generator and production DEV_MODE.
-These tests do not update or verify the live database.
+Runs **all 60+ tests** across:
+- `tests/d1-native-auth.test.mjs` — Full account lifecycle, SQL `01–05` idempotency, pure username DB rule, dynamic domain change, phone/username signin, real-time session revoke, D1 + R2 avatar upload/ETag `304`, forgot/reset password, internal Mail lookup, `session` vs `oauth_access` JWT isolation, export & cascade account delete
+- `tests/kiwi-store-migration.test.mjs` — Store migration, grants preservation, cookies & CORS
+- `tools/test-oauth-redirects.mjs` — Native & web redirect allowlist exact-match enforcement
+- `tools/test-oauth-security.mjs` — PKCE S256 checks, `<script>` escaping, cookie rotation preservation on 503, single-winner atomic race tests
+- `tools/test-oauth-docs.mjs` — Executes the literal client JS snippet in `docs/OAUTH.md`
+- `tools/test-oauth-setup.mjs` — Executes `generateStoreOAuthSql()` twice in real SQLite & audits production `wrangler.toml`
 
-## generate-store-oauth-sql.mjs — owner-reviewed setup packet
+## 3. `generate-store-oauth-sql.mjs` — D1 OAuth Callback Generator
 
 ```bash
 node tools/generate-store-oauth-sql.mjs > Store-OAuth-Setup.sql
 ```
 
-Prints safe, transactional registration SQL for Android + the four standard web
-sites, using the domain from Worker config. No network/database calls. Run the
-result manually in **Accounts** Supabase, not Store's project. Keeps existing
-callbacks; never resets confidential client secrets. The generated file is a
-local deployment artifact, not source code. Full steps:
-[docs/STORE_OAUTH.md](../docs/STORE_OAUTH.md).
+Reads `APP_DOMAIN` from `cloudflare-worker/wrangler.toml` and prints ready-to-run, idempotent Cloudflare D1 SQL for `kiwi-store` (web + Android `gothwadstore://` & `kiwistore://`), `gothwad-mail`, `gothwad-meet`, `gothwad-chat`, and `gothwad-drive`.
 
-## Local dev poora setup
+## 4. `dev-server.js` — Standalone Static + Proxy Dev Server
 
-```bash
-# Terminal 1
-node tools/mock-supabase.js
-
-# Terminal 2
-cd cloudflare-worker && cp .dev.vars.example .dev.vars && npx wrangler dev
-
-# Terminal 3
-node tools/dev-server.js
-```
-
-Test flow: `/signup` → `/me` → signout → `/signin` → forgot password →
-OAuth decision/token/userinfo (curl examples: AGENTS.md §7)
+- Quick single-process preview: `npm start` (`node --experimental-strip-types server.js` on port `3000`)
+- Split Wrangler preview: `cd cloudflare-worker && npx wrangler dev` (`:8787`) + `node tools/dev-server.js` (`:3000`)

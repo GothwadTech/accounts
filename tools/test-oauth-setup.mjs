@@ -1,29 +1,55 @@
-/** Configuration-only tests: generated SQL is printed, never applied here. */
+/** Configuration + live SQLite execution tests for D1 Store OAuth SQL generator. */
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { createLocalD1 } from './local-d1.mjs';
 import { generateStoreOAuthSql } from './generate-store-oauth-sql.mjs';
 
 const config = readFileSync(new URL('../cloudflare-worker/wrangler.toml', import.meta.url), 'utf8');
+const coreSchema = readFileSync(new URL('../sql/01_core_schema.sql', import.meta.url), 'utf8');
 
-test('Store setup combines the native migration and domain-configured web registration', () => {
+test('Store D1 setup executes cleanly against real SQLite twice and registers Android + web callbacks without touching secrets', async () => {
+  const db = createLocalD1(':memory:');
+  await db.exec(coreSchema);
+  await db.prepare("UPDATE ecosystem_apps SET secret_hash = 'keep-my-secret' WHERE id = 'kiwi-store'").run();
+
   const sql = generateStoreOAuthSql('example.com');
-  assert.ok(sql.includes("app_domain text := 'example.com'"));
-  assert.ok(sql.includes("'gothwadstore://oauth/callback'") && sql.includes("'kiwistore://oauth/callback'"));
-  for (const host of ['store', 'console', 'storeadmin', 'storeapp']) {
-    assert.ok(sql.includes(`'https://${host}.' || app_domain || '/auth/callback'`));
+  await db.exec(sql);
+  await db.exec(sql); // Re-run to verify 100% idempotency!
+
+  const row = await db.prepare("SELECT redirect_uris, secret_hash FROM ecosystem_apps WHERE id = 'kiwi-store'").first();
+  const uris = JSON.parse(row.redirect_uris);
+
+  for (const expected of [
+    'gothwadstore://oauth/callback',
+    'kiwistore://oauth/callback',
+    'https://kiwistore.example.com/auth/callback',
+    'https://kiwiconsole.example.com/auth/callback',
+    'https://kiwiadmin.example.com/auth/callback',
+  ]) {
+    assert.ok(uris.includes(expected), `missing ${expected}`);
   }
-  assert.ok(sql.includes('BEGIN;') && sql.endsWith('COMMIT;\n'));
-  assert.ok(sql.includes('secret_hash IS NOT NULL'));
-  assert.equal(sql.includes('SET secret_hash'), false);
+  assert.equal(new Set(uris).size, uris.length, 'must not duplicate callbacks on re-run');
+  assert.equal(row.secret_hash, 'keep-my-secret', 'must never clear existing secret_hash');
 });
 
 test('SQL generator rejects unsafe domains instead of interpolating them', () => {
-  for (const domain of [undefined, '', 'localhost', '*.example.com', 'https://example.com',
-    'example.com/path', 'example.com:443', "example.com'; DROP TABLE profiles;--", 'EXAMPLE.COM',
-    '-bad.example.com', 'bad-.example.com', 'a'.repeat(64) + '.com']) {
+  for (const domain of [
+    undefined,
+    '',
+    'localhost',
+    '*.example.com',
+    'https://example.com',
+    'example.com/path',
+    'example.com:443',
+    "example.com'; DROP TABLE profiles;--",
+    'EXAMPLE.COM',
+    '-bad.example.com',
+    'bad-.example.com',
+    'a'.repeat(64) + '.com',
+  ]) {
     assert.throws(() => generateStoreOAuthSql(domain), /APP_DOMAIN must/);
   }
 });
@@ -35,6 +61,8 @@ test('CLI obtains its default domain from wrangler vars, not another production 
   assert.equal(sql, generateStoreOAuthSql(domain));
 });
 
-test('production config disables DEV_MODE while local overrides remain possible', () => {
+test('production config binds D1 DB, contains zero Supabase vars, and disables DEV_MODE', () => {
+  assert.match(config, /^binding\s*=\s*"DB"/m);
   assert.match(config, /^DEV_MODE\s*=\s*"false"/m);
+  assert.doesNotMatch(config, /SUPABASE_URL|SUPABASE_ANON_KEY|SUPABASE_SERVICE_ROLE_KEY/);
 });

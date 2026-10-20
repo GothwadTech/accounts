@@ -1,53 +1,26 @@
-# ⚡ GOTHWAD AUTH WORKER (Cloudflare Worker)
+# ⚡ GOTHWAD ACCOUNTS WORKER (100% Cloudflare Native — D1 + WebCrypto Auth)
 
-> Part of Gothwad Accounts — overview: [README.md](../README.md) ·
-> AI guide: [AGENTS.md](../AGENTS.md) · Architecture: [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)
+> **Zero Supabase · Zero Third-Party Auth · Unlimited Users ($0 MAU) · Never Sleeps**
+> Overview: [README.md](../README.md) · Master Plan: [docs/CLOUDFLARE_NATIVE_PLAN.md](../docs/CLOUDFLARE_NATIVE_PLAN.md) · Setup: [docs/SETUP.md](../docs/SETUP.md)
 
-Yeh Worker Gothwad Accounts ka **real backend** hai — saare `/api/auth/*`
-aur `/oauth/*` routes. Ek hi file: `src/index.ts` (well-commented TypeScript).
+Yeh single Cloudflare Worker (`src/index.ts`, ~21 KB gzipped!) poore Gothwad Ecosystem ka central Auth & OAuth 2.0 server hai.
 
-## API Routes
+## Bindings & Secrets Summary
 
-| Method | Route | Kya karta hai |
-|--------|-------|---------------|
-| GET | `/api/health` | Health check |
-| GET | `/api/auth/check-username?username=` | Username available hai? |
-| POST | `/api/auth/signup` | Naya account + auto-login |
-| POST | `/api/auth/signin` | Login (username ya email) |
-| POST | `/api/auth/signout` | Logout (cookies clear + token revoke) |
-| GET | `/api/auth/me` | Current session (auto-refresh JWT) |
-| POST | `/api/auth/forgot-password` | Reset link → recovery email |
-| POST | `/api/auth/reset-password` | Naya password (email link token se) |
-| POST | `/api/auth/change-password` | Logged-in password change |
-| POST | `/api/auth/update-profile` | Profile update |
-| GET | `/api/auth/sessions` | Device sessions list |
-| POST | `/api/auth/sessions/revoke` | Ek device sign-out |
-| POST | `/api/auth/sessions/revoke-others` | Other devices sign-out |
-| GET | `/api/internal/usernames/:username` | **Internal** (Bearer `MAIL_INTERNAL_TOKEN`) — Mail → Accounts username check, `{"exists": bool}`. Mail side secret ka naam `ACCOUNTS_INTERNAL_TOKEN`, base `https://api.gothwadtech.com`. Details: [docs/MAIL_INTERNAL.md](../docs/MAIL_INTERNAL.md) |
+| Name | Type | Required? | Purpose |
+|------|------|-----------|---------|
+| `DB` | **D1 Database** (`gothwad-accounts-db`) | ✅ Yes | Users, profiles, sessions, avatars, OAuth clients/codes/tokens |
+| `AVATARS_BUCKET` | **R2 Bucket** (`gothwad-avatars`) | ⭕ Optional | Drop-in avatar bucket (if unbound, uses D1 `user_avatars` + Edge CDN cache with 0 card required!) |
+| `JWT_SECRET` | **Secret** | ✅ Yes | Signs HS256 Session (`token_use="session"`) & OAuth (`token_use="oauth_access"`) JWTs |
+| `MAIL_INTERNAL_TOKEN` | **Secret** | ✅ For Mail | Shared secret matching `GothwadTech/mail` Worker's `ACCOUNTS_INTERNAL_TOKEN` |
+| `RESEND_API_KEY` | **Secret** | ⭕ Optional | Sends password recovery emails via Resend (3,000 free/month) |
 
-## Local Development
+## Local Development & Verification
 
 ```bash
-cp .dev.vars.example .dev.vars   # apni keys daalo (mock values already included)
+cp .dev.vars.example .dev.vars
 npm install
-npx wrangler dev                 # → http://127.0.0.1:8787
+npx tsc --noEmit               # Strict TypeScript check
+npx wrangler deploy --dry-run  # Verify Cloudflare Worker bundle (~21 KiB gzip)
+npx wrangler dev               # Local Worker + local SQLite D1 on http://127.0.0.1:8787
 ```
-
-## Deploy
-
-```bash
-npx wrangler login               # pehli baar
-npx wrangler secret put SUPABASE_ANON_KEY
-npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
-npx wrangler deploy
-```
-
-Config (`wrangler.toml`) aur env vars ki poori list:
-[docs/SETUP.md](../docs/SETUP.md) + [.env.example](../.env.example)
-
-## Security Notes
-
-- `SUPABASE_SERVICE_ROLE_KEY` sirf yahan rehti hai (secret) — frontend kabhi nahi.
-- Session tokens **HttpOnly cookies** mein (JS access nahi kar sakta).
-- CORS sirf `*.APP_DOMAIN` + configured origins ke liye enabled.
-- Passwords kabhi store nahi hote — Supabase Auth hash sambhalta hai.

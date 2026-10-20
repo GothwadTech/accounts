@@ -1,92 +1,79 @@
 # =============================================================================
-# GOTHWAD AUTH WORKER — Cloudflare Wrangler Configuration
+# GOTHWAD ACCOUNTS — 100% CLOUDFLARE NATIVE WORKER CONFIG
 # =============================================================================
+# Zero Supabase. Powered by Cloudflare Workers + Cloudflare D1 + Optional R2.
+#
 # Deploy:  npx wrangler deploy
-# Local:   npx wrangler dev        (http://127.0.0.1:8787)
+# Check:   npx wrangler deploy --dry-run
+# Local:   npx wrangler dev        (http://127.0.0.1:8787 — automatic local D1!)
 # =============================================================================
 
-# ⚠️ Yeh naam Cloudflare dashboard mein bane Worker ke naam se MATCH hona chahiye
-# (Workers & Pages → "accounts"). Git se auto-deploy (Workers Builds) isi naam par
-# deploy karta hai — naam alag hua to build fail hoga.
+# ⚠️ Worker name MUST match Cloudflare Dashboard -> Workers & Pages -> "accounts"
 name = "accounts"
 main = "src/index.ts"
 compatibility_date = "2024-11-01"
 
+# Do not delete dashboard-only variables on deploy (Secrets survive deploys automatically)
+keep_vars = true
+
 # -----------------------------------------------------------------------------
-# PUBLIC VARIABLES — inhe badalna safe hai (secret nahi hain)
+# 1. CLOUDFLARE D1 DATABASE BINDING (REQUIRED)
+# -----------------------------------------------------------------------------
+# Bound to Cloudflare D1 SQL Database: "accounts"
+[[d1_databases]]
+binding = "DB"
+database_name = "accounts"
+database_id = "392aacf8-1b43-490a-9519-ced4daf5a40f"
+
+# -----------------------------------------------------------------------------
+# 2. OPTIONAL: CLOUDFLARE R2 BUCKET FOR PROFILE AVATARS
+# -----------------------------------------------------------------------------
+# Default (commented out): Avatars store directly inside D1 `user_avatars` +
+# Cloudflare Global Edge Cache (`0` credit card required!).
+# Future optional upgrade: Create R2 bucket `gothwad-avatars` & uncomment below:
+# [[r2_buckets]]
+# binding = "AVATARS_BUCKET"
+# bucket_name = "gothwad-avatars"
+
+# -----------------------------------------------------------------------------
+# 3. PUBLIC CONFIGURATION VARIABLES (No secrets here!)
 # -----------------------------------------------------------------------------
 [vars]
-# Rule #1: Domain yahan badlo — code mein kahin domain hardcoded nahi hai.
-# Email automatically banega: username + "@" + APP_DOMAIN
+# Rule #1: Domain sirf yahan set hota hai — code ya DB mein kahin hardcode nahi!
+# User email automatically banta hai: username + "@" + APP_DOMAIN
 APP_DOMAIN = "gothwadtech.com"
 
-# Frontend ka public URL (password-reset redirect ke liye)
+# Frontend public URL (OAuth consent redirect + password reset link + avatars)
 AUTH_HUB_URL = "https://accounts.gothwadtech.com"
 
-# Server-to-server API host (same Worker, Custom Domain). Other Workers in the
-# same zone (e.g. the Mail Worker, named "mail" — never "gothwad-mail-api") can
-# call this host; a Worker Route cannot be fetched same-zone. Signed-out
-# /auth/me on this host answers 401 JSON.
-# Dashboard step required (see the ROUTES section below). Leave empty to disable.
+# Server-to-server Worker Custom Domain (Mail Worker & Kiwi Store Worker calls)
 API_DOMAIN = "api.gothwadtech.com"
 
-# Apne Supabase project ka URL (Supabase Dashboard → Settings → API)
-SUPABASE_URL = "https://ruqauxozsawzjfwoonfz.supabase.co"
-
-# Resend se bhejne wali emails ka "From" address
-# (jab tak custom domain Resend mein verify nahi hota, Resend ka onboarding@resend.dev use karo)
+# Outbound password recovery email sender (Resend free tier: 3,000/month)
 RESEND_FROM = "Gothwad Accounts <onboarding@resend.dev>"
 
-# "true"  = DEV MODE: password-reset link API response mein bhi mil jaata hai
-#           (jab Resend configure nahi hoti, testing ke liye).
-# "false" = PRODUCTION: reset link sirf email par jaata hai.
-# ⚠️ LIVE hone se PEHLE isse "false" zaroor kar dena!
+# ⚠️ MUST stay "false" in production! ("true" only in local `.dev.vars`)
 DEV_MODE = "false"
 
-# Extra CORS origins (comma separated) — zaroorat padne par hi.
-# Example local frontend dev: ALLOWED_ORIGINS = "http://localhost:3000"
+# Optional extra CORS origins (comma-separated, e.g. preview domains)
 # ALLOWED_ORIGINS = ""
 
 # -----------------------------------------------------------------------------
-# SECRETS — yahan kabhi mat likho! Neeche command se set karo:
+# 4. WORKER SECRETS (Set via Dashboard -> Variables & Secrets -> Type: Secret)
 # -----------------------------------------------------------------------------
-#   npx wrangler secret put SUPABASE_ANON_KEY
-#   npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
-#   npx wrangler secret put JWT_SECRET               (Step 2: OAuth token signing)
-#   npx wrangler secret put MAIL_INTERNAL_TOKEN      (Mail → Accounts internal lookup)
-#   npx wrangler secret put RESEND_API_KEY        (optional, password emails ke liye)
+# Sirf 2 secrets zaroori hain (Supabase keys ab HATA diye gaye hain!):
 #
-# SUPABASE_ANON_KEY          = Supabase → Settings → API → anon public
-# SUPABASE_SERVICE_ROLE_KEY  = Supabase → Settings → API → service_role (SECRET!)
-# JWT_SECRET                 = koi bhi strong random string (OAuth access tokens sign)
-# MAIL_INTERNAL_TOKEN        = shared secret for Mail Worker to call /api/internal/usernames/:username
-# RESEND_API_KEY             = Resend → API Keys (free: 3000 emails/month)
+#   1. JWT_SECRET          (REQUIRED) -> 40+ char random secret (signs sessions & OAuth JWTs)
+#   2. MAIL_INTERNAL_TOKEN (REQUIRED for Mail) -> Same value as Mail Worker's ACCOUNTS_INTERNAL_TOKEN
+#   3. RESEND_API_KEY      (OPTIONAL) -> Resend API key for password recovery emails
+#
+# CLI alternative:
+#   npx wrangler secret put JWT_SECRET
+#   npx wrangler secret put MAIL_INTERNAL_TOKEN
+#   npx wrangler secret put RESEND_API_KEY
 # -----------------------------------------------------------------------------
 
 # -----------------------------------------------------------------------------
-# ROUTES — Worker ko domain par lagane ke liye. RECOMMENDED tareeka: dashboard
-# mein Worker → Settings → Domains & Routes → Add Route:
-#     accounts.gothwadtech.com/api/*
-# Isse frontend + API ek hi origin par (same-origin, CORS ki zaroorat nahi).
-# Yeh route yahan comment mein rakha hai taaki config = dashboard hamesha match ho.
-# Alternative: api.gothwadtech.com custom domain (docs/SETUP.md Step 2e).
-#
-# api.gothwadtech.com (Custom Domain) — REQUIRED for same-zone Worker-to-Worker calls:
-#   Dashboard (human step, not in this file):
-#     1. Workers & Pages → "accounts" → Settings → Domains & Routes
-#     2. Add → Custom Domain → api.gothwadtech.com → Add domain
-#        (Cloudflare creates the proxied DNS record + certificate in zone gothwadtech.com)
-#     3. Keep the existing route accounts.gothwadtech.com/api/* untouched.
-#   Cookies: unchanged — they are Domain=.gothwadtech.com, so they reach the API host too.
-#   Do NOT add `custom_domain = true` here without the same dashboard review: Git auto-deploy
-#   would attach it silently.
-# -----------------------------------------------------------------------------
-# [routes]
-# pattern = "accounts.gothwadtech.com/api/*"
-# zone_name = "gothwadtech.com"
-
-# -----------------------------------------------------------------------------
-# PREVIEWS — Workers Builds branch deploys run `npx wrangler preview`, which
-# requires this block (empty is fine). Production `wrangler deploy` ignores it.
+# 5. PREVIEWS — Required by Cloudflare Workers Builds branch preview checks
 # -----------------------------------------------------------------------------
 [previews]

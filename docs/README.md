@@ -1,20 +1,13 @@
-# 📚 docs/ — Gothwad Documentation Index
+# 📚 Gothwad Accounts Documentation (`docs/`)
 
-| Doc | Kya hai | Kab padho |
-|-----|---------|-----------|
-| [SETUP.md](SETUP.md) | Step-by-step deploy guide (Supabase → Worker → Pages → Resend) | Project setup karte waqt |
-| [OAUTH.md](OAUTH.md) | "Sign in with Gothwad" — OAuth 2.0 integration (endpoints, scopes, client registration, snippets) | Kisi app ko Gothwad Auth se connect karte waqt |
-| [STORE_OAUTH.md](STORE_OAUTH.md) | Android `storeapp` + web `store`: exact callbacks, safe registration SQL, web `/api` URL fix | Store sign-in par redirect error aaye |
-| [STORE_WEB_AUTH_FIX_PROMPT.md](STORE_WEB_AUTH_FIX_PROMPT.md) | Copy-paste handoff for Store web/API auth fixes | Store repo AI ko dene ke liye |
-| [STOREAPP_AUTH_FIX_PROMPT.md](STOREAPP_AUTH_FIX_PROMPT.md) | Copy-paste handoff for Android callback/refresh/cancel fixes | Storeapp repo AI ko dene ke liye |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Technical deep dive — auth flows, cookies, JWT, DB schema, API table, design system | Code samajhna ho / naya AI |
-| [MAIL_INTERNAL.md](MAIL_INTERNAL.md) | **NEW 2026-10-11** — Mail → Accounts internal username existence check (`/api/internal/usernames/:username`, Bearer `MAIL_INTERNAL_TOKEN`) + **naming rules** (Mail Worker = `mail`, not `gothwad-mail-api`; OAuth `client_id` = `gothwad-mail`; server base = `api.gothwadtech.com`) | Mail repo integration, inbound validation, koi bhi Mail naming doubt |
-| [MAIL_BOOTSTRAP_PROMPT.md](MAIL_BOOTSTRAP_PROMPT.md) | Mail repo ke liye copy-paste prompt (naming/env updated 2026-10-11) | Naya Mail repo chat start karte waqt |
-| [MAIL_SESSION_FIX_PROMPT.md](MAIL_SESSION_FIX_PROMPT.md) | ✅ DONE (PR #4/#5) — session 401/503 debugging reference | Historical / verification |
+Welcome to **Gothwad Accounts v2.0 (100% Cloudflare Native — Zero Supabase)** documentation!
 
-**Repo-level docs (root mein):**
-- [../AGENTS.md](../AGENTS.md) — 🤖 AI working guide (PEHLE YEH)
-- [../TASK.md](../TASK.md) — live status + work log
-- [../PLAN.md](../PLAN.md) — master plan (Steps 3-6)
-- [../README.md](../README.md) — project overview
-- [../ROADMAP.md](../ROADMAP.md) — original vision (historical)
+| Document | Purpose |
+|---|---|
+| **[`SETUP.md`](SETUP.md)** | **Step-by-step Cloudflare Dashboard deployment guide** (`accounts` D1 + Worker Secrets) |
+| **[`CLOUDFLARE_NATIVE_PLAN.md`](CLOUDFLARE_NATIVE_PLAN.md)** | **Master Hybrid Architecture Plan** (`Accounts` + `Mail` on Cloudflare D1 · `PlusTube` + `Indogram` + `GrixChat` on Supabase) |
+| **[`MAIL_D1_MIGRATION_PROMPT.md`](MAIL_D1_MIGRATION_PROMPT.md)** | **Copy-Paste Master Prompt & Spec for `GothwadTech/mail` AI Agents** (100% Cloudflare D1 `mail` DB + `500`-email smart retention) |
+| **[`MAIL_INTERNAL.md`](MAIL_INTERNAL.md)** | **Mail ↔ Accounts HTTP Contract** (`GET /api/internal/usernames/:username`, `/api/auth/me`, cookie forwarding & naming rules) |
+| **[`ARCHITECTURE.md`](ARCHITECTURE.md)** | Deep technical diagram of WebCrypto PBKDF2, JWT separation (`session` vs `oauth_access`), edge-cached avatars & D1 tables |
+| **[`OAUTH.md`](OAUTH.md)** | Developer integration guide for `"Sign in with Gothwad"` (OAuth 2.0 + S256 PKCE) |
+| **[`STORE_OAUTH.md`](STORE_OAUTH.md)** | Exact callback allowlist & Android deep-link setup for **Kiwi Store** |

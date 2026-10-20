@@ -82,21 +82,39 @@ Accounts OAuth hardening + full callback SQL generator; live deployment/DB run p
 
 | Step | Feature | Status |
 |------|---------|--------|
-| 1 | Gothwad Accounts — real auth (signup/login/reset/sessions/profile) | ✅ DONE |
-| 2 | OAuth 2.0 provider ("Sign in with Gothwad") | ✅ DONE |
-| 3 | Gothwad Mail — `username@gothwadtech.com` inbox | 🔜 NEXT |
-| 4 | Cross-app SSO (ClashDrive, GrixChat integration) | 📋 Planned |
+| 1 | Gothwad Accounts — UI + sessions + profile + avatars + export/delete | ✅ DONE |
+| 2 | OAuth 2.0 + S256 PKCE provider ("Sign in with Gothwad") | ✅ DONE |
+| 2.5 | **100% Cloudflare Native Upgrade (`D1` + Worker Native Auth — Zero Supabase!)** | ✅ **DONE (2026-10-20)** |
+| 3 | Owner Cloudflare Dashboard D1 binding (`docs/SETUP.md`) + `Mail`/`Store` D1 migration | 🔜 NEXT |
+| 4 | Cross-app SSO (`GrixChat`, `ClashDrive`, `Notes`, `Calendar`) | 📋 Planned |
 
-**Current state in one line:** LIVE on accounts.gothwadtech.com; UI ab poora
-**Google Account jaisa** (light + dark toggle, Roboto, Material You cards,
-sidebar /me with Home/Personal info/Security/Data & privacy/People & sharing/
-Connected apps + search); naye features: profile photo upload (Supabase Storage),
-recent activity feed, data export, account delete; DB ab `sql/` folder mein
-numbered idempotent files (supabase/ folder merged + removed).
+**Current state in one line:** **v2.0 — 100% Cloudflare Native (`Pages` + `Worker` + `Cloudflare D1 SQLite` + `Edge-Cached Avatars` — Zero Supabase!)**; pure username-only DB (`users` + `profiles`), WebCrypto `PBKDF2-SHA256` (`100k` iterations), `session` vs `oauth_access` JWT separation, instant device revocation, auto-bootstrapping D1 schema, **62/62 automated tests passing**, TypeScript strict clean, Wrangler dry-run verified (`21.23 KiB` gzipped).
 
 ---
 
 ## ✅ DONE (completed work — newest first)
+
+### Session 29 — 2026-10-20 — Full Upgrade to 100% Cloudflare Native (`D1` + Worker Auth — Zero Supabase!)
+- **Owner goal:** Remove Supabase completely from `Gothwad Accounts`, write the complete Cloudflare-native master plan across the Gothwad ecosystem, execute the full `D1 + Native Worker Auth` upgrade in this repository, and provide a crystal-clear step-by-step Cloudflare Dashboard setup guide from basics.
+- **Documentation & Architecture Blueprint:**
+  - Created [`docs/CLOUDFLARE_NATIVE_PLAN.md`](docs/CLOUDFLARE_NATIVE_PLAN.md): full Gothwad Ecosystem Cloudflare Native architecture covering all 5 D1 database tiers (`gothwad-accounts-db`, `gothwad-mail-db`, `gothwad-store-db`, `gothwad-workspace-db`, `gothwad-chat-db`) and migration sequence across sibling GitHub repositories.
+  - Rewrote [`docs/SETUP.md`](docs/SETUP.md), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/STORE_OAUTH.md`](docs/STORE_OAUTH.md), [`docs/README.md`](docs/README.md), [`sql/README.md`](sql/README.md), [`tools/README.md`](tools/README.md), [`cloudflare-worker/README.md`](cloudflare-worker/README.md), [`README.md`](README.md), [`PLAN.md`](PLAN.md), and [`AGENTS.md`](AGENTS.md).
+- **100% Cloudflare Native Worker (`cloudflare-worker/src/index.ts`, `wrangler.toml`, `tsconfig.json`):**
+  - Replaced all Supabase Auth, PostgREST, and Storage dependencies with native `env.DB` (`D1Database`) SQL queries + cold-start `ensureSchema()` auto-bootstrap.
+  - Built native password vault (`PBKDF2-HMAC-SHA256`, `100,000` iterations + 16-byte CSPRNG salt + timing-safe verification).
+  - Enforced strict JWT `token_use` separation (`session` vs `oauth_access`), atomic `UPDATE ... RETURNING` consumption on session refresh tokens, OAuth codes, OAuth refresh tokens, and 15-minute `#access_token` password reset links, plus instant real-time remote device session invalidation.
+  - Added built-in avatar storage & delivery (`POST /api/auth/avatar` + `GET /api/avatars/:userId?v=:etag`) using D1 `user_avatars` BLOBs + `ETag` (`304 Not Modified`) + Cloudflare Global Edge Cache (zero credit card needed!) with transparent zero-change drop-in support for Cloudflare R2 (`env.AVATARS_BUCKET`).
+  - Removed legacy `tools/mock-supabase.js`; added `tools/local-d1.mjs` powered by Node 22 built-in `node:sqlite` (`DatabaseSync`) for real SQLite constraints in `server.js` and `npm test`.
+  - Upgraded `sql/01_core_schema.sql` through `sql/05_store_android_oauth.sql` and `tools/generate-store-oauth-sql.mjs` to idempotent Cloudflare D1 SQLite syntax.
+- **Verification:**
+  - `npm test`: **62/62 passing** (including twice-run SQL idempotency across `01`–`05`, full E2E auth lifecycle, token isolation, concurrency races, PKCE security, D1 + R2 avatars, and cascade delete).
+  - `cd cloudflare-worker && npx tsc --noEmit`: **0 errors** (`strict: true`).
+  - `cd cloudflare-worker && npx wrangler deploy --dry-run`: **Success (`21.23 KiB` gzip)**.
+  - Live HTTP preview + `node tools/test-singleflight.mjs`: **ALL PASS**.
+- **Owner Next Steps on Cloudflare Dashboard (`docs/SETUP.md`):**
+  1. Create D1 database `gothwad-accounts-db` in Cloudflare Dashboard & paste its UUID into `cloudflare-worker/wrangler.toml` (`database_id`).
+  2. Set `JWT_SECRET` + `MAIL_INTERNAL_TOKEN` (+ optional `RESEND_API_KEY`) in Worker `accounts` → Variables & Secrets.
+  3. Run the 1-click OAuth callback registration SQL in D1 Console (`docs/SETUP.md` Step 4) and sign up at `/signup`!
 
 ### Session 28 — 2026-10-17 — Two repo handoffs + Accounts-side OAuth completion
 - Owner asked for separate copy-paste prompts for the Store and Android AIs;

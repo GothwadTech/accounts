@@ -2,6 +2,8 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createLocalD1 } from './tools/local-d1.mjs';
+import workerModule from './cloudflare-worker/src/index.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -9,6 +11,10 @@ const __dirname = path.dirname(__filename);
 const PORT = Number(process.env.PORT || 3000);
 const HOST = '0.0.0.0';
 const WEB_ROOT = path.join(__dirname, 'web');
+const DB_FILE = process.env.LOCAL_D1_PATH || path.join(__dirname, '.local-d1.sqlite');
+
+// Real persistent SQLite engine matching Cloudflare D1 (`env.DB`) 100%!
+const localDb = createLocalD1(DB_FILE);
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -23,26 +29,19 @@ const MIME = {
   '.txt': 'text/plain; charset=utf-8',
 };
 
-// Optional Worker import (agar available ho to /api handle karega)
-let workerModule = null;
-try {
-  const mod = await import('./cloudflare-worker/src/index.ts');
-  workerModule = mod.default || mod;
-} catch (e) {
-  console.log('[Dev] Worker not loaded in-process, running static server:', e?.message);
-}
-
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost:3000'}`);
 
-  // ---------------- /api/* & /oauth/* worker handling (if available)
-  if (workerModule && (url.pathname.startsWith('/api/') || url.pathname.startsWith('/oauth/'))) {
+  // ---------------- /api/* & /oauth/* -> in-process Cloudflare Worker + Local D1
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/oauth/')) {
     try {
       const chunks = [];
       for await (const chunk of req) chunks.push(chunk);
       const body = chunks.length > 0 ? Buffer.concat(chunks) : undefined;
 
-      const webReq = new Request(url.href, {
+      const proto = req.headers['x-forwarded-proto'] || 'http';
+      const origin = `${proto}://${req.headers.host || `localhost:${PORT}`}`;
+      const webReq = new Request(`${origin}${url.pathname}${url.search}`, {
         method: req.method,
         headers: req.headers,
         body: req.method !== 'GET' && req.method !== 'HEAD' ? body : undefined,
@@ -50,13 +49,13 @@ const server = http.createServer(async (req, res) => {
       });
 
       const env = {
+        DB: localDb,
         APP_DOMAIN: process.env.APP_DOMAIN || 'gothwadtech.com',
-        AUTH_HUB_URL: process.env.AUTH_HUB_URL || `http://${req.headers.host || 'localhost:3000'}`,
-        SUPABASE_URL: process.env.SUPABASE_URL || 'http://127.0.0.1:8788',
-        SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || 'mock-anon-key',
-        SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || 'mock-service-key',
+        AUTH_HUB_URL: process.env.AUTH_HUB_URL || origin,
+        API_DOMAIN: process.env.API_DOMAIN || '',
         DEV_MODE: process.env.DEV_MODE || 'true',
-        JWT_SECRET: process.env.JWT_SECRET || 'dev-only-secret',
+        JWT_SECRET: process.env.JWT_SECRET || 'dev-only-jwt-secret-key',
+        MAIL_INTERNAL_TOKEN: process.env.MAIL_INTERNAL_TOKEN || 'dev-mail-internal-token',
         ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS || '',
       };
 
@@ -72,6 +71,9 @@ const server = http.createServer(async (req, res) => {
       return;
     } catch (err) {
       console.error('API Error:', err);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ error: 'Internal server error' }));
+      return;
     }
   }
 
@@ -79,7 +81,6 @@ const server = http.createServer(async (req, res) => {
   const rel = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
   const base = path.join(WEB_ROOT, rel);
 
-  // Pretty URLs: /signin → web/signin/index.html → web/signin.html → exact file
   const candidates = [base, path.join(base, 'index.html'), `${base}.html`];
   let filePath = null;
   for (const c of candidates) {
@@ -97,8 +98,6 @@ const server = http.createServer(async (req, res) => {
   }
 
   const ext = path.extname(filePath).toLowerCase();
-  // Arena/AI Studio previews reuse identical asset URLs while code changes.
-  // No-store here avoids an old stylesheet making the preview look unstyled.
   res.writeHead(200, {
     'Content-Type': MIME[ext] || 'application/octet-stream',
     'Cache-Control': 'no-store, max-age=0',
@@ -107,6 +106,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`🔥 Gothwad Accounts running on http://${HOST}:${PORT}`);
-  console.log(`📁 Serving web/ directory`);
+  console.log(`🔥 Gothwad Accounts (100% Cloudflare D1 Native) running on http://${HOST}:${PORT}`);
+  console.log(`🗄️  Local SQLite D1 database: ${DB_FILE}`);
+  console.log(`📁 Serving web/ directory (/signin · /signup · /me)`);
 });

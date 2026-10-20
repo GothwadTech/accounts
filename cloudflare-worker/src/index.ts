@@ -1,80 +1,338 @@
 /**
  * =============================================================================
- * GOTHWAD ACCOUNTS — AUTH API (Cloudflare Worker)
+ * GOTHWAD ACCOUNTS — 100% CLOUDFLARE NATIVE AUTH & OAUTH 2.0 WORKER
  * =============================================================================
- * Yeh Worker "Gothwad Account" ka real backend hai. Yeh karta hai:
- *   - Signup / Signin / Signout  (Supabase Auth ke saath)
- *   - JWT session management     (HttpOnly cookies + auto refresh)
- *   - "Remember me" support      (30-day vs browser-session cookies)
- *   - Password reset / change
- *   - Profile read / update
- *   - Device sessions list + remote revoke
+ * Zero Supabase. Zero external auth vendor. Zero MAU cap. Zero 7-day auto-pause.
  *
- * SECURITY RULES (yaad rakho!):
- *   - SUPABASE_SERVICE_ROLE_KEY sirf yahan (Worker) hai — frontend kabhi nahi.
- *   - Frontend sirf is Worker ke /api/* routes call karta hai (Supabase directly nahi).
- *   - Session tokens HttpOnly cookies mein jaate hain → JS unhe chhu nahi sakta.
- *
- * DOMAIN RULE: kahin bhi domain hardcode nahi. Sab kuch env vars se:
- *   APP_DOMAIN, AUTH_HUB_URL, SUPABASE_URL ...
+ * Yeh single Cloudflare Worker poore Gothwad Ecosystem ka Identity Hub hai:
+ *   1. Native Auth Engine:
+ *      - WebCrypto PBKDF2-HMAC-SHA256 (100,000 iterations + random 16B salt)
+ *      - Constant-time hash verification (timing-attack safe)
+ *      - Hybrid Session Model: HttpOnly `.APP_DOMAIN` SSO cookies + Bearer headers
+ *      - SHA-256 hashed refresh token rotation + instant remote device sign-out
+ *      - Single-use 15-minute password recovery links (Resend email + DEV_MODE)
+ *   2. Storage Engine:
+ *      - Cloudflare D1 (`env.DB`) SQLite — 100% Pure Username DB (NO email column!)
+ *      - Profile Avatars via Cloudflare D1 `user_avatars` + Global Edge CDN Cache
+ *        (with transparent zero-change drop-in support for R2 `env.AVATARS_BUCKET`)
+ *      - Auto-Schema Bootstrap on cold start (`ensureSchema`) + numbered SQL in `sql/`
+ *   3. OAuth 2.0 Provider ("Sign in with Gothwad"):
+ *      - `/oauth/authorize`, `/oauth/decision`, `/oauth/token`, `/oauth/userinfo`
+ *      - Mandatory S256 PKCE for public clients, atomic one-time code & refresh rotation
+ *      - Strict JWT `token_use` isolation (`session` vs `oauth_access`)
+ *   4. Internal Server-to-Server Lookup (`GET /api/internal/usernames/:username`):
+ *      - Constant-time `MAIL_INTERNAL_TOKEN` check for Gothwad Mail inbound routing
  * =============================================================================
  */
 
 // -----------------------------------------------------------------------------
-// Environment variables (wrangler.toml [vars] + `wrangler secret put` secrets)
+// Minimal Cloudflare D1 & R2 Type Definitions (Zero extra NPM packages required)
 // -----------------------------------------------------------------------------
-export interface Env {
-  /** Root domain, e.g. "gothwadtech.com" — email = username@APP_DOMAIN */
-  APP_DOMAIN: string;
-  /** Public URL of the frontend (for password-reset redirect), e.g. https://accounts.gothwadtech.com */
-  AUTH_HUB_URL: string;
-  /**
-   * Server-to-server API hostname (Custom Domain on this same Worker), e.g. api.gothwadtech.com.
-   * Other Workers in the same zone can only reach this Worker via a Custom Domain (not a Route).
-   * On this host, a signed-out GET /auth/me answers 401 JSON instead of 200 {authenticated:false}
-   * so machine callers never see a 3xx/200 "success" for a signed-out user.
-   */
-  API_DOMAIN?: string;
-  /** Supabase project URL, e.g. https://abcdxyz.supabase.co */
-  SUPABASE_URL: string;
-  /** Supabase anon key (public). Used as apikey for user-auth calls. */
-  SUPABASE_ANON_KEY: string;
-  /** Supabase service_role key (SECRET). Only this Worker may see it. */
-  SUPABASE_SERVICE_ROLE_KEY: string;
-  /** Resend API key (SECRET) — password-reset emails ke liye (optional). */
-  RESEND_API_KEY?: string;
-  /** "From" address for Resend emails. */
-  RESEND_FROM?: string;
-  /** "true" = developer mode (reset link API response mein bhi milega). Prod me "false". */
-  DEV_MODE?: string;
-  /** Extra allowed CORS origins, comma separated (dev/preview ke liye). */
-  ALLOWED_ORIGINS?: string;
-  /** Secret for signing OAuth access tokens (JWT HS256). `wrangler secret put JWT_SECRET` */
-  JWT_SECRET?: string;
-  /** Shared secret for Mail → Accounts internal lookup. `wrangler secret put MAIL_INTERNAL_TOKEN` */
-  MAIL_INTERNAL_TOKEN?: string;
+
+export interface D1Meta {
+  changes?: number;
+  last_row_id?: number;
+  duration?: number;
+  rows_read?: number;
+  rows_written?: number;
+}
+
+export interface D1Result<T = Record<string, any>> {
+  success: boolean;
+  results: T[];
+  meta: D1Meta;
+}
+
+export interface D1PreparedStatement {
+  bind(...values: unknown[]): D1PreparedStatement;
+  first<T = Record<string, any>>(colName?: string): Promise<T | null>;
+  all<T = Record<string, any>>(): Promise<D1Result<T>>;
+  run(): Promise<D1Result>;
+  raw<T = unknown[]>(): Promise<T[]>;
+}
+
+export interface D1Database {
+  prepare(query: string): D1PreparedStatement;
+  batch<T = unknown>(statements: D1PreparedStatement[]): Promise<D1Result<T>[]>;
+  exec(query: string): Promise<{ count: number; duration: number }>;
+}
+
+export interface R2ObjectBody {
+  body: ReadableStream | null;
+  httpMetadata?: { contentType?: string };
+  httpEtag?: string;
+  arrayBuffer(): Promise<ArrayBuffer>;
+}
+
+export interface R2Bucket {
+  put(
+    key: string,
+    value: ReadableStream | ArrayBuffer | ArrayBufferView | string | Blob,
+    options?: { httpMetadata?: { contentType?: string } },
+  ): Promise<unknown>;
+  get(key: string): Promise<R2ObjectBody | null>;
+  delete(keys: string | string[]): Promise<void>;
 }
 
 // -----------------------------------------------------------------------------
-// Small helpers
+// Environment Bindings (`wrangler.toml` + `wrangler secret put`)
 // -----------------------------------------------------------------------------
 
-/** JSON response banana aasan banane ke liye. */
+export interface Env {
+  /** Primary Cloudflare D1 SQLite database binding (`gothwad-accounts-db`) */
+  DB: D1Database;
+  /** Optional Cloudflare R2 bucket for avatars; falls back to D1 `user_avatars` automatically! */
+  AVATARS_BUCKET?: R2Bucket;
+  /** Root domain, e.g. "gothwadtech.com" — email is always derived: username@APP_DOMAIN */
+  APP_DOMAIN: string;
+  /** Public URL of Accounts frontend, e.g. "https://accounts.gothwadtech.com" */
+  AUTH_HUB_URL: string;
+  /** Dedicated Worker Custom Domain for server-to-server calls, e.g. "api.gothwadtech.com" */
+  API_DOMAIN?: string;
+  /** Strong random secret for signing HS256 Session & OAuth JWTs (`wrangler secret put JWT_SECRET`) */
+  JWT_SECRET?: string;
+  /** Shared secret for Mail Worker -> Accounts internal lookup (`wrangler secret put MAIL_INTERNAL_TOKEN`) */
+  MAIL_INTERNAL_TOKEN?: string;
+  /** Optional Resend API key for outbound password-reset emails (`wrangler secret put RESEND_API_KEY`) */
+  RESEND_API_KEY?: string;
+  /** Optional sender address for Resend password-reset emails */
+  RESEND_FROM?: string;
+  /** "true" = local dev helpers (localhost OAuth URIs + dev reset link fallback). MUST be "false" in prod! */
+  DEV_MODE?: string;
+  /** Optional extra CORS origins (comma-separated) for local/preview testing */
+  ALLOWED_ORIGINS?: string;
+}
+
+// -----------------------------------------------------------------------------
+// Automatic Idempotent D1 Schema Bootstrap (Cold-Start Safe via WeakMap)
+// -----------------------------------------------------------------------------
+// WHY: Naya D1 database connect karte hi pehli request par saari tables aur
+// core ecosystem seeds apne-aap ban jaate hain — aur existing `redirect_uris`
+// ya `secret_hash` kabhi overwrite nahi hote!
+
+const initializedDbs = new WeakMap<object, Promise<void>>();
+
+const BOOTSTRAP_STATEMENTS: string[] = [
+  `CREATE TABLE IF NOT EXISTS users (
+    id            TEXT PRIMARY KEY,
+    username      TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    password_hash TEXT NOT NULL,
+    created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_users_username ON users (username)`,
+  `CREATE TABLE IF NOT EXISTS profiles (
+    id                  TEXT PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
+    username            TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    first_name          TEXT NOT NULL DEFAULT '',
+    last_name           TEXT NOT NULL DEFAULT '',
+    recovery_email      TEXT,
+    phone_number        TEXT,
+    avatar_url          TEXT,
+    date_of_birth       TEXT,
+    gender              TEXT,
+    two_factor_enabled  INTEGER NOT NULL DEFAULT 0,
+    storage_used_bytes  INTEGER NOT NULL DEFAULT 0,
+    storage_limit_bytes INTEGER NOT NULL DEFAULT 16106127360,
+    created_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_profiles_phone ON profiles (phone_number) WHERE phone_number IS NOT NULL`,
+  `CREATE TABLE IF NOT EXISTS user_sessions (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    device_name TEXT NOT NULL DEFAULT 'Unknown device',
+    browser     TEXT NOT NULL DEFAULT 'Unknown',
+    os          TEXT,
+    ip_address  TEXT,
+    remember_me INTEGER NOT NULL DEFAULT 0,
+    last_active TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    is_current  INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions (user_id, last_active DESC)`,
+  `CREATE TABLE IF NOT EXISTS auth_refresh_tokens (
+    token_hash TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    session_id TEXT REFERENCES user_sessions (id) ON DELETE CASCADE,
+    expires_at TEXT NOT NULL,
+    revoked    INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_auth_refresh_user ON auth_refresh_tokens (user_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_auth_refresh_session ON auth_refresh_tokens (session_id)`,
+  `CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    token_hash TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    expires_at TEXT NOT NULL,
+    used       INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_password_reset_user ON password_reset_tokens (user_id)`,
+  `CREATE TABLE IF NOT EXISTS ecosystem_apps (
+    id            TEXT PRIMARY KEY,
+    name          TEXT NOT NULL,
+    description   TEXT,
+    icon          TEXT,
+    redirect_uris TEXT NOT NULL DEFAULT '[]',
+    is_verified   INTEGER NOT NULL DEFAULT 0,
+    client_id     TEXT UNIQUE,
+    secret_hash   TEXT,
+    homepage_url  TEXT,
+    is_core       INTEGER NOT NULL DEFAULT 0,
+    created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  )`,
+  `INSERT INTO ecosystem_apps (id, client_id, name, description, icon, is_verified, is_core) VALUES
+    ('gothwad-meet',     'gothwad-meet',     'Gothwad Meet',              'Video meetings for your Gothwad Account', 'video',          1, 1),
+    ('gothwad-mail',     'gothwad-mail',     'Gothwad Mail',              'username inbox for your Gothwad Account', 'mail',           1, 1),
+    ('kiwi-store',       'kiwi-store',       'Kiwi Store',                'Apps and add-ons for Kiwi Store',         'store',          1, 1),
+    ('gothwad-drive',    'gothwad-drive',    'Gothwad Drive',             'Files and folders on your account',       'hard-drive',     1, 1),
+    ('gothwad-notes',    'gothwad-notes',    'Gothwad Notes',             'Notes and lists, synced',                 'file-text',      1, 1),
+    ('gothwad-calendar', 'gothwad-calendar', 'Gothwad Calendar',          'Events and reminders',                    'calendar',       1, 1),
+    ('gothwad-contacts', 'gothwad-contacts', 'Gothwad Contacts',          'People and addresses',                    'users',          1, 1),
+    ('gothwad-tube',     'gothwad-tube',     'Gothwad Tube (PlusTube)',   'Video — PlusTube',                        'play',           1, 0),
+    ('gothwad-chat',     'gothwad-chat',     'GrixChat (Gothwad Chat)',   'Messaging',                               'message-circle', 1, 0),
+    ('gothwad-indogram', 'gothwad-indogram', 'Indogram',                  'Telegram-style chat',                     'send',           1, 0)
+  ON CONFLICT (id) DO NOTHING`,
+  `CREATE TABLE IF NOT EXISTS app_authorizations (
+    id           TEXT PRIMARY KEY,
+    user_id      TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    app_id       TEXT NOT NULL REFERENCES ecosystem_apps (id) ON DELETE CASCADE,
+    scopes       TEXT NOT NULL DEFAULT '["profile","email"]',
+    granted_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    last_used_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    UNIQUE (user_id, app_id)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_app_auth_user ON app_authorizations (user_id)`,
+  `CREATE TABLE IF NOT EXISTS oauth_auth_codes (
+    code                  TEXT PRIMARY KEY,
+    client_id             TEXT NOT NULL,
+    user_id               TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    redirect_uri          TEXT NOT NULL,
+    scopes                TEXT NOT NULL DEFAULT '[]',
+    code_challenge        TEXT,
+    code_challenge_method TEXT,
+    expires_at            TEXT NOT NULL,
+    used                  INTEGER NOT NULL DEFAULT 0,
+    created_at            TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_oauth_codes_user ON oauth_auth_codes (user_id)`,
+  `CREATE TABLE IF NOT EXISTS oauth_refresh_tokens (
+    id         TEXT PRIMARY KEY,
+    token_hash TEXT UNIQUE NOT NULL,
+    user_id    TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    client_id  TEXT NOT NULL,
+    scopes     TEXT NOT NULL DEFAULT '[]',
+    expires_at TEXT NOT NULL,
+    revoked    INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_oauth_refresh_user ON oauth_refresh_tokens (user_id)`,
+  `CREATE TABLE IF NOT EXISTS account_activity (
+    id         TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    type       TEXT NOT NULL,
+    title      TEXT NOT NULL,
+    detail     TEXT,
+    ip_address TEXT,
+    user_agent TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_account_activity_user ON account_activity (user_id, created_at DESC)`,
+  `CREATE TABLE IF NOT EXISTS user_avatars (
+    user_id    TEXT PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
+    mime_type  TEXT NOT NULL CHECK (mime_type IN ('image/jpeg', 'image/png', 'image/webp')),
+    data       BLOB NOT NULL,
+    byte_size  INTEGER NOT NULL,
+    etag       TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  )`,
+];
+
+function buildDefaultCallbackSeedStatements(db: D1Database, rawDomain?: string): D1PreparedStatement[] {
+  const domain = (rawDomain || '').trim().toLowerCase();
+  if (!/^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/.test(domain)) {
+    return [];
+  }
+  const defaults: Array<[string, string[]]> = [
+    ['gothwad-meet', [`https://meet.${domain}/auth/callback`, `https://meet.${domain}/oauth/callback`]],
+    ['gothwad-mail', [`https://mail.${domain}/auth/callback`, `https://mail.${domain}/oauth/callback`]],
+    [
+      'kiwi-store',
+      [
+        'gothwadstore://oauth/callback',
+        'kiwistore://oauth/callback',
+        `https://kiwistore.${domain}/auth/callback`,
+        `https://kiwiconsole.${domain}/auth/callback`,
+        `https://kiwiadmin.${domain}/auth/callback`,
+        `https://kiwiapp.${domain}/auth/callback`,
+        'http://localhost:3000/auth/callback',
+        'http://localhost:5173/auth/callback',
+      ],
+    ],
+    ['gothwad-drive', [`https://drive.${domain}/auth/callback`, `https://drive.${domain}/oauth/callback`]],
+    ['gothwad-tube', [`https://plustube.${domain}/auth/callback`, `https://tube.${domain}/auth/callback`]],
+    ['gothwad-chat', [`https://grixchat.${domain}/auth/callback`, `https://chat.${domain}/auth/callback`]],
+    ['gothwad-indogram', [`https://indogram.${domain}/auth/callback`]],
+  ];
+  return defaults.map(([id, uris]) =>
+    db
+      .prepare("UPDATE ecosystem_apps SET redirect_uris = ? WHERE id = ? AND (redirect_uris IS NULL OR redirect_uris = '[]')")
+      .bind(JSON.stringify(uris), id),
+  );
+}
+
+async function getDb(env: Env): Promise<D1Database> {
+  if (!env.DB) {
+    throw new DatabaseUnavailableError(
+      "Cloudflare D1 binding 'DB' is missing. Add [[d1_databases]] binding = 'DB' in wrangler.toml.",
+    );
+  }
+  const key = env.DB as unknown as object;
+  let pending = initializedDbs.get(key);
+  if (!pending) {
+    const statements = [
+      ...BOOTSTRAP_STATEMENTS.map((sql) => env.DB.prepare(sql)),
+      ...buildDefaultCallbackSeedStatements(env.DB, env.APP_DOMAIN),
+    ];
+    pending = env.DB.batch(statements)
+      .then(() => undefined)
+      .catch((err) => {
+        initializedDbs.delete(key);
+        throw err;
+      });
+    initializedDbs.set(key, pending);
+  }
+  await pending;
+  return env.DB;
+}
+
+class DatabaseUnavailableError extends Error {
+  constructor(message = 'Database temporarily unavailable') {
+    super(message);
+  }
+}
+
+class OAuthDatabaseError extends Error {
+  constructor() {
+    super('OAuth database temporarily unavailable');
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Response, Validation & JSON Helpers
+// -----------------------------------------------------------------------------
+
 function json(data: unknown, status = 200, extraHeaders?: HeadersInit): Response {
   const headers = new Headers(extraHeaders);
   headers.set('Content-Type', 'application/json; charset=utf-8');
   return new Response(JSON.stringify(data), { status, headers });
 }
 
-/** Standard error shape: { error: "human readable message" } */
 function apiError(message: string, status = 400, extraHeaders?: HeadersInit): Response {
   return json({ error: message }, status, extraHeaders);
 }
 
-/**
- * Internal endpoint helpers — NO CORS, no cookies, Cache-Control: no-store.
- * Used for server-to-server calls like Mail → Accounts username existence check.
- */
 function internalJson(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
@@ -85,29 +343,6 @@ function internalJson(data: unknown, status = 200): Response {
   });
 }
 
-/**
- * Constant-time token compare via SHA-256 digests.
- * Prevents timing side-channel when checking MAIL_INTERNAL_TOKEN.
- */
-async function timingSafeEqual(a: string, b: string): Promise<boolean> {
-  const enc = new TextEncoder();
-  const [hashA, hashB] = await Promise.all([
-    crypto.subtle.digest('SHA-256', enc.encode(a)),
-    crypto.subtle.digest('SHA-256', enc.encode(b)),
-  ]);
-  const arrA = new Uint8Array(hashA);
-  const arrB = new Uint8Array(hashB);
-  // Both SHA-256 digests are 32 bytes — compare in constant time.
-  let diff = 0;
-  for (let i = 0; i < arrA.length; i++) {
-    diff |= arrA[i] ^ arrB[i];
-  }
-  // Also ensure original lengths match (defense against hash collision edge, though negligible).
-  // Length check is not timing-sensitive after hash compare.
-  return diff === 0 && a.length === b.length;
-}
-
-/** Body se JSON padho, galat JSON par friendly error. */
 async function readJson(request: Request): Promise<Record<string, any>> {
   try {
     return (await request.json()) as Record<string, any>;
@@ -116,12 +351,30 @@ async function readJson(request: Request): Promise<Record<string, any>> {
   }
 }
 
-/** Username validation — schema.sql ke CHECK constraint jaisa hi. */
+async function readFormOrJson(request: Request): Promise<Record<string, any>> {
+  const ct = request.headers.get('Content-Type') || '';
+  if (ct.includes('application/x-www-form-urlencoded')) {
+    const text = await request.text();
+    return Object.fromEntries(new URLSearchParams(text));
+  }
+  return readJson(request);
+}
+
+function parseJsonStringArray(raw: unknown): string[] {
+  if (Array.isArray(raw)) return raw.map((v) => String(v));
+  if (typeof raw !== 'string' || !raw.trim()) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.map((v) => String(v)) : [];
+  } catch {
+    return [];
+  }
+}
+
 function isValidUsername(username: string): boolean {
   return /^[a-z0-9](?:[a-z0-9._-]{1,22}[a-z0-9])?$/.test(username);
 }
 
-/** Basic email format check. */
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
@@ -131,74 +384,11 @@ function identifierLooksLikePhone(raw: string): boolean {
   return /^(\+)?[0-9]{7,15}$/.test(digitsOnly);
 }
 
-function usernameFromIdentifier(raw: string, appDomain: string): string {
+function usernameFromIdentifier(raw: string): string {
   const lower = raw.toLowerCase().trim();
-  if (lower.includes('@')) {
-    return lower.split('@')[0] || '';
-  }
-  return lower;
+  return lower.includes('@') ? (lower.split('@')[0] || '') : lower;
 }
 
-/**
- * Sign-in Next step: username/email/phone exist karta hai ya nahi.
- * Password step tabhi khulega jab account mil jaye.
- */
-async function lookupAccount(env: Env, rawIdentifier: string): Promise<{
-  exists: boolean;
-  email: string;
-  kind: 'phone' | 'username';
-}> {
-  const appDomain = (env.APP_DOMAIN || 'gothwadtech.com').toLowerCase();
-  const trimmed = String(rawIdentifier || '').trim();
-  if (!trimmed) return { exists: false, email: '', kind: 'username' };
-
-  if (identifierLooksLikePhone(trimmed)) {
-    const digitsOnly = trimmed.replace(/[\s\-()]/g, '');
-    const phoneQuery = encodeURIComponent(trimmed);
-    const profRes = await SB.adminFetch(
-      env,
-      `/rest/v1/profiles?phone_number=eq.${phoneQuery}&select=id,username`,
-    );
-    const profRows = (await profRes.json()) as Record<string, any>[];
-    if (Array.isArray(profRows) && profRows.length > 0 && profRows[0].username) {
-      return {
-        exists: true,
-        email: `${profRows[0].username}@${appDomain}`,
-        kind: 'phone',
-      };
-    }
-    const cleanDigits = digitsOnly.replace(/^\+/, '');
-    const fallbackRes = await SB.adminFetch(
-      env,
-      `/rest/v1/profiles?phone_number=ilike.*${encodeURIComponent(cleanDigits)}*&select=id,username`,
-    );
-    const fallbackRows = (await fallbackRes.json()) as Record<string, any>[];
-    if (Array.isArray(fallbackRows) && fallbackRows.length > 0 && fallbackRows[0].username) {
-      return {
-        exists: true,
-        email: `${fallbackRows[0].username}@${appDomain}`,
-        kind: 'phone',
-      };
-    }
-    return { exists: false, email: '', kind: 'phone' };
-  }
-
-  const username = usernameFromIdentifier(trimmed, appDomain);
-  if (!username) return { exists: false, email: '', kind: 'username' };
-  const res = await SB.adminFetch(
-    env,
-    `/rest/v1/profiles?username=eq.${encodeURIComponent(username)}&select=id,username`,
-  );
-  const rows = (await res.json()) as Record<string, any>[];
-  const exists = Array.isArray(rows) && rows.length > 0 && !!rows[0].username;
-  return {
-    exists,
-    email: exists ? `${rows[0].username}@${appDomain}` : `${username}@${appDomain}`,
-    kind: 'username',
-  };
-}
-
-/** Usernames jo system ke liye reserved hain (inhe koi le nahi sakta). */
 const RESERVED_USERNAMES = new Set([
   'admin', 'administrator', 'api', 'app', 'assets', 'mail', 'email', 'smtp', 'imap', 'pop',
   'support', 'help', 'root', 'security', 'billing', 'legal', 'abuse', 'postmaster',
@@ -208,15 +398,216 @@ const RESERVED_USERNAMES = new Set([
   'me', 'everyone', 'team', 'official', 'pay', 'payments', 'wallet', 'store', 'shop',
 ]);
 
-/** Built-in Gothwad Services — user revoke nahi kar sakta (account ke saath hamesha). */
 const CORE_GOTHWAD_SERVICES = new Set([
   'gothwad-meet', 'gothwad-mail', 'kiwi-store', 'gothwad-drive',
   'gothwad-notes', 'gothwad-calendar', 'gothwad-contacts',
 ]);
 
+const GENDER_VALUES = ['Male', 'Female', 'Other', 'Rather not say'];
+
 // -----------------------------------------------------------------------------
-// CORS — sirf Gothwad domains + configured dev origins
+// Cryptography: WebCrypto PBKDF2-SHA256 Passwords, SHA-256 Tokens, HS256 JWTs
 // -----------------------------------------------------------------------------
+// IMPORTANT CLOUDFLARE WORKERS DETAIL:
+// Cloudflare Workers V8 WebCrypto enforces max `100,000` PBKDF2 iterations.
+// Format stored in D1: `pbkdf2_sha256$100000$<base64url-salt>$<base64url-hash>`
+
+const PBKDF2_ITERATIONS = 100_000;
+const ACCESS_TOKEN_TTL_SECONDS = 3600;               // 1 hour
+const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const RESET_TOKEN_TTL_MS = 15 * 60 * 1000;             // 15 minutes
+const OAUTH_CODE_TTL_MS = 5 * 60 * 1000;               // 5 minutes
+
+function b64url(input: string | Uint8Array): string {
+  const bytes = typeof input === 'string' ? new TextEncoder().encode(input) : input;
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function b64urlToBytes(s: string): Uint8Array<ArrayBuffer> {
+  const pad = s.replace(/-/g, '+').replace(/_/g, '/');
+  const bin = atob(pad + '='.repeat((4 - (pad.length % 4)) % 4));
+  const out = new Uint8Array(new ArrayBuffer(bin.length));
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+function b64urlDecode(s: string): string {
+  return new TextDecoder().decode(b64urlToBytes(s));
+}
+
+function timingSafeBytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+  const len = Math.max(a.length, b.length);
+  let diff = a.length ^ b.length;
+  for (let i = 0; i < len; i++) {
+    diff |= (a[i] ?? 0) ^ (b[i] ?? 0);
+  }
+  return diff === 0;
+}
+
+async function timingSafeEqual(a: string, b: string): Promise<boolean> {
+  const enc = new TextEncoder();
+  const [hashA, hashB] = await Promise.all([
+    crypto.subtle.digest('SHA-256', enc.encode(a)),
+    crypto.subtle.digest('SHA-256', enc.encode(b)),
+  ]);
+  return timingSafeBytesEqual(new Uint8Array(hashA), new Uint8Array(hashB)) && a.length === b.length;
+}
+
+export async function hashPassword(password: string): Promise<string> {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(password),
+    'PBKDF2',
+    false,
+    ['deriveBits'],
+  );
+  const derived = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', hash: 'SHA-256', salt, iterations: PBKDF2_ITERATIONS },
+    keyMaterial,
+    256,
+  );
+  return `pbkdf2_sha256$${PBKDF2_ITERATIONS}$${b64url(salt)}$${b64url(new Uint8Array(derived))}`;
+}
+
+export async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
+  try {
+    const parts = storedHash.split('$');
+    if (parts.length !== 4 || parts[0] !== 'pbkdf2_sha256') return false;
+    const iterations = Number(parts[1]);
+    if (!Number.isInteger(iterations) || iterations < 10_000 || iterations > PBKDF2_ITERATIONS) return false;
+    const salt = b64urlToBytes(parts[2]);
+    const expected = b64urlToBytes(parts[3]);
+    const keyMaterial = await crypto.subtle.importKey(
+      'raw',
+      new TextEncoder().encode(password),
+      'PBKDF2',
+      false,
+      ['deriveBits'],
+    );
+    const derived = await crypto.subtle.deriveBits(
+      { name: 'PBKDF2', hash: 'SHA-256', salt, iterations },
+      keyMaterial,
+      expected.length * 8,
+    );
+    return timingSafeBytesEqual(new Uint8Array(derived), expected);
+  } catch {
+    return false;
+  }
+}
+
+async function sha256Base64Url(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return b64url(new Uint8Array(digest));
+}
+
+async function sha256Hex(input: string | Uint8Array): Promise<string> {
+  const bytes = typeof input === 'string' ? new TextEncoder().encode(input) : input;
+  const digest = await crypto.subtle.digest('SHA-256', bytes as BufferSource);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function randomToken(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function getSigningSecret(env: Env): string {
+  const configured = (env.JWT_SECRET || '').trim();
+  if (configured) return configured;
+  if (env.DEV_MODE === 'true') return 'gothwad-dev-mode-only-jwt-secret';
+  throw new DatabaseUnavailableError(
+    "Missing Worker secret 'JWT_SECRET'. Run `npx wrangler secret put JWT_SECRET` or add it in Cloudflare Dashboard -> Variables and Secrets.",
+  );
+}
+
+async function signJwt(payload: Record<string, any>, secret: string): Promise<string> {
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const data = `${b64url(JSON.stringify(header))}.${b64url(JSON.stringify(payload))}`;
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(data));
+  return `${data}.${b64url(new Uint8Array(sig))}`;
+}
+
+async function verifyJwt(token: string, secret: string): Promise<Record<string, any> | null> {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const data = `${parts[0]}.${parts[1]}`;
+    const key = await crypto.subtle.importKey(
+      'raw',
+      new TextEncoder().encode(secret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['verify'],
+    );
+    const sigBytes = b64urlToBytes(parts[2]);
+    const ok = await crypto.subtle.verify('HMAC', key, sigBytes, new TextEncoder().encode(data));
+    if (!ok) return null;
+
+    const payload = JSON.parse(b64urlDecode(parts[1]));
+    if (payload.exp && payload.exp * 1000 < Date.now()) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+export async function issueSessionAccessToken(
+  env: Env,
+  opts: { userId: string; username: string; sessionId?: string | null },
+): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  return signJwt(
+    {
+      token_use: 'session',
+      iss: env.AUTH_HUB_URL,
+      sub: opts.userId,
+      username: opts.username,
+      sid: opts.sessionId || null,
+      iat: now,
+      exp: now + ACCESS_TOKEN_TTL_SECONDS,
+      jti: randomToken().slice(0, 16),
+    },
+    getSigningSecret(env),
+  );
+}
+
+async function issueOAuthAccessToken(
+  env: Env,
+  opts: { userId: string; username: string; clientId: string; scopes: string[] },
+): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  return signJwt(
+    {
+      token_use: 'oauth_access',
+      iss: env.AUTH_HUB_URL,
+      sub: opts.userId,
+      aud: opts.clientId,
+      client_id: opts.clientId,
+      username: opts.username,
+      scope: opts.scopes.join(' '),
+      iat: now,
+      exp: now + ACCESS_TOKEN_TTL_SECONDS,
+      jti: randomToken().slice(0, 16),
+    },
+    getSigningSecret(env),
+  );
+}
+
+// -----------------------------------------------------------------------------
+// CORS & Subdomain SSO Cookie Helpers
+// -----------------------------------------------------------------------------
+
 export function buildCorsHeaders(request: Request, env: Env): Headers {
   const headers = new Headers();
   const origin = request.headers.get('Origin') || '';
@@ -236,7 +627,7 @@ export function buildCorsHeaders(request: Request, env: Env): Headers {
 
   if (allowed && origin) {
     headers.set('Access-Control-Allow-Origin', origin);
-    headers.set('Access-Control-Allow-Credentials', 'true'); // cookies ke liye zaroori
+    headers.set('Access-Control-Allow-Credentials', 'true');
     headers.set('Vary', 'Origin');
     headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Gothwad-Refresh');
@@ -245,23 +636,14 @@ export function buildCorsHeaders(request: Request, env: Env): Headers {
   return headers;
 }
 
-// -----------------------------------------------------------------------------
-// Cookies — session tokens ko HttpOnly cookies mein store karte hain
-// -----------------------------------------------------------------------------
-// Cookie names:  gothwad_at = access token (JWT, ~1 hour)
-//                gothwad_rt = refresh token (30 days / browser session)
-//                gothwad_sid = device-session row id (dashboard ke liye)
-
-/** Kya hum local/preview host par hain? (Wahan Domain attribute nahi lagta.) */
 export function cookieDomain(request: Request, env: Env): string | null {
   const host = new URL(request.url).hostname;
   if (host === env.APP_DOMAIN || host.endsWith(`.${env.APP_DOMAIN}`)) {
-    return `.${env.APP_DOMAIN}`; // SSO: mail./drive./accounts. sab share karein
+    return `.${env.APP_DOMAIN}`;
   }
-  return null; // localhost / preview → host-only cookie
+  return null;
 }
 
-/** Kya request API hostname (API_DOMAIN) par aayi hai? Unset ho to false. */
 function isApiHost(request: Request, env: Env): boolean {
   const apiHost = (env.API_DOMAIN || '').trim().toLowerCase();
   return apiHost !== '' && new URL(request.url).hostname.toLowerCase() === apiHost;
@@ -272,32 +654,30 @@ function makeCookie(
   env: Env,
   name: string,
   value: string,
-  maxAgeSeconds: number | null, // null = browser-session cookie (band hote hi delete)
+  maxAgeSeconds: number | null,
 ): string {
   const domain = cookieDomain(request, env);
-  const parts = [
-    `${name}=${value}`,
-    'Path=/',
-    'HttpOnly',     // JavaScript kabhi na padh sake
-    'Secure',       // sirf HTTPS
-    'SameSite=Lax', // cross-site form attacks se bachav
-  ];
+  const isSecure = new URL(request.url).protocol === 'https:' || !!domain;
+  const parts = [`${name}=${value}`, 'Path=/', 'HttpOnly', 'SameSite=Lax'];
+  if (isSecure) parts.push('Secure');
   if (domain) parts.push(`Domain=${domain}`);
   if (maxAgeSeconds !== null) parts.push(`Max-Age=${maxAgeSeconds}`);
   return parts.join('; ');
 }
 
-function sessionCookies(request: Request, env: Env, tokens: {
-  access_token: string;
-  refresh_token: string;
-  session_id?: string | null;
-  remember: boolean;
-}): string[] {
-  // Remember=true  → 30 din tak login rahega
-  // Remember=false → browser band karte hi session khatam
+function sessionCookies(
+  request: Request,
+  env: Env,
+  tokens: {
+    access_token: string;
+    refresh_token: string;
+    session_id?: string | null;
+    remember: boolean;
+  },
+): string[] {
   const maxAge = tokens.remember ? 60 * 60 * 24 * 30 : null;
   const cookies = [
-    makeCookie(request, env, 'gothwad_at', tokens.access_token, tokens.remember ? 60 * 60 : null),
+    makeCookie(request, env, 'gothwad_at', tokens.access_token, tokens.remember ? ACCESS_TOKEN_TTL_SECONDS : null),
     makeCookie(request, env, 'gothwad_rt', tokens.refresh_token, maxAge),
   ];
   if (tokens.session_id) {
@@ -321,112 +701,119 @@ function getCookie(request: Request, name: string): string | null {
 }
 
 // -----------------------------------------------------------------------------
-// Supabase REST/API helpers
+// User Lookup, Profile Formatting & Activity Log Helpers (D1 Native)
 // -----------------------------------------------------------------------------
 
-/**
- * service key ke liye headers banao.
- * WHY: Supabase ke NAYE "secret keys" (`sb_secret_...`) JWT nahi hote — agar inhe
- * `Authorization: Bearer` mein bheja to Supabase "Invalid API key" dekar reject
- * karta hai. Purane legacy `service_role` JWT (`eyJ...`) dono headers accept
- * karta hai, naye key sirf `apikey` header mein jaata hai.
- */
-function serviceKeyHeaders(key: string): Record<string, string> {
-  const k = (key || '').trim(); // copy-paste se extra space/newline hatane ke liye
-  return k.startsWith('eyJ')
-    ? { apikey: k, Authorization: `Bearer ${k}` } // legacy service_role JWT
-    : { apikey: k }; // naya sb_secret_ key — sirf apikey
+function resolveAvatarUrl(rawUrl: string | null | undefined, env: Env): string | null {
+  if (!rawUrl) return null;
+  if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://') || rawUrl.startsWith('data:')) {
+    return rawUrl;
+  }
+  // Relative path stored in D1 (`/api/avatars/:id?v=:etag`) -> dynamically resolved
+  // against `AUTH_HUB_URL` so domain migration (`gothwad.in`) never breaks avatars!
+  const base = (env.AUTH_HUB_URL || '').replace(/\/+$/, '');
+  return base ? `${base}${rawUrl.startsWith('/') ? '' : '/'}${rawUrl}` : rawUrl;
 }
 
-const SB = {
-  /** Supabase Auth ka base URL. */
-  authUrl(env: Env, path: string): string {
-    return `${env.SUPABASE_URL}/auth/v1${path}`;
-  },
-
-  /** service_role se call — RLS bypass, sirf Worker ke liye! */
-  async adminFetch(env: Env, path: string, init: RequestInit = {}): Promise<Response> {
-    const key = (env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
-    const headers = {
-      'Content-Type': 'application/json',
-      ...serviceKeyHeaders(key),
-      ...(init.headers || {}),
-    };
-    let res = await fetch(`${env.SUPABASE_URL}${path}`, { ...init, headers });
-    // Safety net: agar apikey-only se 401 aaya (kuch gateway Bearer maangte hain),
-    // to Bearer ke saath ek baar retry. 401 = request process nahi hui, retry safe hai.
-    // (Supabase ka official client dono headers bhejta hai — dono accepted hain.)
-    if (res.status === 401 && !key.startsWith('eyJ')) {
-      res = await fetch(`${env.SUPABASE_URL}${path}`, {
-        ...init,
-        headers: { ...headers, Authorization: `Bearer ${key}` },
-      });
-    }
-    return res;
-  },
-
-  /** User ke apne access_token se call — RLS laagu hoti hai. */
-  async userFetch(env: Env, path: string, accessToken: string, init: RequestInit = {}): Promise<Response> {
-    return fetch(`${env.SUPABASE_URL}${path}`, {
-      ...init,
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: (env.SUPABASE_ANON_KEY || '').trim(),
-        Authorization: `Bearer ${accessToken}`,
-        ...(init.headers || {}),
-      },
-    });
-  },
-};
-
-/** profiles table se user ka profile lao (service_role se). */
-async function fetchProfile(env: Env, userId: string): Promise<Record<string, any> | null> {
-  const res = await SB.adminFetch(
-    env,
-    `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=*`,
-  );
-  const rows = (await res.json()) as Record<string, any>[];
-  return Array.isArray(rows) && rows[0] ? rows[0] : null;
-}
-
-/**
- * Profile ke saath API-friendly user object banao.
- * YAHAN email calculate hota hai — database mein sirf username hai! (Rule #2)
- */
-function presentUser(profile: Record<string, any> | null | undefined, authUser: Record<string, any> | null | undefined, env: Env) {
-  if (!profile && !authUser) return null;
-  const username = profile?.username || '';
+function presentUser(profile: Record<string, any> | null | undefined, env: Env) {
+  if (!profile) return null;
+  const username = String(profile.username || '');
   return {
-    id: profile?.id || authUser?.id || '',
+    id: String(profile.id || ''),
     username,
-    email: username ? `${username}@${env.APP_DOMAIN}` : '', // derived — stored nahi hai
-    first_name: profile?.first_name || '',
-    last_name: profile?.last_name || '',
-    recovery_email: profile?.recovery_email || '',
-    phone_number: profile?.phone_number || '',
-    avatar_url: profile?.avatar_url || null,
-    date_of_birth: profile?.date_of_birth || null,   // Google-style personal info
-    gender: profile?.gender || null,                 // 'Male'|'Female'|'Other'|'Rather not say'|null
-    two_factor_enabled: !!profile?.two_factor_enabled,
-    storage_used_bytes: Number(profile?.storage_used_bytes || 0),
-    storage_limit_bytes: Number(profile?.storage_limit_bytes || 16106127360),
-    created_at: profile?.created_at || null,
+    email: username ? `${username}@${env.APP_DOMAIN}` : '',
+    first_name: profile.first_name || '',
+    last_name: profile.last_name || '',
+    recovery_email: profile.recovery_email || '',
+    phone_number: profile.phone_number || '',
+    avatar_url: resolveAvatarUrl(profile.avatar_url, env),
+    date_of_birth: profile.date_of_birth || null,
+    gender: profile.gender || null,
+    two_factor_enabled: !!profile.two_factor_enabled,
+    storage_used_bytes: Number(profile.storage_used_bytes || 0),
+    storage_limit_bytes: Number(profile.storage_limit_bytes ?? 16106127360),
+    created_at: profile.created_at || null,
   };
 }
 
-/**
- * Account activity log mein ek entry likho (Google-style "Recent activity").
- *
- * Yeh feed dashboard ke Security / Data & privacy sections mein dikhti hai.
- * FAIL-SAFE hai: agar logging fail ho jaye to bhi main request succeed hoti
- * hai (await nahi kiya jaata zaroori nahi — best effort).
- *
- * Types (sql/02_account_activity.sql mein documented):
- *   signup | signin | signout | password_change | password_reset |
- *   profile_update | avatar_update | session_revoked | app_authorized | app_revoked
- */
+async function fetchProfile(db: D1Database, userId: string): Promise<Record<string, any> | null> {
+  return db.prepare('SELECT * FROM profiles WHERE id = ?').bind(userId).first();
+}
+
+async function lookupAccount(
+  db: D1Database,
+  rawIdentifier: string,
+): Promise<{
+  exists: boolean;
+  userId: string;
+  username: string;
+  passwordHash: string;
+  kind: 'phone' | 'username';
+}> {
+  const trimmed = String(rawIdentifier || '').trim();
+  if (!trimmed) return { exists: false, userId: '', username: '', passwordHash: '', kind: 'username' };
+
+  if (identifierLooksLikePhone(trimmed)) {
+    const cleanDigits = trimmed.replace(/[\s\-()]/g, '').replace(/^\+/, '');
+    let row = await db
+      .prepare(
+        `SELECT u.id, u.username, u.password_hash
+           FROM profiles p
+           JOIN users u ON u.id = p.id
+          WHERE p.phone_number = ?
+          LIMIT 1`,
+      )
+      .bind(trimmed)
+      .first();
+
+    if (!row && cleanDigits) {
+      row = await db
+        .prepare(
+          `SELECT u.id, u.username, u.password_hash
+             FROM profiles p
+             JOIN users u ON u.id = p.id
+            WHERE REPLACE(REPLACE(REPLACE(REPLACE(p.phone_number, ' ', ''), '-', ''), '(', ''), ')', '') LIKE ?
+            LIMIT 1`,
+        )
+        .bind(`%${cleanDigits}`)
+        .first();
+    }
+
+    if (row?.username) {
+      return {
+        exists: true,
+        userId: String(row.id),
+        username: String(row.username),
+        passwordHash: String(row.password_hash),
+        kind: 'phone',
+      };
+    }
+    return { exists: false, userId: '', username: '', passwordHash: '', kind: 'phone' };
+  }
+
+  const username = usernameFromIdentifier(trimmed);
+  if (!username) return { exists: false, userId: '', username: '', passwordHash: '', kind: 'username' };
+
+  const row = await db
+    .prepare('SELECT id, username, password_hash FROM users WHERE username = ? LIMIT 1')
+    .bind(username)
+    .first();
+
+  if (!row?.username) {
+    return { exists: false, userId: '', username: '', passwordHash: '', kind: 'username' };
+  }
+
+  return {
+    exists: true,
+    userId: String(row.id),
+    username: String(row.username),
+    passwordHash: String(row.password_hash),
+    kind: 'username',
+  };
+}
+
 async function logActivity(
-  env: Env,
+  db: D1Database,
   userId: string,
   type: string,
   title: string,
@@ -434,99 +821,43 @@ async function logActivity(
   request?: Request,
 ): Promise<void> {
   try {
-    await SB.adminFetch(env, '/rest/v1/account_activity', {
-      method: 'POST',
-      body: JSON.stringify({
-        user_id: userId,
+    const now = new Date().toISOString();
+    await db
+      .prepare(
+        `INSERT INTO account_activity (id, user_id, type, title, detail, ip_address, user_agent, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        crypto.randomUUID(),
+        userId,
         type,
         title,
-        detail: detail || null,
-        ip_address: request?.headers.get('CF-Connecting-IP') || null,
-        user_agent: request?.headers.get('User-Agent') || null,
-      }),
-    });
+        detail || null,
+        request?.headers.get('CF-Connecting-IP') || null,
+        request?.headers.get('User-Agent') || null,
+        now,
+      )
+      .run();
+
+    // Auto-trim older activity rows (> 100 per user) to keep free D1 lean forever
+    await db
+      .prepare(
+        `DELETE FROM account_activity
+          WHERE user_id = ?
+            AND id NOT IN (
+              SELECT id FROM account_activity
+               WHERE user_id = ?
+               ORDER BY created_at DESC
+               LIMIT 100
+            )`,
+      )
+      .bind(userId, userId)
+      .run();
   } catch {
-    // Activity log fail = user ka kaam fail NAHI hona chahiye. Ignore.
+    // Best-effort security telemetry: must never fail the primary user action
   }
 }
 
-/** GENDER ke allowed values (sql/01_core_schema.sql CHECK constraint se match). */
-const GENDER_VALUES = ['Male', 'Female', 'Other', 'Rather not say'];
-
-/**
- * Request se session verify karo.
- *
- * TOKEN KE 2 SOURCES (hybrid auth):
- *   1. Headers: Authorization: Bearer + X-Gothwad-Refresh
- *      (SPA/iframe/webview ke liye — jahan third-party cookies block hote hain)
- *   2. HttpOnly cookies (gothwad_at / gothwad_rt)
- *      (production SSO ke liye — subdomains share karte hain)
- *
- * Access token expire ho gaya ho to refresh token se automatically
- * naya token le lete hain (JWT session management — auto-refresh + rotation).
- */
-async function resolveSession(
-  request: Request,
-  env: Env,
-): Promise<{
-  ok: boolean;
-  accessToken?: string;
-  newCookies?: string[];
-  newTokens?: { access_token: string; refresh_token: string };
-  authUser?: Record<string, any>;
-}> {
-  // Priority: headers (explicit) → cookies (automatic)
-  const authHeader = request.headers.get('Authorization') || '';
-  const headerAccess = authHeader.replace('Bearer ', '').trim();
-  const headerRefresh = (request.headers.get('X-Gothwad-Refresh') || '').trim();
-  const accessToken = headerAccess || getCookie(request, 'gothwad_at');
-  const refreshToken = headerRefresh || getCookie(request, 'gothwad_rt');
-
-  if (!accessToken && !refreshToken) return { ok: false };
-
-  // 1) Try current access token
-  if (accessToken) {
-    const res = await fetch(SB.authUrl(env, '/user'), {
-      headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${accessToken}` },
-    });
-    if (res.ok) {
-      return { ok: true, accessToken, authUser: (await res.json()) as Record<string, any> };
-    }
-  }
-
-  // 2) Access token khatam → refresh token se naya le lo (rotation ke saath)
-  if (refreshToken) {
-    const res = await fetch(SB.authUrl(env, '/token?grant_type=refresh_token'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: env.SUPABASE_ANON_KEY },
-      body: JSON.stringify({ refresh_token: refreshToken }),
-    });
-    if (res.ok) {
-      const data = (await res.json()) as Record<string, any>;
-      const sessionId = getCookie(request, 'gothwad_sid');
-      const newTokens = {
-        access_token: data.access_token as string,
-        refresh_token: data.refresh_token as string,
-      };
-      return {
-        ok: true,
-        accessToken: data.access_token,
-        authUser: data.user,
-        newTokens, // client (frontend) ko body mein bhejne ke liye — rotation!
-        newCookies: sessionCookies(request, env, {
-          access_token: newTokens.access_token,
-          refresh_token: newTokens.refresh_token,
-          session_id: sessionId,
-          remember: true, // refresh hote waqt lambi validity hi rakhte hain
-        }),
-      };
-    }
-  }
-
-  return { ok: false };
-}
-
-/** User-Agent se simple device info nikalo (dashboard ke liye). */
 function parseUserAgent(ua: string): { device_name: string; browser: string; os: string; device_type: string } {
   const browser =
     /Edg\//.test(ua) ? 'Edge' :
@@ -545,20 +876,171 @@ function parseUserAgent(ua: string): { device_name: string; browser: string; os:
     'Unknown OS';
 
   const device_type = /Mobile|Android|iPhone/.test(ua) ? 'Mobile' : /iPad|Tablet/.test(ua) ? 'Tablet' : 'Desktop';
-
   return { device_name: `${browser} on ${os}`, browser, os, device_type };
 }
 
-// =============================================================================
-// STEP 2 — OAUTH 2.0 PROVIDER HELPERS ("Sign in with Gothwad")
-// =============================================================================
-// Gothwad khud ek OAuth 2.0 provider hai. GrixChat / ClashDrive / Notes jaisi
-// apps "Sign in with Gothwad" button lagakar user ko yahan bhejti hain.
-//
-// Standard OAuth 2.0 Authorization Code flow + PKCE (mobile/SPA ke liye).
-// Docs: docs/OAUTH.md
+// -----------------------------------------------------------------------------
+// Native Session Resolution + Atomic Refresh Token Rotation
+// -----------------------------------------------------------------------------
 
-/** Konsi scopes supported hain — aur consent screen par kya dikhega. */
+interface SessionUser {
+  id: string;
+  username: string;
+  sessionId: string | null;
+}
+
+async function rotateSessionRefreshToken(
+  db: D1Database,
+  env: Env,
+  rawRefreshToken: string,
+  fallbackSessionId?: string | null,
+): Promise<{
+  user: SessionUser;
+  access_token: string;
+  refresh_token: string;
+  session_id: string | null;
+} | null> {
+  const hash = await sha256Hex(rawRefreshToken);
+  const nowIso = new Date().toISOString();
+
+  // Atomic consumption: parallel requests cannot both consume the same refresh token
+  const consumed = await db
+    .prepare(
+      `UPDATE auth_refresh_tokens
+          SET revoked = 1
+        WHERE token_hash = ? AND revoked = 0 AND expires_at > ?
+        RETURNING user_id, session_id`,
+    )
+    .bind(hash, nowIso)
+    .first();
+
+  if (!consumed?.user_id) return null;
+
+  const userId = String(consumed.user_id);
+  const userRow = await db
+    .prepare('SELECT id, username FROM users WHERE id = ? LIMIT 1')
+    .bind(userId)
+    .first();
+  if (!userRow?.username) return null;
+
+  const sid = (consumed.session_id ? String(consumed.session_id) : null) || fallbackSessionId || null;
+  if (sid) {
+    // Verify device session wasn't remotely revoked & touch `last_active`
+    const updatedSession = await db
+      .prepare('UPDATE user_sessions SET last_active = ? WHERE id = ? AND user_id = ? RETURNING id')
+      .bind(nowIso, sid, userId)
+      .first();
+    if (!updatedSession) return null;
+  }
+
+  const newRefresh = randomToken();
+  const newRefreshHash = await sha256Hex(newRefresh);
+  const newExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS).toISOString();
+
+  await db
+    .prepare(
+      `INSERT INTO auth_refresh_tokens (token_hash, user_id, session_id, expires_at, revoked, created_at)
+       VALUES (?, ?, ?, ?, 0, ?)`,
+    )
+    .bind(newRefreshHash, userId, sid, newExpiresAt, nowIso)
+    .run();
+
+  const username = String(userRow.username);
+  const newAccess = await issueSessionAccessToken(env, { userId, username, sessionId: sid });
+
+  return {
+    user: { id: userId, username, sessionId: sid },
+    access_token: newAccess,
+    refresh_token: newRefresh,
+    session_id: sid,
+  };
+}
+
+async function resolveSession(
+  request: Request,
+  db: D1Database,
+  env: Env,
+): Promise<{
+  ok: boolean;
+  accessToken?: string;
+  newCookies?: string[];
+  newTokens?: { access_token: string; refresh_token: string };
+  authUser?: SessionUser;
+}> {
+  const authHeader = request.headers.get('Authorization') || '';
+  const headerAccess = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+  const headerRefresh = (request.headers.get('X-Gothwad-Refresh') || '').trim();
+  const accessToken = headerAccess || getCookie(request, 'gothwad_at');
+  const refreshToken = headerRefresh || getCookie(request, 'gothwad_rt');
+  const cookieSid = getCookie(request, 'gothwad_sid');
+
+  if (!accessToken && !refreshToken) return { ok: false };
+
+  // 1) Validate active `session` JWT + verify account & device session still exist in D1
+  if (accessToken) {
+    const payload = await verifyJwt(accessToken, getSigningSecret(env));
+    if (payload && payload.token_use === 'session' && payload.sub) {
+      const userId = String(payload.sub);
+      const tokenSid = payload.sid ? String(payload.sid) : null;
+      const userRow = await db
+        .prepare('SELECT id, username FROM users WHERE id = ? LIMIT 1')
+        .bind(userId)
+        .first();
+
+      if (userRow?.username) {
+        let sessionValid = true;
+        if (tokenSid) {
+          const sessRow = await db
+            .prepare('SELECT id FROM user_sessions WHERE id = ? AND user_id = ? LIMIT 1')
+            .bind(tokenSid, userId)
+            .first();
+          sessionValid = !!sessRow;
+        }
+        if (sessionValid) {
+          return {
+            ok: true,
+            accessToken,
+            authUser: {
+              id: userId,
+              username: String(userRow.username),
+              sessionId: tokenSid || cookieSid || null,
+            },
+          };
+        }
+      }
+    }
+  }
+
+  // 2) Access token expired/missing -> atomically rotate refresh token
+  if (refreshToken) {
+    const rotated = await rotateSessionRefreshToken(db, env, refreshToken, cookieSid);
+    if (rotated) {
+      const newTokens = {
+        access_token: rotated.access_token,
+        refresh_token: rotated.refresh_token,
+      };
+      return {
+        ok: true,
+        accessToken: rotated.access_token,
+        authUser: rotated.user,
+        newTokens,
+        newCookies: sessionCookies(request, env, {
+          access_token: newTokens.access_token,
+          refresh_token: newTokens.refresh_token,
+          session_id: rotated.session_id,
+          remember: true,
+        }),
+      };
+    }
+  }
+
+  return { ok: false };
+}
+
+// -----------------------------------------------------------------------------
+// OAuth 2.0 Provider Helpers ("Sign in with Gothwad")
+// -----------------------------------------------------------------------------
+
 const OAUTH_SCOPES: Record<string, string> = {
   profile: 'View your basic profile (name, username, avatar)',
   email: 'View your Gothwad email address',
@@ -569,7 +1051,6 @@ const OAUTH_SCOPES: Record<string, string> = {
   offline_access: 'Keep you signed in to this app even when you are away',
 };
 
-/** Space-separated scope string → clean array (unknown scopes hata do). */
 function parseScopes(scopeStr: string): string[] {
   return String(scopeStr || '')
     .split(' ')
@@ -577,144 +1058,59 @@ function parseScopes(scopeStr: string): string[] {
     .filter((s) => s && OAUTH_SCOPES[s]);
 }
 
-/* --------------------------- base64url + hashing helpers ------------------- */
-
-function b64url(input: string | Uint8Array): string {
-  const bytes = typeof input === 'string' ? new TextEncoder().encode(input) : input;
-  let bin = '';
-  for (const b of bytes) bin += String.fromCharCode(b);
-  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-function b64urlDecode(s: string): string {
-  const pad = s.replace(/-/g, '+').replace(/_/g, '/');
-  return atob(pad + '='.repeat((4 - (pad.length % 4)) % 4));
-}
-
-async function sha256Base64Url(text: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
-  return b64url(new Uint8Array(digest));
-}
-
-async function sha256Hex(text: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-/** Random secure token (codes, refresh tokens ke liye). */
-function randomToken(): string {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-/* ------------------------------- JWT (HS256) ------------------------------- */
-// Access token ek signed JWT hota hai. Koi bhi app /oauth/userinfo par isse
-// bhej sakta hai — Worker signature verify karke profile deta hai.
-
-async function signJwt(payload: Record<string, any>, secret: string): Promise<string> {
-  const header = { alg: 'HS256', typ: 'JWT' };
-  const data = `${b64url(JSON.stringify(header))}.${b64url(JSON.stringify(payload))}`;
-  const key = await crypto.subtle.importKey(
-    'raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
-  );
-  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(data));
-  return `${data}.${b64url(new Uint8Array(sig))}`;
-}
-
-async function verifyJwt(token: string, secret: string): Promise<Record<string, any> | null> {
+async function oauthQuery<T>(fn: () => Promise<T>): Promise<T> {
   try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-    const data = `${parts[0]}.${parts[1]}`;
-    const key = await crypto.subtle.importKey(
-      'raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify'],
-    );
-    const sigBytes = Uint8Array.from(atob(parts[2].replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
-    const ok = await crypto.subtle.verify('HMAC', key, sigBytes, new TextEncoder().encode(data));
-    if (!ok) return null;
-
-    const payload = JSON.parse(b64urlDecode(parts[1]));
-    if (payload.exp && payload.exp * 1000 < Date.now()) return null; // expired
-    return payload;
-  } catch {
-    return null;
-  }
-}
-
-/* --------------------------- OAuth request body ---------------------------- */
-// OAuth spec form-encoding use karta hai, lekin hum JSON bhi accept karte hain
-// taaki beginner apps ko dikkat na ho.
-
-async function readFormOrJson(request: Request): Promise<Record<string, any>> {
-  const ct = request.headers.get('Content-Type') || '';
-  if (ct.includes('application/x-www-form-urlencoded')) {
-    const text = await request.text();
-    return Object.fromEntries(new URLSearchParams(text));
-  }
-  return readJson(request);
-}
-
-/* ------------------------------ OAuth clients ------------------------------ */
-// Client = ecosystem app (jaise gothwad-chat). DB mein registered hona zaroori.
-
-class OAuthDatabaseError extends Error {
-  constructor() { super('OAuth database temporarily unavailable'); }
-}
-
-// Database failures are not "unknown client" or a successful token write.
-// Keep diagnostics generic: never expose database errors, codes, or tokens.
-async function oauthDbFetch(env: Env, path: string, init: RequestInit = {}): Promise<Response> {
-  try {
-    const res = await SB.adminFetch(env, path, init);
-    if (!res.ok) throw new OAuthDatabaseError();
-    return res;
+    return await fn();
   } catch {
     throw new OAuthDatabaseError();
   }
 }
 
-async function oauthDbRows(env: Env, path: string, init: RequestInit = {}): Promise<Record<string, any>[]> {
-  const res = await oauthDbFetch(env, path, init);
-  const rows = await res.json().catch(() => null);
-  if (!Array.isArray(rows)) throw new OAuthDatabaseError();
-  return rows;
+async function findOAuthClient(db: D1Database, clientId: string): Promise<Record<string, any> | null> {
+  if (!clientId) return null;
+  const row = await oauthQuery(() =>
+    db
+      .prepare('SELECT * FROM ecosystem_apps WHERE client_id = ? OR id = ? ORDER BY (client_id = ?) DESC LIMIT 1')
+      .bind(clientId, clientId, clientId)
+      .first(),
+  );
+  if (!row) return null;
+  return {
+    ...row,
+    redirect_uris: parseJsonStringArray(row.redirect_uris),
+    is_verified: !!row.is_verified,
+    is_core: !!row.is_core,
+  };
 }
 
-async function findOAuthClient(env: Env, clientId: string): Promise<Record<string, any> | null> {
-  // Pehle client_id se, phir id se (dono same ho sakte hain).
-  for (const col of ['client_id', 'id']) {
-    const rows = await oauthDbRows(
-      env,
-      `/rest/v1/ecosystem_apps?${col}=eq.${encodeURIComponent(clientId)}&select=*`,
-    );
-    if (rows[0]) return rows[0];
-  }
-  return null;
-}
-
-/**
- * redirect_uri check — SIRF registered URLs allowed (security!).
- * Phle exact match; DEV_MODE mein localhost URLs extra allowed (testing ke liye).
- */
 function isRedirectUriAllowed(env: Env, client: Record<string, any>, redirectUri: string): boolean {
   try {
     const u = new URL(redirectUri);
-    // OAuth callbacks cannot contain fragments or embedded credentials.
-    // Registered native schemes remain supported; never allow script/data URLs.
-    if (redirectUri.includes('#') || u.username || u.password
-      || ['javascript:', 'data:', 'file:', 'about:', 'blob:'].includes(u.protocol)) return false;
+    if (
+      redirectUri.includes('#') ||
+      u.username ||
+      u.password ||
+      ['javascript:', 'data:', 'file:', 'about:', 'blob:'].includes(u.protocol)
+    ) {
+      return false;
+    }
     const allowed: string[] = Array.isArray(client.redirect_uris) ? client.redirect_uris : [];
     if (allowed.includes(redirectUri)) return true;
-    return env.DEV_MODE === 'true' && ['http:', 'https:'].includes(u.protocol)
-      && (u.hostname === 'localhost' || u.hostname === '127.0.0.1');
+    return (
+      env.DEV_MODE === 'true' &&
+      ['http:', 'https:'].includes(u.protocol) &&
+      (u.hostname === 'localhost' || u.hostname === '127.0.0.1')
+    );
   } catch {
     return false;
   }
 }
 
-/** Same PKCE policy at authorize, consent POST, and token exchange (no bypass). */
-function pkceRequestError(client: Record<string, any>, challenge: string | null, method: string | null): string | null {
+function pkceRequestError(
+  client: Record<string, any>,
+  challenge: string | null,
+  method: string | null,
+): string | null {
   if (!challenge) {
     if (!client.secret_hash) return 'PKCE required: pass code_challenge (S256)';
     return method ? 'code_challenge is required with code_challenge_method' : null;
@@ -724,16 +1120,22 @@ function pkceRequestError(client: Record<string, any>, challenge: string | null,
   return null;
 }
 
-/** PKCE verify: RFC 7636 verifier syntax + SHA256(verifier) === challenge. */
-async function verifyPkce(verifier: string, challenge: string | null, method: string | null): Promise<boolean> {
-  if (!challenge) return true; // Caller permits this ONLY for a confidential client.
+async function verifyPkce(
+  verifier: string,
+  challenge: string | null,
+  method: string | null,
+): Promise<boolean> {
+  if (!challenge) return true;
   if (method !== 'S256' || !/^[A-Za-z0-9._~-]{43,128}$/.test(verifier)) return false;
   const computed = await sha256Base64Url(verifier);
   return computed === challenge;
 }
 
-/** Keep registered query parameters, and encode OAuth response fields safely. */
-function oauthCallbackUrl(redirectUri: string, result: { code?: string; error?: string }, state: string): string {
+function oauthCallbackUrl(
+  redirectUri: string,
+  result: { code?: string; error?: string },
+  state: string,
+): string {
   const back = new URL(redirectUri);
   for (const key of ['code', 'error', 'error_description', 'state']) back.searchParams.delete(key);
   for (const [key, value] of Object.entries(result)) back.searchParams.set(key, value);
@@ -741,51 +1143,29 @@ function oauthCallbackUrl(redirectUri: string, result: { code?: string; error?: 
   return back.toString();
 }
 
-/** Client secret check — sirf confidential clients (secret_hash set ho) ke liye. */
 async function verifyClientSecret(client: Record<string, any>, secret: string | undefined): Promise<boolean> {
-  if (!client.secret_hash) return true; // public client (PKCE se protected)
+  if (!client.secret_hash) return true;
   if (!secret) return false;
-  return (await sha256Hex(secret)) === client.secret_hash;
+  return timingSafeEqual(await sha256Hex(secret), String(client.secret_hash));
 }
 
-/** OAuth access token banao (1 ghanta valid). */
-async function issueAccessToken(env: Env, opts: {
-  userId: string; username: string; clientId: string; scopes: string[];
-}): Promise<string> {
-  const now = Math.floor(Date.now() / 1000);
-  return signJwt({
-    iss: env.AUTH_HUB_URL,          // issuer: Gothwad Accounts
-    sub: opts.userId,               // subject: user ki id
-    aud: opts.clientId,             // audience: kaunsi app
-    client_id: opts.clientId,
-    username: opts.username,
-    scope: opts.scopes.join(' '),
-    iat: now,
-    exp: now + 3600,                // 1 hour
-    jti: randomToken().slice(0, 16), // unique token id
-  }, env.JWT_SECRET || env.SUPABASE_SERVICE_ROLE_KEY);
-}
-
-/**
- * CONSENT PAGE — Worker khud render karta hai (self-contained HTML).
- * Isliye accounts site par sirf 3 routes hain: /signin, /signup, /me.
- * Allow/Deny button /oauth/decision ko call karta hai, phir app par redirect.
- */
 function consentPageHtml(
   env: Env,
   client: Record<string, any>,
-  authUser: Record<string, any>,
+  authUser: SessionUser,
   profile: Record<string, any> | null,
   params: URLSearchParams,
   authorizeUrl?: string,
 ): Response {
-  const esc = (s: any) => String(s ?? '').replace(/[&<>"']/g, (c) =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+  const esc = (s: any) =>
+    String(s ?? '').replace(
+      /[&<>"']/g,
+      (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!),
+    );
 
-  // User ki identity (profile se, fallback auth metadata se)
-  const username = profile?.username || authUser.user_metadata?.username || String(authUser.email || '').split('@')[0] || 'user';
-  const firstName = profile?.first_name || authUser.user_metadata?.first_name || '';
-  const lastName = profile?.last_name || authUser.user_metadata?.last_name || '';
+  const username = profile?.username || authUser.username || 'user';
+  const firstName = profile?.first_name || '';
+  const lastName = profile?.last_name || '';
   const displayName = `${firstName} ${lastName}`.trim() || username;
   const initials = ((firstName[0] || username[0] || '?') + (lastName[0] || '')).toUpperCase();
 
@@ -794,12 +1174,16 @@ function consentPageHtml(
     notes: '📝', chat: '💬', offline_access: '🕐',
   };
   const scopes = parseScopes(params.get('scope') || '');
-  const scopeItems = scopes.map((s) => `
+  const scopeItems = scopes
+    .map(
+      (s) => `
     <div class="scope">
       <div class="scope-icon">${scopeIcons[s] || '🔑'}</div>
       <div><div class="scope-name">${esc(s)}</div>
       <div class="scope-desc">${esc(OAUTH_SCOPES[s] || '')}</div></div>
-    </div>`).join('');
+    </div>`,
+    )
+    .join('');
 
   const data = {
     client_id: params.get('client_id') || '',
@@ -817,7 +1201,6 @@ function consentPageHtml(
 <title>Authorize — Gothwad</title>
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet" />
 <style>
-  /* Google-style light consent screen (dark mode prefers-color-scheme se) */
   * { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
     --bg: #ffffff; --card: #ffffff; --text: #202124; --muted: #5f6368;
@@ -902,9 +1285,6 @@ function consentPageHtml(
     const btn = document.getElementById(approved ? 'allow' : 'deny');
     btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> ' + (approved ? 'Authorizing…' : 'Denying…');
     try {
-      // Absolute path use karo "/api/oauth/decision" — "/oauth/decision" bina /api ke
-      // Worker tak nahi pahunchta jab Worker sirf accounts.gothwadtech.com/api/* par ho.
-      // Router "/api" prefix strip kar deta hai, isliye yeh api.* domain par bhi chalta hai.
       const res = await fetch('/api/oauth/decision', {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -931,8 +1311,9 @@ function consentPageHtml(
 }
 
 // -----------------------------------------------------------------------------
-// Resend — password reset email bhejne ke liye (free: 3000 emails/month)
+// Outbound Password-Reset Email (Resend API — 3,000 free/month)
 // -----------------------------------------------------------------------------
+
 async function sendResetEmail(env: Env, toEmail: string, resetLink: string): Promise<boolean> {
   if (!env.RESEND_API_KEY) return false;
 
@@ -945,7 +1326,7 @@ async function sendResetEmail(env: Env, toEmail: string, resetLink: string): Pro
       <h2 style="font-size:20px;font-weight:400;margin:0 0 16px;">Reset your password</h2>
       <p style="font-size:14px;line-height:1.6;color:#5f6368;margin:0 0 24px;">
         Hi, we received a request to reset the password for your Gothwad Account.
-        Click the button below and set a new password within 30 minutes.
+        Click the button below and set a new password within 15 minutes.
       </p>
       <p style="text-align:center;margin:0 0 24px;">
         <a href="${resetLink}" style="display:inline-block;background:#1a73e8;color:#ffffff;padding:12px 28px;border-radius:100px;text-decoration:none;font-weight:500;font-size:14px;">Reset password</a>
@@ -957,25 +1338,30 @@ async function sendResetEmail(env: Env, toEmail: string, resetLink: string): Pro
       <p style="font-size:11px;color:#9aa0a6;margin:0;">Gothwad Tech · This is an automated security email.</p>
     </div>`;
 
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${env.RESEND_API_KEY}`,
-    },
-    body: JSON.stringify({
-      from,
-      to: [toEmail],
-      subject: 'Reset your Gothwad Account password',
-      html,
-    }),
-  });
-  return res.ok;
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${env.RESEND_API_KEY}`,
+      },
+      body: JSON.stringify({
+        from,
+        to: [toEmail],
+        subject: 'Reset your Gothwad Account password',
+        html,
+      }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
 
 // =============================================================================
-// MAIN ROUTER
+// MAIN WORKER ROUTER
 // =============================================================================
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -983,30 +1369,23 @@ export default {
     const route = pathname.startsWith('/api') ? pathname.slice(4) : pathname;
 
     // =========================================================================
-    // INTERNAL ENDPOINT — server-to-server only (Mail → Accounts)
-    // GET /api/internal/usernames/:username  (route = /internal/usernames/:username)
-    // No CORS, no cookies, Cache-Control: no-store, constant-time auth.
+    // 1. INTERNAL ENDPOINT — Server-to-Server Only (Mail -> Accounts)
+    //    GET /api/internal/usernames/:username
+    //    No CORS, no cookies, Cache-Control: no-store, timing-safe auth.
     // =========================================================================
     if (route.startsWith('/internal/usernames/')) {
-      // Only GET allowed — cheap 405 for other methods, no CORS, no cookies.
       if (request.method !== 'GET') {
         console.log('[internal/usernames] status=405');
         return internalJson({ error: 'method_not_allowed' }, 405);
       }
 
-      // --- Auth: Authorization: Bearer <MAIL_INTERNAL_TOKEN> ---
       const authHeader = request.headers.get('Authorization') || '';
-      const bearerPrefix = 'Bearer ';
-      let providedToken = '';
-      if (authHeader.startsWith(bearerPrefix)) {
-        providedToken = authHeader.slice(bearerPrefix.length).trim();
-      }
+      const providedToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
 
       if (!env.MAIL_INTERNAL_TOKEN) {
         console.error('[internal/usernames] MAIL_INTERNAL_TOKEN not configured');
         return internalJson({ error: 'server_not_configured' }, 500);
       }
-
       if (!providedToken) {
         console.log('[internal/usernames] status=401 (missing token)');
         return internalJson({ error: 'unauthorized' }, 401);
@@ -1018,72 +1397,50 @@ export default {
       } catch {
         authorized = false;
       }
-
       if (!authorized) {
         console.log('[internal/usernames] status=401 (bad token)');
         return internalJson({ error: 'unauthorized' }, 401);
       }
 
-      // --- Extract and normalise username ---
-      const prefix = '/internal/usernames/';
-      let rawUsername = route.slice(prefix.length);
-
-      // If there is an extra slash (e.g. /internal/usernames/foo/bar), treat as bad_username
-      // Username regex does not allow '/', so we check before decode for simplicity.
-      // But we still decode first to handle encoded chars.
+      let rawUsername = route.slice('/internal/usernames/'.length);
       try {
         rawUsername = decodeURIComponent(rawUsername);
       } catch {
-        console.log('[internal/usernames] status=400 (bad encoding)');
         return internalJson({ error: 'bad_username' }, 400);
       }
 
-      // Normalise: trim() + toLowerCase() — usernames are stored lowercase.
       const normalised = rawUsername.trim().toLowerCase();
-
-      // Validate format BEFORE any DB call — allowed: ^[a-z0-9][a-z0-9._-]{0,63}$
-      const INTERNAL_USERNAME_REGEX = /^[a-z0-9][a-z0-9._-]{0,63}$/;
-      if (!INTERNAL_USERNAME_REGEX.test(normalised)) {
-        console.log('[internal/usernames] status=400');
+      if (!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(normalised)) {
         return internalJson({ error: 'bad_username' }, 400);
       }
 
-      // --- DB check: does profiles row exist? ---
       try {
-        const res = await SB.adminFetch(
-          env,
-          `/rest/v1/profiles?username=eq.${encodeURIComponent(normalised)}&select=id`,
-        );
-        if (!res.ok) {
-          const errBody = await res.text().catch(() => '');
-          console.error(`[internal/usernames] DB error: ${res.status} ${errBody.slice(0, 200)}`);
-          return internalJson({ error: 'internal_error' }, 500);
-        }
-        const rows = (await res.json()) as unknown[];
-        const exists = Array.isArray(rows) && rows.length > 0;
-        // Do not log username — only status and counts (per spec).
+        const db = await getDb(env);
+        const row = await db
+          .prepare('SELECT id FROM users WHERE username = ? LIMIT 1')
+          .bind(normalised)
+          .first();
+        const exists = !!row?.id;
         console.log(`[internal/usernames] status=200 exists=${exists}`);
         return internalJson({ exists }, 200);
       } catch (e) {
-        console.error('[internal/usernames] exception', e);
+        console.error('[internal/usernames] DB exception', e);
         return internalJson({ error: 'internal_error' }, 500);
       }
     }
 
     const corsHeaders = buildCorsHeaders(request, env);
 
-    // CORS preflight
+    // CORS Preflight
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: corsHeaders });
     }
 
-    // Har JSON response par CORS headers lagao
     let oauthCookies: string[] = [];
     const withCors = (res: Response, newCookies: string[] = oauthCookies): Response => {
       corsHeaders.forEach((v, k) => res.headers.set(k, v));
       for (const cookie of newCookies) res.headers.append('Set-Cookie', cookie);
       if (route.startsWith('/oauth/')) {
-        // Consent contains identity/state; token and callback responses are private too.
         res.headers.set('Cache-Control', 'no-store');
         res.headers.set('Pragma', 'no-cache');
       }
@@ -1091,13 +1448,110 @@ export default {
     };
 
     try {
-      // -------------------------------------------------------------- health
-      if (route === '/health' && request.method === 'GET') {
-        return withCors(json({ status: 'ok', service: 'gothwad-auth-api', time: new Date().toISOString() }));
+      // =======================================================================
+      // 2. PUBLIC AVATAR DELIVERY — D1 / R2 + Cloudflare Global Edge Cache
+      //    GET /api/avatars/:userId (or /avatars/:userId)
+      // =======================================================================
+      if (route.startsWith('/avatars/') && request.method === 'GET') {
+        const userId = decodeURIComponent(route.slice('/avatars/'.length)).trim();
+        if (!userId || userId.includes('/')) {
+          return withCors(apiError('Not found', 404));
+        }
+
+        // Check Cloudflare Edge Cache first (safe in both Workers runtime and Node local preview!)
+        const edgeCache: Cache | undefined =
+          typeof caches !== 'undefined' ? (caches as unknown as { default?: Cache })?.default : undefined;
+        const cacheKey = new Request(url.toString(), { method: 'GET' });
+        if (edgeCache) {
+          const cached = await edgeCache.match(cacheKey).catch(() => undefined);
+          if (cached) {
+            const clientEtag = request.headers.get('If-None-Match');
+            if (clientEtag && clientEtag === cached.headers.get('ETag')) {
+              return new Response(null, { status: 304, headers: cached.headers });
+            }
+            return cached;
+          }
+        }
+
+        let bodyBytes: Uint8Array | null = null;
+        let mimeType = 'image/jpeg';
+        let etag = '';
+
+        if (env.AVATARS_BUCKET) {
+          const obj = await env.AVATARS_BUCKET.get(`avatars/${userId}`);
+          if (obj) {
+            bodyBytes = new Uint8Array(await obj.arrayBuffer());
+            mimeType = obj.httpMetadata?.contentType || 'image/jpeg';
+            etag = obj.httpEtag || `"${(await sha256Hex(bodyBytes)).slice(0, 16)}"`;
+          }
+        }
+
+        if (!bodyBytes) {
+          const db = await getDb(env);
+          const row = await db
+            .prepare('SELECT mime_type, data, etag FROM user_avatars WHERE user_id = ? LIMIT 1')
+            .bind(userId)
+            .first();
+          if (row?.data) {
+            bodyBytes =
+              row.data instanceof Uint8Array
+                ? row.data
+                : row.data instanceof ArrayBuffer
+                  ? new Uint8Array(row.data)
+                  : Uint8Array.from(row.data as Iterable<number>);
+            mimeType = String(row.mime_type || 'image/jpeg');
+            etag = `"${String(row.etag || '')}"`;
+          }
+        }
+
+        if (!bodyBytes) {
+          return withCors(apiError('Avatar not found', 404));
+        }
+
+        const headers = new Headers({
+          'Content-Type': mimeType,
+          ETag: etag,
+          'Cache-Control': url.searchParams.has('v')
+            ? 'public, max-age=31536000, immutable'
+            : 'public, max-age=3600',
+          'Cross-Origin-Resource-Policy': 'cross-origin',
+        });
+
+        if (request.headers.get('If-None-Match') === etag) {
+          return withCors(new Response(null, { status: 304, headers }));
+        }
+
+        const response = withCors(new Response(bodyBytes as unknown as BodyInit, { status: 200, headers }));
+        if (edgeCache && url.searchParams.has('v')) {
+          await edgeCache.put(cacheKey, response.clone()).catch(() => undefined);
+        }
+        return response;
       }
 
-      // ------------------------------------------------- check-username (GET)
-      // Signup page live check karta hai: username available hai ya nahi.
+      // -------------------------------------------------------------- /health
+      if (route === '/health' && request.method === 'GET') {
+        const db = await getDb(env);
+        const [tableRow, appRow] = await Promise.all([
+          db.prepare("SELECT COUNT(*) AS cnt FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'").first<{ cnt: number }>(),
+          db.prepare("SELECT COUNT(*) AS cnt FROM ecosystem_apps WHERE redirect_uris != '[]'").first<{ cnt: number }>(),
+        ]);
+        return withCors(
+          json({
+            status: 'ok',
+            service: 'gothwad-auth-api',
+            engine: 'cloudflare-d1-native',
+            tables: Number(tableRow?.cnt ?? 0),
+            oauth_apps: Number(appRow?.cnt ?? 0),
+            time: new Date().toISOString(),
+          }),
+        );
+      }
+
+      const db = route.startsWith('/oauth/')
+        ? await oauthQuery(() => getDb(env))
+        : await getDb(env);
+
+      // ------------------------------------------------- /auth/check-username
       if (route === '/auth/check-username' && request.method === 'GET') {
         const username = (url.searchParams.get('username') || '').toLowerCase().trim();
         if (!username || !isValidUsername(username)) {
@@ -1107,41 +1561,22 @@ export default {
           return withCors(json({ available: false, valid: true, error: 'This username is reserved' }));
         }
 
-        // DB mein check — service_role se (RLS bypass; yeh Worker trusted hai)
-        const res = await SB.adminFetch(
-          env,
-          `/rest/v1/profiles?username=eq.${encodeURIComponent(username)}&select=id`,
-        );
-        // Agar Supabase ne error diya (galat key, network, etc.) to "taken" NAHI
-        // dikhana — galat jawab se signup page har naam ko taken bata deti hai.
-        if (!res.ok) {
-          const errBody = await res.text().catch(() => '');
-          console.error(`[check-username] Supabase admin call failed: ${res.status} ${errBody.slice(0, 300)}`);
-          // DIAGNOSTIC: Worker ko service key dikh rahi hai ya nahi? (sirf length — value kabhi log nahi hoti)
-          const skLen = (env.SUPABASE_SERVICE_ROLE_KEY || '').trim().length;
-          console.error(`[check-username] service key status -> present: ${skLen > 0}, length: ${skLen}`);
-          // Phone-debug ke liye: response mein bhi Supabase ka status + short message.
-          // (Ye generic auth error hai — koi secret nahi, safe to show.)
-          let supaMsg = errBody.slice(0, 150);
-          try {
-            const parsed = JSON.parse(errBody);
-            if (parsed && typeof parsed.message === 'string') supaMsg = parsed.message.slice(0, 150);
-          } catch { /* body JSON nahi thi — raw text hi dikhayenge */ }
-          return withCors(json({
-            available: false,
-            valid: true,
-            error: 'Server database error',
-            debug: { supabase_status: res.status, supabase_error: supaMsg },
-          }, 503));
-        }
-        const rows = (await res.json()) as Record<string, any>[];
-        const available = Array.isArray(rows) && rows.length === 0;
+        const row = await db
+          .prepare('SELECT id FROM users WHERE username = ? LIMIT 1')
+          .bind(username)
+          .first();
 
-        return withCors(json({ available, valid: true, username, email: `${username}@${env.APP_DOMAIN}` }));
+        return withCors(
+          json({
+            available: !row,
+            valid: true,
+            username,
+            email: `${username}@${env.APP_DOMAIN}`,
+          }),
+        );
       }
 
-      // ------------------------------------------- check-identifier (GET/POST)
-      // Sign-in Next: account exist karta hai? Password step isi ke baad.
+      // ----------------------------------------------- /auth/check-identifier
       if (route === '/auth/check-identifier' && (request.method === 'GET' || request.method === 'POST')) {
         let raw = (url.searchParams.get('identifier') || '').trim();
         if (request.method === 'POST') {
@@ -1151,29 +1586,37 @@ export default {
         if (!raw) {
           return withCors(apiError('Please enter your username, email or phone number.', 400));
         }
+
         const appDomain = (env.APP_DOMAIN || 'gothwadtech.com').toLowerCase();
-        if (!identifierLooksLikePhone(raw) && raw.includes('@') && !raw.toLowerCase().endsWith(`@${appDomain}`)) {
-          return withCors(json({
-            exists: false,
-            error: `Only @${appDomain} suffix is allowed.`,
-            isThirdParty: true,
-          }, 400));
+        if (
+          !identifierLooksLikePhone(raw) &&
+          raw.includes('@') &&
+          !raw.toLowerCase().endsWith(`@${appDomain}`)
+        ) {
+          return withCors(
+            json(
+              {
+                exists: false,
+                error: `Only @${appDomain} suffix is allowed.`,
+                isThirdParty: true,
+              },
+              400,
+            ),
+          );
         }
-        const found = await lookupAccount(env, raw);
+
+        const found = await lookupAccount(db, raw);
         if (!found.exists) {
-          const msg = found.kind === 'phone'
-            ? "This phone number isn't registered with Gothwad Accounts."
-            : "This username doesn't exist. Check the spelling, or create a new account.";
+          const msg =
+            found.kind === 'phone'
+              ? "This phone number isn't registered with Gothwad Accounts."
+              : "This username doesn't exist. Check the spelling, or create a new account.";
           return withCors(json({ exists: false, error: msg }));
         }
         return withCors(json({ exists: true, kind: found.kind }));
       }
 
-      // ---------------------------------------------------------- signup
-      // Naya Gothwad Account banao.
-      // Flow: validate → username free? → Supabase auth user banao (email_confirm
-      // true, kyunki @APP_DOMAIN mail abhi live nahi) → trigger profile banata
-      // hai → turant session cookies set kar dete hain (auto login!).
+      // --------------------------------------------------------- /auth/signup
       if (route === '/auth/signup' && request.method === 'POST') {
         const body = await readJson(request);
         const firstName = String(body.first_name || '').trim();
@@ -1182,9 +1625,9 @@ export default {
         const password = String(body.password || '');
         const recoveryEmail = String(body.recovery_email || '').toLowerCase().trim();
         const phoneNumber = String(body.phone_number || '').trim();
-        // Google-style personal info (optional):
         const dobRaw = String(body.date_of_birth || '').trim();
         const gender = String(body.gender || '').trim();
+        const remember = body.remember !== false;
 
         if (!firstName || !lastName) return withCors(apiError('First and last name are required'));
         if (!isValidUsername(username)) {
@@ -1192,173 +1635,100 @@ export default {
         }
         if (RESERVED_USERNAMES.has(username)) return withCors(apiError('This username is reserved'));
         if (password.length < 8) return withCors(apiError('Password must be at least 8 characters'));
+        if (password.length > 128) return withCors(apiError('Password must be at most 128 characters'));
         if (!isValidEmail(recoveryEmail)) return withCors(apiError('A valid recovery email is required'));
-        // DOB validation: 'YYYY-MM-DD' aur aaj se pehle ki date honi chahiye
-        let dobOk = true;
+
         if (dobRaw) {
           const d = new Date(dobRaw);
-          dobOk = /^\d{4}-\d{2}-\d{2}$/.test(dobRaw) && !isNaN(d.getTime()) && d < new Date();
+          const dobOk = /^\d{4}-\d{2}-\d{2}$/.test(dobRaw) && !isNaN(d.getTime()) && d < new Date();
+          if (!dobOk) return withCors(apiError('Date of birth must be a valid past date (YYYY-MM-DD)'));
         }
-        if (!dobOk) return withCors(apiError('Date of birth must be a valid past date (YYYY-MM-DD)'));
         if (gender && !GENDER_VALUES.includes(gender)) {
           return withCors(apiError('Gender must be one of: ' + GENDER_VALUES.join(', ')));
         }
 
-        // Username pehle se liya hua hai?
-        const existing = await SB.adminFetch(
-          env,
-          `/rest/v1/profiles?username=eq.${encodeURIComponent(username)}&select=id`,
-        );
-        const existingRows = (await existing.json()) as Record<string, any>[];
-        if (Array.isArray(existingRows) && existingRows.length > 0) {
+        const existing = await db
+          .prepare('SELECT id FROM users WHERE username = ? LIMIT 1')
+          .bind(username)
+          .first();
+        if (existing) {
           return withCors(apiError('This username is already taken', 409));
         }
 
-        // Supabase Auth mein user banao (service_role = admin power).
-        // email_confirm: true → user ko confirmation email ki zaroorat nahi
-        // (custom @APP_DOMAIN mail abhi bana nahi, isliye smart choice).
-        const createRes = await SB.adminFetch(env, '/auth/v1/admin/users', {
-          method: 'POST',
-          body: JSON.stringify({
-            email: `${username}@${env.APP_DOMAIN}`, // derived email (Rule #2)
-            password,
-            email_confirm: true,
-            user_metadata: {
-              username,
-              first_name: firstName,
-              last_name: lastName,
-              recovery_email: recoveryEmail,
-              phone_number: phoneNumber || null,
-              date_of_birth: dobRaw || null,
-              gender: gender || null,
-            },
-          }),
-        });
-
-        if (!createRes.ok) {
-          const err = (await createRes.json()) as Record<string, any>;
-          const msg = err?.msg || err?.message || 'Could not create account';
-          return withCors(apiError(msg, 400));
-        }
-
-        // Trigger ne profile bana diya. Login session bhi bana dete hain.
-        const loginRes = await fetch(SB.authUrl(env, '/token?grant_type=password'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', apikey: env.SUPABASE_ANON_KEY },
-          body: JSON.stringify({ email: `${username}@${env.APP_DOMAIN}`, password }),
-        });
-        const login = (await loginRes.json()) as Record<string, any>;
-
-        if (!loginRes.ok) {
-          // Account ban gaya, login fail hua → user manually login karega
-          return withCors(json({ ok: true, needs_signin: true, username }));
-        }
-
-        // Device session row (dashboard ke Security tab ke liye)
+        const userId = crypto.randomUUID();
+        const sessionId = crypto.randomUUID();
+        const nowIso = new Date().toISOString();
+        const passwordHash = await hashPassword(password);
+        const rawRefresh = randomToken();
+        const refreshHash = await sha256Hex(rawRefresh);
+        const refreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS).toISOString();
         const ua = parseUserAgent(request.headers.get('User-Agent') || '');
-        const sessRes = await SB.adminFetch(env, '/rest/v1/user_sessions', {
-          method: 'POST',
-          headers: { Prefer: 'return=representation' },
-          body: JSON.stringify({
-            user_id: login.user.id,
-            device_name: ua.device_name,
-            browser: ua.browser,
-            os: ua.os,
-            ip_address: request.headers.get('CF-Connecting-IP') || '',
-            remember_me: body.remember !== false,
-            is_current: true,
-          }),
-        });
-        const sessRows = (await sessRes.json()) as Record<string, any>[];
-        const sessionId = sessRows?.[0]?.id || null;
 
-        const profile = await fetchProfile(env, login.user.id);
-        await logActivity(env, login.user.id, 'signup', 'Account created', `Welcome to Gothwad, ${firstName}!`, request);
+        try {
+          await db.batch([
+            db
+              .prepare(
+                `INSERT INTO users (id, username, password_hash, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?)`,
+              )
+              .bind(userId, username, passwordHash, nowIso, nowIso),
+            db
+              .prepare(
+                `INSERT INTO profiles (
+                   id, username, first_name, last_name, recovery_email, phone_number,
+                   date_of_birth, gender, created_at, updated_at
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              )
+              .bind(
+                userId,
+                username,
+                firstName,
+                lastName,
+                recoveryEmail,
+                phoneNumber || null,
+                dobRaw || null,
+                gender || null,
+                nowIso,
+                nowIso,
+              ),
+            db
+              .prepare(
+                `INSERT INTO user_sessions (
+                   id, user_id, device_name, browser, os, ip_address, remember_me, last_active, is_current, created_at
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+              )
+              .bind(
+                sessionId,
+                userId,
+                ua.device_name,
+                ua.browser,
+                ua.os,
+                request.headers.get('CF-Connecting-IP') || '',
+                remember ? 1 : 0,
+                nowIso,
+                nowIso,
+              ),
+            db
+              .prepare(
+                `INSERT INTO auth_refresh_tokens (token_hash, user_id, session_id, expires_at, revoked, created_at)
+                 VALUES (?, ?, ?, ?, 0, ?)`,
+              )
+              .bind(refreshHash, userId, sessionId, refreshExpiresAt, nowIso),
+          ]);
+        } catch (err: any) {
+          if (String(err?.message || '').toLowerCase().includes('unique')) {
+            return withCors(apiError('This username is already taken', 409));
+          }
+          throw err;
+        }
+
+        const accessToken = await issueSessionAccessToken(env, { userId, username, sessionId });
+        const profile = await fetchProfile(db, userId);
+        await logActivity(db, userId, 'signup', 'Account created', `Welcome to Gothwad, ${firstName}!`, request);
+
         const cookies = sessionCookies(request, env, {
-          access_token: login.access_token,
-          refresh_token: login.refresh_token,
-          session_id: sessionId,
-          remember: body.remember !== false,
-        });
-
-        return withCors(
-          json(
-            {
-              ok: true,
-              user: presentUser(profile, login.user, env),
-              // Hybrid auth: cookies SET hote hain + tokens body mein bhi
-              // (iframe/webview mein third-party cookies block hote hain —
-              //  wahan frontend in tokens ko sessionStorage mein rakhta hai)
-              access_token: login.access_token,
-              refresh_token: login.refresh_token,
-              session_id: sessionId,
-            },
-            201,
-            cookies.map((c) => ['Set-Cookie', c] as [string, string]),
-          ),
-        );
-      }
-
-      // ---------------------------------------------------------- signin
-      // Identifier = username, full email, ya phone number, sab chalte hain.
-      if (route === '/auth/signin' && request.method === 'POST') {
-        const body = await readJson(request);
-        const rawIdentifier = String(body.identifier || '').trim();
-        const password = String(body.password || '');
-        const remember = body.remember === true;
-
-        if (!rawIdentifier || !password) return withCors(apiError('Username, email or phone and password are required'));
-
-        const appDomain = (env.APP_DOMAIN || 'gothwadtech.com').toLowerCase();
-        if (!identifierLooksLikePhone(rawIdentifier) && rawIdentifier.includes('@') && !rawIdentifier.toLowerCase().endsWith(`@${appDomain}`)) {
-          return withCors(apiError(`Only @${appDomain} suffix is allowed.`, 400));
-        }
-
-        const found = await lookupAccount(env, rawIdentifier);
-        if (!found.exists) {
-          const msg = found.kind === 'phone'
-            ? "This phone number isn't registered with Gothwad Accounts."
-            : "This username doesn't exist. Check the spelling, or create a new account.";
-          return withCors(apiError(msg, 404));
-        }
-
-        const email = found.email;
-
-        const authRes = await fetch(SB.authUrl(env, '/token?grant_type=password'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', apikey: env.SUPABASE_ANON_KEY },
-          body: JSON.stringify({ email, password }),
-        });
-        const auth = (await authRes.json()) as Record<string, any>;
-
-        if (!authRes.ok) {
-          return withCors(apiError('Incorrect password. Try again or use Forgot password.', 401));
-        }
-
-        // Device session row banao
-        const ua = parseUserAgent(request.headers.get('User-Agent') || '');
-        const sessRes = await SB.adminFetch(env, '/rest/v1/user_sessions', {
-          method: 'POST',
-          headers: { Prefer: 'return=representation' },
-          body: JSON.stringify({
-            user_id: auth.user.id,
-            device_name: ua.device_name,
-            browser: ua.browser,
-            os: ua.os,
-            ip_address: request.headers.get('CF-Connecting-IP') || '',
-            remember_me: remember,
-            is_current: true,
-          }),
-        });
-        const sessRows = (await sessRes.json()) as Record<string, any>[];
-        const sessionId = sessRows?.[0]?.id || null;
-
-        const profile = await fetchProfile(env, auth.user.id);
-        // Activity feed: "Signed in — Chrome on Windows" (Google-style)
-        await logActivity(env, auth.user.id, 'signin', 'Signed in', `${ua.browser} on ${ua.os || 'unknown OS'}`, request);
-        const cookies = sessionCookies(request, env, {
-          access_token: auth.access_token,
-          refresh_token: auth.refresh_token,
+          access_token: accessToken,
+          refresh_token: rawRefresh,
           session_id: sessionId,
           remember,
         });
@@ -1367,10 +1737,113 @@ export default {
           json(
             {
               ok: true,
-              user: presentUser(profile, auth.user, env),
-              // Hybrid auth: cookies SET + tokens body mein (iframe/webview safe)
-              access_token: auth.access_token,
-              refresh_token: auth.refresh_token,
+              user: presentUser(profile, env),
+              access_token: accessToken,
+              refresh_token: rawRefresh,
+              session_id: sessionId,
+            },
+            201,
+            cookies.map((c) => ['Set-Cookie', c] as [string, string]),
+          ),
+        );
+      }
+
+      // --------------------------------------------------------- /auth/signin
+      if (route === '/auth/signin' && request.method === 'POST') {
+        const body = await readJson(request);
+        const rawIdentifier = String(body.identifier || '').trim();
+        const password = String(body.password || '');
+        const remember = body.remember === true;
+
+        if (!rawIdentifier || !password) {
+          return withCors(apiError('Username, email or phone and password are required'));
+        }
+
+        const appDomain = (env.APP_DOMAIN || 'gothwadtech.com').toLowerCase();
+        if (
+          !identifierLooksLikePhone(rawIdentifier) &&
+          rawIdentifier.includes('@') &&
+          !rawIdentifier.toLowerCase().endsWith(`@${appDomain}`)
+        ) {
+          return withCors(apiError(`Only @${appDomain} suffix is allowed.`, 400));
+        }
+
+        const found = await lookupAccount(db, rawIdentifier);
+        if (!found.exists) {
+          const msg =
+            found.kind === 'phone'
+              ? "This phone number isn't registered with Gothwad Accounts."
+              : "This username doesn't exist. Check the spelling, or create a new account.";
+          return withCors(apiError(msg, 404));
+        }
+
+        const validPassword = await verifyPassword(password, found.passwordHash);
+        if (!validPassword) {
+          return withCors(apiError('Incorrect password. Try again or use Forgot password.', 401));
+        }
+
+        const sessionId = crypto.randomUUID();
+        const nowIso = new Date().toISOString();
+        const rawRefresh = randomToken();
+        const refreshHash = await sha256Hex(rawRefresh);
+        const refreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS).toISOString();
+        const ua = parseUserAgent(request.headers.get('User-Agent') || '');
+
+        await db.batch([
+          db
+            .prepare(
+              `INSERT INTO user_sessions (
+                 id, user_id, device_name, browser, os, ip_address, remember_me, last_active, is_current, created_at
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+            )
+            .bind(
+              sessionId,
+              found.userId,
+              ua.device_name,
+              ua.browser,
+              ua.os,
+              request.headers.get('CF-Connecting-IP') || '',
+              remember ? 1 : 0,
+              nowIso,
+              nowIso,
+            ),
+          db
+            .prepare(
+              `INSERT INTO auth_refresh_tokens (token_hash, user_id, session_id, expires_at, revoked, created_at)
+               VALUES (?, ?, ?, ?, 0, ?)`,
+            )
+            .bind(refreshHash, found.userId, sessionId, refreshExpiresAt, nowIso),
+        ]);
+
+        const accessToken = await issueSessionAccessToken(env, {
+          userId: found.userId,
+          username: found.username,
+          sessionId,
+        });
+        const profile = await fetchProfile(db, found.userId);
+        await logActivity(
+          db,
+          found.userId,
+          'signin',
+          'Signed in',
+          `${ua.browser} on ${ua.os || 'unknown OS'}`,
+          request,
+        );
+
+        const cookies = sessionCookies(request, env, {
+          access_token: accessToken,
+          refresh_token: rawRefresh,
+          session_id: sessionId,
+          remember,
+        });
+
+        return withCors(
+          json(
+            {
+              ok: true,
+              user: presentUser(profile, env),
+              access_token: accessToken,
+              refresh_token: rawRefresh,
               session_id: sessionId,
             },
             200,
@@ -1379,80 +1852,74 @@ export default {
         );
       }
 
-      // ---------------------------------------------------------- signout
+      // -------------------------------------------------------- /auth/signout
       if (route === '/auth/signout' && request.method === 'POST') {
-        // Hybrid auth: headers (token) ya cookies — dono se signout chalta hai.
-        // resolveSession auto-refresh bhi kar sakta hai, taaki expired access
-        // ke saath bhi refresh-token family properly revoke ho.
-        const session = await resolveSession(request, env);
+        const session = await resolveSession(request, db, env);
+        const body = await readJson(request);
+        const sessionId =
+          String(body.session_id || '') ||
+          session.authUser?.sessionId ||
+          getCookie(request, 'gothwad_sid');
+        const rawRefresh =
+          (request.headers.get('X-Gothwad-Refresh') || '').trim() || getCookie(request, 'gothwad_rt');
 
-        if (session.ok && session.accessToken) {
-          // Supabase side poora token family revoke karo
-          await fetch(SB.authUrl(env, '/logout'), {
-            method: 'POST',
-            headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${session.accessToken}` },
-          }).catch(() => undefined);
-          // Activity feed (best-effort)
-          await logActivity(env, session.authUser!.id, 'signout', 'Signed out', undefined, request);
+        if (rawRefresh) {
+          const refreshHash = await sha256Hex(rawRefresh);
+          await db
+            .prepare('UPDATE auth_refresh_tokens SET revoked = 1 WHERE token_hash = ?')
+            .bind(refreshHash)
+            .run()
+            .catch(() => undefined);
         }
 
-        // Device session row hatao (frontend body mein session_id bhejta hai,
-        // fallback: gothwad_sid cookie)
-        const body = await readJson(request);
-        const sessionId = String(body.session_id || '') || getCookie(request, 'gothwad_sid');
-        if (sessionId && session.ok) {
-          // user_id guard: user sirf APNA session row delete kar sake
-          await SB.adminFetch(
-            env,
-            `/rest/v1/user_sessions?id=eq.${encodeURIComponent(sessionId)}&user_id=eq.${encodeURIComponent(session.authUser!.id)}`,
-            { method: 'DELETE' },
-          ).catch(() => undefined);
+        if (session.ok && session.authUser) {
+          if (sessionId) {
+            await db
+              .prepare('DELETE FROM user_sessions WHERE id = ? AND user_id = ?')
+              .bind(sessionId, session.authUser.id)
+              .run()
+              .catch(() => undefined);
+          }
+          await logActivity(db, session.authUser.id, 'signout', 'Signed out', undefined, request);
         }
 
         return withCors(
-          json({ ok: true, message: 'Signed out' }, 200, clearCookies(request, env).map((c) => ['Set-Cookie', c] as [string, string])),
+          json(
+            { ok: true, message: 'Signed out' },
+            200,
+            clearCookies(request, env).map((c) => ['Set-Cookie', c] as [string, string]),
+          ),
         );
       }
 
-      // ------------------------------------------------------- session (me)
-      // Frontend page-load par call karta hai: "logged-in hoon kya?"
-      // Access token expire ho to automatically refresh ho jaata hai.
+      // ------------------------------------------------------------- /auth/me
       if (route === '/auth/me' && request.method === 'GET') {
-        const session = await resolveSession(request, env);
-        if (!session.ok) {
-          // Browser (accounts. host) ka contract unchanged: 200 {authenticated:false}.
-          // Server-to-server API host par: 401 JSON (Mail jaise callers 200/3xx ko "ok" na samjhein).
+        const session = await resolveSession(request, db, env);
+        if (!session.ok || !session.authUser) {
           const status = isApiHost(request, env) ? 401 : 200;
           return withCors(
-            json({ authenticated: false }, status, clearCookies(request, env).map((c) => ['Set-Cookie', c] as [string, string])),
+            json(
+              { authenticated: false },
+              status,
+              clearCookies(request, env).map((c) => ['Set-Cookie', c] as [string, string]),
+            ),
           );
         }
 
-        // Profile load karo. REST fail ho to 503 (401 nahi — user signed-in hai,
-        // sirf data nahi mila). Profile row missing ho to JWT ke user_metadata.username
-        // se fallback karo, taaki username khaali na jaaye (Mail usse 401 deta tha).
-        const authUser = session.authUser!;
-        const profRes = await SB.adminFetch(
-          env,
-          `/rest/v1/profiles?id=eq.${encodeURIComponent(authUser.id)}&select=*`,
-        );
-        if (!profRes.ok) {
-          return withCors(json({ error: 'profile_unavailable', message: 'Profile could not be loaded. Try again.' }, 503));
-        }
-        const profRows = (await profRes.json().catch(() => null)) as Record<string, any>[] | null;
-        const profile = Array.isArray(profRows) && profRows[0] ? profRows[0] : null;
-        const metaUsername = String(authUser.user_metadata?.username || '').trim().toLowerCase();
-        const username = profile?.username || metaUsername;
+        const profile = await fetchProfile(db, session.authUser.id);
+        const username = profile?.username || session.authUser.username;
         if (!username) {
-          return withCors(json({ error: 'profile_unavailable', message: 'Account username is missing. Contact support.' }, 503));
+          return withCors(
+            json({ error: 'profile_unavailable', message: 'Account username is missing. Contact support.' }, 503),
+          );
         }
-        const profileWithUsername = { ...(profile || {}), id: profile?.id || authUser.id, username };
-
+        const profileWithUsername = { ...(profile || {}), id: session.authUser.id, username };
         const headers: [string, string][] = (session.newCookies || []).map((c) => ['Set-Cookie', c]);
 
-        // Body mein tokens: rotation ke baad NAYA refresh token zaroor bhejo
-        // (warna frontend ka purana token revoke ho jaata hai), warna current access.
-        const body: Record<string, any> = { authenticated: true, user: presentUser(profileWithUsername, authUser, env) };
+        const body: Record<string, any> = {
+          authenticated: true,
+          user: presentUser(profileWithUsername, env),
+        };
         if (session.newTokens) {
           body.access_token = session.newTokens.access_token;
           body.refresh_token = session.newTokens.refresh_token;
@@ -1462,37 +1929,26 @@ export default {
         return withCors(json(body, 200, headers));
       }
 
-      // ------------------------------------------------- refresh (rotation)
-      // Single-flight refresh ke liye: frontend token expire hone par YAHAN
-      // ek hi dafa refresh karta hai (parallel requests ek hi refresh ka
-      // intezaar karti hain — rotation race khatam!).
+      // -------------------------------------------------------- /auth/refresh
       if (route === '/auth/refresh' && request.method === 'POST') {
         const body = await readJson(request);
         const refresh =
           (request.headers.get('X-Gothwad-Refresh') || '').trim() ||
-          String(body.refresh_token || '').trim();
+          String(body.refresh_token || '').trim() ||
+          getCookie(request, 'gothwad_rt') ||
+          '';
         if (!refresh) return withCors(apiError('Missing refresh token', 401));
 
-        const res = await fetch(SB.authUrl(env, '/token?grant_type=refresh_token'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', apikey: env.SUPABASE_ANON_KEY },
-          body: JSON.stringify({ refresh_token: refresh }),
-        });
-        const data = (await res.json()) as Record<string, any>;
-        if (!res.ok || !data.access_token) {
+        const fallbackSid = String(body.session_id || '') || getCookie(request, 'gothwad_sid');
+        const rotated = await rotateSessionRefreshToken(db, env, refresh, fallbackSid);
+        if (!rotated) {
           return withCors(apiError('Session expired, please sign in again', 401));
         }
 
-        // Purana session id rakho (device row continuity ke liye)
-        const sessionId = String(body.session_id || '') || getCookie(request, 'gothwad_sid');
-        const newTokens = {
-          access_token: data.access_token as string,
-          refresh_token: data.refresh_token as string,
-        };
         const headers: [string, string][] = sessionCookies(request, env, {
-          access_token: newTokens.access_token,
-          refresh_token: newTokens.refresh_token,
-          session_id: sessionId,
+          access_token: rotated.access_token,
+          refresh_token: rotated.refresh_token,
+          session_id: rotated.session_id,
           remember: true,
         }).map((c) => ['Set-Cookie', c]);
 
@@ -1500,9 +1956,9 @@ export default {
           json(
             {
               ok: true,
-              access_token: newTokens.access_token,
-              refresh_token: newTokens.refresh_token,
-              session_id: sessionId || undefined,
+              access_token: rotated.access_token,
+              refresh_token: rotated.refresh_token,
+              session_id: rotated.session_id || undefined,
             },
             200,
             headers,
@@ -1510,153 +1966,192 @@ export default {
         );
       }
 
-      // ------------------------------------------------- forgot-password
-      // Sirf username maango. Reset link RECOVERY email par jaata hai.
-      // (Hamesha same generic response — taaki koi pata na laga sake ki
-      //  kaunsa username exist karta hai. Security best-practice.)
+      // ------------------------------------------------ /auth/forgot-password
       if (route === '/auth/forgot-password' && request.method === 'POST') {
         const body = await readJson(request);
         const username = String(body.username || '').toLowerCase().trim();
         const genericOk = () =>
-          withCors(json({ ok: true, message: 'If that account exists, a reset link has been sent to its recovery email.' }));
+          withCors(
+            json({
+              ok: true,
+              message: 'If that account exists, a reset link has been sent to its recovery email.',
+            }),
+          );
 
         if (!isValidUsername(username)) return genericOk();
 
-        const profRes = await SB.adminFetch(
-          env,
-          `/rest/v1/profiles?username=eq.${encodeURIComponent(username)}&select=id,recovery_email`,
-        );
-        const profRows = (await profRes.json()) as Record<string, any>[];
-        const profile = profRows?.[0];
-        if (!profile?.recovery_email) return genericOk();
+        const profile = await db
+          .prepare('SELECT id, recovery_email FROM profiles WHERE username = ? LIMIT 1')
+          .bind(username)
+          .first();
+        if (!profile?.id || !profile?.recovery_email) return genericOk();
 
-        // Supabase se signed recovery link banao
-        const linkRes = await SB.adminFetch(env, '/auth/v1/admin/generate_link', {
-          method: 'POST',
-          body: JSON.stringify({
-            type: 'recovery',
-            email: `${username}@${env.APP_DOMAIN}`,
-            options: { redirect_to: `${env.AUTH_HUB_URL}/signin` },
-          }),
-        });
-        const linkData = (await linkRes.json()) as Record<string, any>;
-        const resetLink = linkData?.action_link;
-        if (!resetLink) return genericOk();
+        const rawResetToken = randomToken();
+        const resetHash = await sha256Hex(rawResetToken);
+        const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS).toISOString();
 
-        const emailed = await sendResetEmail(env, profile.recovery_email, resetLink);
+        await db
+          .prepare(
+            `INSERT INTO password_reset_tokens (token_hash, user_id, expires_at, used, created_at)
+             VALUES (?, ?, ?, 0, ?)`,
+          )
+          .bind(resetHash, String(profile.id), expiresAt, new Date().toISOString())
+          .run();
 
-        // DEV_MODE: Resend configure nahi hai to link response mein de dete hain
-        // taaki development mein flow test ho sake. Production me DEV_MODE=false!
+        // URL fragment (`#access_token=...`) keeps recovery tokens out of HTTP Referer logs!
+        const resetLink = `${env.AUTH_HUB_URL.replace(/\/+$/, '')}/signin#access_token=${rawResetToken}&type=recovery`;
+        const emailed = await sendResetEmail(env, String(profile.recovery_email), resetLink);
+
         if (!emailed && env.DEV_MODE === 'true') {
-          return withCors(json({ ok: true, message: 'DEV_MODE: reset link below (Resend not configured).', dev_reset_link: resetLink }));
+          return withCors(
+            json({
+              ok: true,
+              message: 'DEV_MODE: reset link below (Resend not configured).',
+              dev_reset_link: resetLink,
+            }),
+          );
         }
         return genericOk();
       }
 
-      // ------------------------------------------------- reset-password
-      // User reset link par click karke aaya hai → uske token se naya password.
+      // ------------------------------------------------- /auth/reset-password
       if (route === '/auth/reset-password' && request.method === 'POST') {
         const authHeader = request.headers.get('Authorization') || '';
         const token = authHeader.replace('Bearer ', '').trim();
         const body = await readJson(request);
         const password = String(body.password || '');
 
-        if (!token) return withCors(apiError('Missing reset token. Please use the link from your email.', 401));
+        if (!token) {
+          return withCors(apiError('Missing reset token. Please use the link from your email.', 401));
+        }
         if (password.length < 8) return withCors(apiError('Password must be at least 8 characters'));
+        if (password.length > 128) return withCors(apiError('Password must be at most 128 characters'));
 
-        const res = await fetch(SB.authUrl(env, '/user'), {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            apikey: env.SUPABASE_ANON_KEY,
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ password }),
-        });
+        const tokenHash = await sha256Hex(token);
+        const nowIso = new Date().toISOString();
 
-        if (!res.ok) {
+        // Atomic one-time token consumption
+        const consumed = await db
+          .prepare(
+            `UPDATE password_reset_tokens
+                SET used = 1
+              WHERE token_hash = ? AND used = 0 AND expires_at > ?
+              RETURNING user_id`,
+          )
+          .bind(tokenHash, nowIso)
+          .first();
+
+        if (!consumed?.user_id) {
           return withCors(apiError('Reset link is invalid or expired. Please request a new one.', 400));
         }
 
-        // Activity feed (agar token se user ka pata chal sake — best effort)
-        try {
-          const who = await fetch(SB.authUrl(env, '/user'), {
-            headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
-          });
-          if (who.ok) {
-            const me = (await who.json()) as Record<string, any>;
-            if (me?.id) {
-              await logActivity(env, me.id, 'password_reset', 'Password reset', 'Password was reset using the email recovery link', request);
-            }
-          }
-        } catch { /* ignore */ }
+        const userId = String(consumed.user_id);
+        const newPasswordHash = await hashPassword(password);
+
+        // Update password, invalidate any remaining unused reset links & revoke old sessions
+        await db.batch([
+          db
+            .prepare('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?')
+            .bind(newPasswordHash, nowIso, userId),
+          db
+            .prepare('UPDATE password_reset_tokens SET used = 1 WHERE user_id = ?')
+            .bind(userId),
+          db
+            .prepare('DELETE FROM user_sessions WHERE user_id = ?')
+            .bind(userId),
+        ]);
+
+        await logActivity(
+          db,
+          userId,
+          'password_reset',
+          'Password reset',
+          'Password was reset using the email recovery link',
+          request,
+        );
 
         return withCors(json({ ok: true, message: 'Password updated! You can now sign in.' }));
       }
 
-      // ------------------------------------------------- change-password
-      // Logged-in user apna password change kare.
+      // ------------------------------------------------ /auth/change-password
       if (route === '/auth/change-password' && request.method === 'POST') {
-        const session = await resolveSession(request, env);
-        if (!session.ok) return withCors(apiError('Please sign in first', 401));
+        const session = await resolveSession(request, db, env);
+        if (!session.ok || !session.authUser) return withCors(apiError('Please sign in first', 401));
 
         const body = await readJson(request);
         const currentPassword = String(body.current_password || '');
         const newPassword = String(body.new_password || '');
         if (newPassword.length < 8) return withCors(apiError('New password must be at least 8 characters'));
+        if (newPassword.length > 128) return withCors(apiError('New password must be at most 128 characters'));
 
-        // Purana password sahi hai? (password grant se verify)
-        const email = session.authUser!.email;
-        const verifyRes = await fetch(SB.authUrl(env, '/token?grant_type=password'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', apikey: env.SUPABASE_ANON_KEY },
-          body: JSON.stringify({ email, password: currentPassword }),
-        });
-        if (!verifyRes.ok) return withCors(apiError('Current password is incorrect', 400));
+        const userRow = await db
+          .prepare('SELECT password_hash FROM users WHERE id = ? LIMIT 1')
+          .bind(session.authUser.id)
+          .first();
+        if (!userRow || !(await verifyPassword(currentPassword, String(userRow.password_hash)))) {
+          return withCors(apiError('Current password is incorrect', 400));
+        }
 
-        const res = await fetch(SB.authUrl(env, '/user'), {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            apikey: env.SUPABASE_ANON_KEY,
-            Authorization: `Bearer ${session.accessToken}`,
-          },
-          body: JSON.stringify({ password: newPassword }),
-        });
-        if (!res.ok) return withCors(apiError('Could not change password', 400));
+        const newHash = await hashPassword(newPassword);
+        await db
+          .prepare('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?')
+          .bind(newHash, new Date().toISOString(), session.authUser.id)
+          .run();
 
-        await logActivity(env, session.authUser!.id, 'password_change', 'Password changed', 'Your account password was updated', request);
+        await logActivity(
+          db,
+          session.authUser.id,
+          'password_change',
+          'Password changed',
+          'Your account password was updated',
+          request,
+        );
 
         return withCors(json({ ok: true, message: 'Password changed successfully' }));
       }
 
-      // ------------------------------------------------- update-profile
+      // ------------------------------------------------- /auth/update-profile
       if (route === '/auth/update-profile' && request.method === 'POST') {
-        const session = await resolveSession(request, env);
-        if (!session.ok) return withCors(apiError('Please sign in first', 401));
+        const session = await resolveSession(request, db, env);
+        if (!session.ok || !session.authUser) return withCors(apiError('Please sign in first', 401));
 
         const body = await readJson(request);
-        const patch: Record<string, any> = {};
-        if (typeof body.first_name === 'string') patch.first_name = body.first_name.trim();
-        if (typeof body.last_name === 'string') patch.last_name = body.last_name.trim();
+        const sets: string[] = [];
+        const values: unknown[] = [];
+
+        if (typeof body.first_name === 'string') {
+          sets.push('first_name = ?');
+          values.push(body.first_name.trim());
+        }
+        if (typeof body.last_name === 'string') {
+          sets.push('last_name = ?');
+          values.push(body.last_name.trim());
+        }
         if (typeof body.recovery_email === 'string') {
           const rec = body.recovery_email.trim().toLowerCase();
           if (rec && !isValidEmail(rec)) return withCors(apiError('Invalid recovery email'));
-          patch.recovery_email = rec || null;
+          sets.push('recovery_email = ?');
+          values.push(rec || null);
         }
-        if (typeof body.phone_number === 'string') patch.phone_number = body.phone_number.trim() || null;
-        if (typeof body.avatar_url === 'string') patch.avatar_url = body.avatar_url.trim() || null;
-
-        // Google-style personal info:
+        if (typeof body.phone_number === 'string') {
+          sets.push('phone_number = ?');
+          values.push(body.phone_number.trim() || null);
+        }
+        if (typeof body.avatar_url === 'string') {
+          sets.push('avatar_url = ?');
+          values.push(body.avatar_url.trim() || null);
+        }
         if (typeof body.date_of_birth === 'string') {
           const dob = body.date_of_birth.trim();
           if (dob) {
             const d = new Date(dob);
             const valid = /^\d{4}-\d{2}-\d{2}$/.test(dob) && !isNaN(d.getTime()) && d < new Date();
             if (!valid) return withCors(apiError('Date of birth must be a valid past date (YYYY-MM-DD)'));
-            patch.date_of_birth = dob;
+            sets.push('date_of_birth = ?');
+            values.push(dob);
           } else {
-            patch.date_of_birth = null; // khaali = remove
+            sets.push('date_of_birth = ?');
+            values.push(null);
           }
         }
         if (typeof body.gender === 'string') {
@@ -1664,106 +2159,121 @@ export default {
           if (g && !GENDER_VALUES.includes(g)) {
             return withCors(apiError('Gender must be one of: ' + GENDER_VALUES.join(', ')));
           }
-          patch.gender = g || null;
+          sets.push('gender = ?');
+          values.push(g || null);
         }
 
-        if (Object.keys(patch).length === 0) {
-          return withCors(apiError('Nothing to update'));
-        }
+        if (sets.length === 0) return withCors(apiError('Nothing to update'));
 
-        const userId = session.authUser!.id;
-        const res = await SB.adminFetch(
-          env,
-          `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`,
-          { method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify(patch) },
+        const changedFields = sets.map((s) => s.split(' = ')[0]);
+        sets.push('updated_at = ?');
+        values.push(new Date().toISOString());
+        values.push(session.authUser.id);
+
+        await db
+          .prepare(`UPDATE profiles SET ${sets.join(', ')} WHERE id = ?`)
+          .bind(...values)
+          .run();
+
+        await logActivity(
+          db,
+          session.authUser.id,
+          'profile_update',
+          'Personal info updated',
+          changedFields.join(', '),
+          request,
         );
-        if (!res.ok) return withCors(apiError('Could not update profile', 400));
 
-        await logActivity(env, userId, 'profile_update', 'Personal info updated', Object.keys(patch).join(', '), request);
-
-        const rows = (await res.json()) as Record<string, any>[];
-        return withCors(json({ ok: true, user: presentUser(rows[0], session.authUser, env) }));
+        const updatedProfile = await fetchProfile(db, session.authUser.id);
+        return withCors(json({ ok: true, user: presentUser(updatedProfile, env) }));
       }
 
-      // ------------------------------------------------------- sessions
+      // ------------------------------------------------------- /auth/sessions
       if (route === '/auth/sessions' && request.method === 'GET') {
-        const session = await resolveSession(request, env);
-        if (!session.ok) return withCors(apiError('Please sign in first', 401));
+        const session = await resolveSession(request, db, env);
+        if (!session.ok || !session.authUser) return withCors(apiError('Please sign in first', 401));
 
-        const currentSid = getCookie(request, 'gothwad_sid');
-        const res = await SB.adminFetch(
-          env,
-          `/rest/v1/user_sessions?user_id=eq.${encodeURIComponent(session.authUser!.id)}&order=last_active.desc&select=*`,
-        );
-        const rows = (await res.json()) as Record<string, any>[];
-        const sessions = (rows || []).map((r) => ({ ...r, is_current: r.id === currentSid }));
+        const currentSid = session.authUser.sessionId || getCookie(request, 'gothwad_sid');
+        const out = await db
+          .prepare('SELECT * FROM user_sessions WHERE user_id = ? ORDER BY last_active DESC')
+          .bind(session.authUser.id)
+          .all();
+
+        const sessions = (out.results || []).map((r) => ({
+          ...r,
+          remember_me: !!r.remember_me,
+          is_current: r.id === currentSid,
+        }));
         return withCors(json({ ok: true, sessions }));
       }
 
-      // Ek specific device se sign-out (remote revoke)
       if (route === '/auth/sessions/revoke' && request.method === 'POST') {
-        const session = await resolveSession(request, env);
-        if (!session.ok) return withCors(apiError('Please sign in first', 401));
+        const session = await resolveSession(request, db, env);
+        if (!session.ok || !session.authUser) return withCors(apiError('Please sign in first', 401));
 
         const body = await readJson(request);
         const sessionId = String(body.session_id || '');
         if (!sessionId) return withCors(apiError('session_id is required'));
 
-        // NOTE: user_id filter = user sirf APNA session delete kar sake
-        await SB.adminFetch(
-          env,
-          `/rest/v1/user_sessions?id=eq.${encodeURIComponent(sessionId)}&user_id=eq.${encodeURIComponent(session.authUser!.id)}`,
-          { method: 'DELETE' },
+        await db
+          .prepare('DELETE FROM user_sessions WHERE id = ? AND user_id = ?')
+          .bind(sessionId, session.authUser.id)
+          .run();
+
+        await logActivity(
+          db,
+          session.authUser.id,
+          'session_revoked',
+          'Device signed out',
+          'A device was signed out from your account',
+          request,
         );
-        await logActivity(env, session.authUser!.id, 'session_revoked', 'Device signed out', 'A device was signed out from your account', request);
         return withCors(json({ ok: true, message: 'Device signed out' }));
       }
 
-      // Saare other devices se sign-out
       if (route === '/auth/sessions/revoke-others' && request.method === 'POST') {
-        const session = await resolveSession(request, env);
-        if (!session.ok) return withCors(apiError('Please sign in first', 401));
+        const session = await resolveSession(request, db, env);
+        if (!session.ok || !session.authUser) return withCors(apiError('Please sign in first', 401));
 
-        const currentSid = getCookie(request, 'gothwad_sid') || '';
-        await SB.adminFetch(
-          env,
-          `/rest/v1/user_sessions?user_id=eq.${encodeURIComponent(session.authUser!.id)}&id=neq.${encodeURIComponent(currentSid)}`,
-          { method: 'DELETE' },
+        const currentSid = session.authUser.sessionId || getCookie(request, 'gothwad_sid') || '';
+        await db
+          .prepare('DELETE FROM user_sessions WHERE user_id = ? AND id != ?')
+          .bind(session.authUser.id, currentSid)
+          .run();
+
+        await logActivity(
+          db,
+          session.authUser.id,
+          'session_revoked',
+          'All other devices signed out',
+          'Every other device was signed out from your account',
+          request,
         );
-        await logActivity(env, session.authUser!.id, 'session_revoked', 'All other devices signed out', 'Every other device was signed out from your account', request);
         return withCors(json({ ok: true, message: 'All other devices signed out' }));
       }
 
-      // ------------------------------------------------------- activity
-      // GET /auth/activity — user ki recent activity (Google-style feed).
-      // Security + Data & privacy sections isse use karte hain.
+      // ------------------------------------------------------- /auth/activity
       if (route === '/auth/activity' && request.method === 'GET') {
-        const session = await resolveSession(request, env);
-        if (!session.ok) return withCors(apiError('Please sign in first', 401));
+        const session = await resolveSession(request, db, env);
+        if (!session.ok || !session.authUser) return withCors(apiError('Please sign in first', 401));
 
-        const res = await SB.adminFetch(
-          env,
-          `/rest/v1/account_activity?user_id=eq.${encodeURIComponent(session.authUser!.id)}&order=created_at.desc&limit=30`,
-        );
-        if (!res.ok) return withCors(apiError('Could not load activity', 400));
-        const rows = (await res.json()) as Record<string, any>[];
-        return withCors(json({ ok: true, activity: rows || [] }));
+        const out = await db
+          .prepare('SELECT * FROM account_activity WHERE user_id = ? ORDER BY created_at DESC LIMIT 30')
+          .bind(session.authUser.id)
+          .all();
+
+        return withCors(json({ ok: true, activity: out.results || [] }));
       }
 
-      // --------------------------------------------------------- avatar
-      // POST /auth/avatar — profile photo upload (Supabase Storage "avatars").
-      // Body: { image_base64: "data:image/jpeg;base64,..." | raw base64 }
-      // Client photo ko 256x256 JPEG mein resize karke bhejta hai (canvas).
-      // Bucket: sql/03_avatars_storage.sql se bana hota hai.
+      // --------------------------------------------------------- /auth/avatar
       if (route === '/auth/avatar' && request.method === 'POST') {
-        const session = await resolveSession(request, env);
-        if (!session.ok) return withCors(apiError('Please sign in first', 401));
+        const session = await resolveSession(request, db, env);
+        if (!session.ok || !session.authUser) return withCors(apiError('Please sign in first', 401));
 
         const body = await readJson(request);
         const raw = String(body.image_base64 || '');
         if (!raw) return withCors(apiError('image_base64 is required'));
 
-        // data URL prefix hatao + mime pakdo
         let b64 = raw;
         let mime = String(body.mime || 'image/jpeg');
         const m = raw.match(/^data:(image\/(?:jpeg|png|webp));base64,(.*)$/s);
@@ -1775,7 +2285,6 @@ export default {
           return withCors(apiError('Only JPEG, PNG or WebP images are allowed'));
         }
 
-        // Base64 → bytes (Workers mein atob available hai)
         let bytes: Uint8Array;
         try {
           const bin = atob(b64.replace(/\s+/g, ''));
@@ -1784,82 +2293,79 @@ export default {
         } catch {
           return withCors(apiError('Invalid base64 image data'));
         }
-        // 2 MB limit (bucket ka limit bhi yahi hai — sql/03)
+
         if (bytes.length > 2 * 1024 * 1024) {
           return withCors(apiError('Photo is too large (max 2 MB after resize)'));
         }
 
-        const userId = session.authUser!.id;
-        const ext = mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : 'jpg';
-        const objectPath = `${userId}/avatar.${ext}`;
+        const userId = session.authUser.id;
+        const etag = (await sha256Hex(bytes)).slice(0, 16);
+        const nowIso = new Date().toISOString();
 
-        // Storage mein upload (x-upsert = same path par overwrite)
-        const upRes = await SB.adminFetch(
-          env,
-          `/storage/v1/object/avatars/${objectPath}`,
-          {
-            method: 'PUT',
-            headers: { 'Content-Type': mime, 'x-upsert': 'true' },
-            body: bytes as unknown as BodyInit,
-          },
-        );
-        if (!upRes.ok) {
-          const errBody = await upRes.text().catch(() => '');
-          console.error(`[avatar] storage upload failed: ${upRes.status} ${errBody.slice(0, 200)}`);
-          return withCors(apiError('Could not save the photo. Is the "avatars" bucket created? (sql/03_avatars_storage.sql)', 400));
+        if (env.AVATARS_BUCKET) {
+          await env.AVATARS_BUCKET.put(`avatars/${userId}`, bytes, {
+            httpMetadata: { contentType: mime },
+          });
+        } else {
+          await db
+            .prepare(
+              `INSERT INTO user_avatars (user_id, mime_type, data, byte_size, etag, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT (user_id) DO UPDATE SET
+                 mime_type  = excluded.mime_type,
+                 data       = excluded.data,
+                 byte_size  = excluded.byte_size,
+                 etag       = excluded.etag,
+                 updated_at = excluded.updated_at`,
+            )
+            .bind(userId, mime, bytes, bytes.length, etag, nowIso)
+            .run();
         }
 
-        // Purani photo alag extension wali ho to delete karo (best effort)
-        try {
-          const profileBefore = await fetchProfile(env, userId);
-          const oldUrl = profileBefore?.avatar_url || '';
-          if (oldUrl && !oldUrl.endsWith(`/avatars/${objectPath}`)) {
-            const oldPath = oldUrl.split('/storage/v1/object/public/avatars/')[1];
-            if (oldPath) {
-              await SB.adminFetch(env, `/storage/v1/object/avatars/${oldPath}`, { method: 'DELETE' }).catch(() => undefined);
-            }
-          }
-        } catch { /* ignore */ }
+        // Store relative versioned path so domain changes never break avatar URLs!
+        const relativeAvatarPath = `/api/avatars/${encodeURIComponent(userId)}?v=${etag}`;
+        await db
+          .prepare('UPDATE profiles SET avatar_url = ?, updated_at = ? WHERE id = ?')
+          .bind(relativeAvatarPath, nowIso, userId)
+          .run();
 
-        // Public URL + profile patch
-        const publicUrl = `${env.SUPABASE_URL}/storage/v1/object/public/avatars/${objectPath}`;
-        const patchRes = await SB.adminFetch(
-          env,
-          `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`,
-          { method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ avatar_url: publicUrl }) },
-        );
-        if (!patchRes.ok) return withCors(apiError('Could not update profile photo', 400));
+        await logActivity(db, userId, 'avatar_update', 'Profile photo changed', undefined, request);
 
-        await logActivity(env, userId, 'avatar_update', 'Profile photo changed', undefined, request);
-
-        const rows = (await patchRes.json()) as Record<string, any>[];
-        return withCors(json({ ok: true, avatar_url: publicUrl, user: presentUser(rows[0], session.authUser, env) }));
+        const updatedProfile = await fetchProfile(db, userId);
+        const presented = presentUser(updatedProfile, env);
+        return withCors(json({ ok: true, avatar_url: presented?.avatar_url, user: presented }));
       }
 
-      // ---------------------------------------------------------- export
-      // GET /auth/export — apna poora data JSON file mein download karo
-      // (Google-style "Export your data" — Data & privacy section).
+      // --------------------------------------------------------- /auth/export
       if (route === '/auth/export' && request.method === 'GET') {
-        const session = await resolveSession(request, env);
-        if (!session.ok) return withCors(apiError('Please sign in first', 401));
+        const session = await resolveSession(request, db, env);
+        if (!session.ok || !session.authUser) return withCors(apiError('Please sign in first', 401));
 
-        const userId = session.authUser!.id;
-        const [profileRes, sessionsRes, authzRes, activityRes] = await Promise.all([
-          SB.adminFetch(env, `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=*`),
-          SB.adminFetch(env, `/rest/v1/user_sessions?user_id=eq.${encodeURIComponent(userId)}&order=created_at.desc`),
-          SB.adminFetch(env, `/rest/v1/app_authorizations?user_id=eq.${encodeURIComponent(userId)}&select=app_id,scopes,granted_at,last_used_at`),
-          SB.adminFetch(env, `/rest/v1/account_activity?user_id=eq.${encodeURIComponent(userId)}&order=created_at.desc&limit=100`),
+        const userId = session.authUser.id;
+        const [profile, sessionsOut, authzOut, activityOut] = await Promise.all([
+          fetchProfile(db, userId),
+          db.prepare('SELECT * FROM user_sessions WHERE user_id = ? ORDER BY created_at DESC').bind(userId).all(),
+          db
+            .prepare('SELECT app_id, scopes, granted_at, last_used_at FROM app_authorizations WHERE user_id = ?')
+            .bind(userId)
+            .all(),
+          db
+            .prepare('SELECT * FROM account_activity WHERE user_id = ? ORDER BY created_at DESC LIMIT 100')
+            .bind(userId)
+            .all(),
         ]);
 
-        const profile = ((await profileRes.json()) as Record<string, any>[])[0] || null;
         const exportData = {
           export: 'gothwad-accounts',
-          version: 1,
+          version: 2,
           generated_at: new Date().toISOString(),
-          profile: profile ? presentUser(profile, session.authUser, env) : null,
-          sessions: (await sessionsRes.json()) || [],
-          connected_apps: (await authzRes.json()) || [],
-          recent_activity: (await activityRes.json()) || [],
+          profile: profile ? presentUser(profile, env) : null,
+          sessions: (sessionsOut.results || []).map((s) => ({ ...s, remember_me: !!s.remember_me })),
+          connected_apps: (authzOut.results || []).map((g) => ({
+            ...g,
+            scopes: parseJsonStringArray(g.scopes),
+          })),
+          recent_activity: activityOut.results || [],
         };
 
         return withCors(
@@ -1874,75 +2380,66 @@ export default {
         );
       }
 
-      // --------------------------------------------------- delete-account
-      // POST /auth/delete-account — account permanently delete (Google-style
-      // "Delete your account" — Data & privacy ka danger zone).
-      // Password dobara maangte hain = accidental delete se bachav.
+      // ------------------------------------------------- /auth/delete-account
       if (route === '/auth/delete-account' && request.method === 'POST') {
-        const session = await resolveSession(request, env);
-        if (!session.ok) return withCors(apiError('Please sign in first', 401));
+        const session = await resolveSession(request, db, env);
+        if (!session.ok || !session.authUser) return withCors(apiError('Please sign in first', 401));
 
         const body = await readJson(request);
         const password = String(body.password || '');
         if (!password) return withCors(apiError('Password is required to delete your account'));
 
-        // Password verify (password grant se)
-        const email = session.authUser!.email;
-        const verifyRes = await fetch(SB.authUrl(env, '/token?grant_type=password'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', apikey: env.SUPABASE_ANON_KEY },
-          body: JSON.stringify({ email, password }),
-        });
-        if (!verifyRes.ok) return withCors(apiError('Incorrect password', 400));
-
-        const userId = session.authUser!.id;
-
-        // Supabase Auth user delete → profiles cascade → sessions, authorizations,
-        // activity, oauth tokens — sab FK cascade se delete ho jaate hain.
-        const delRes = await SB.adminFetch(env, `/auth/v1/admin/users/${encodeURIComponent(userId)}`, {
-          method: 'DELETE',
-        });
-        if (!delRes.ok && delRes.status !== 404) {
-          console.error(`[delete-account] supabase delete failed: ${delRes.status}`);
-          return withCors(apiError('Could not delete the account. Please try again.', 500));
+        const userId = session.authUser.id;
+        const userRow = await db
+          .prepare('SELECT password_hash FROM users WHERE id = ? LIMIT 1')
+          .bind(userId)
+          .first();
+        if (!userRow || !(await verifyPassword(password, String(userRow.password_hash)))) {
+          return withCors(apiError('Incorrect password', 400));
         }
 
-        // Sab cookies clear + bolo ki frontend local data bhi clear kare
+        if (env.AVATARS_BUCKET) {
+          await env.AVATARS_BUCKET.delete(`avatars/${userId}`).catch(() => undefined);
+        }
+
+        // Foreign keys (`ON DELETE CASCADE`) atomically clean all 9 child tables!
+        await db.prepare('DELETE FROM users WHERE id = ?').bind(userId).run();
+
         return withCors(
-          json({ ok: true, message: 'Account deleted' }, 200, clearCookies(request, env).map((c) => ['Set-Cookie', c] as [string, string])),
+          json(
+            { ok: true, message: 'Account deleted' },
+            200,
+            clearCookies(request, env).map((c) => ['Set-Cookie', c] as [string, string]),
+          ),
         );
       }
 
-      // ================================================================
-      // STEP 2 — OAUTH 2.0 PROVIDER ("Sign in with Gothwad")
-      // External apps ke liye canonical paths: /oauth/* (bina /api ke bhi chalte hain)
-      // ================================================================
+      // =======================================================================
+      // 3. OAUTH 2.0 PROVIDER ("Sign in with Gothwad")
+      // =======================================================================
 
-      // ------------------------------------------- /oauth/app-info (GET)
-      // Consent screen ko app ka naam chahiye hota hai. Public info only.
       if (route === '/oauth/app-info' && request.method === 'GET') {
         const clientId = url.searchParams.get('client_id') || '';
-        const client = await findOAuthClient(env, clientId);
+        const client = await findOAuthClient(db, clientId);
         if (!client) return withCors(apiError('Unknown OAuth client', 404));
-        return withCors(json({
-          id: client.id,
-          name: client.name,
-          icon: client.icon,
-          is_verified: !!client.is_verified,
-          scopes_supported: Object.keys(OAUTH_SCOPES),
-        }));
+        return withCors(
+          json({
+            id: client.id,
+            name: client.name,
+            icon: client.icon,
+            is_verified: !!client.is_verified,
+            scopes_supported: Object.keys(OAUTH_SCOPES),
+          }),
+        );
       }
 
-      // --------------------------------------------- /oauth/authorize (GET)
-      // User ko "Sign in with Gothwad" button yahan bhejta hai.
-      // Flow: validate params → login hai? → consent screen par redirect.
       if (route === '/oauth/authorize' && request.method === 'GET') {
         const clientId = url.searchParams.get('client_id') || '';
         const redirectUri = url.searchParams.get('redirect_uri') || '';
         const responseType = url.searchParams.get('response_type') || '';
         const scopes = parseScopes(url.searchParams.get('scope') || '');
 
-        const client = await findOAuthClient(env, clientId);
+        const client = await findOAuthClient(db, clientId);
         if (!client) return withCors(apiError('Unknown client_id', 400));
         if (responseType !== 'code') return withCors(apiError('Only response_type=code is supported', 400));
         if (!isRedirectUriAllowed(env, client, redirectUri)) {
@@ -1950,30 +2447,31 @@ export default {
         }
         if (scopes.length === 0) return withCors(apiError('At least one valid scope is required', 400));
 
-        // Public clients (secret nahi) ke liye PKCE mandatory — security best practice
-        const pkceError = pkceRequestError(client, url.searchParams.get('code_challenge'), url.searchParams.get('code_challenge_method'));
+        const pkceError = pkceRequestError(
+          client,
+          url.searchParams.get('code_challenge'),
+          url.searchParams.get('code_challenge_method'),
+        );
         if (pkceError) return withCors(apiError(pkceError, 400));
 
-        // Logged-in nahi? → account chooser / signin, phir wapas yahin (OAuth)
-        const session = await resolveSession(request, env);
-        oauthCookies = session.newCookies || []; // Also preserve rotation on later error responses.
-        if (!session.ok) {
+        const session = await oauthQuery(() => resolveSession(request, db, env));
+        oauthCookies = session.newCookies || [];
+        if (!session.ok || !session.authUser) {
           const loginUrl = `${env.AUTH_HUB_URL}/signin?choose=1&next=${encodeURIComponent(url.toString())}`;
           return withCors(new Response(null, { status: 302, headers: { Location: loginUrl } }));
         }
 
-        // Logged-in → consent screen (Worker khud HTML render karta hai —
-        // site par koi extra route/page nahi chahiye!)
-        const profile = await fetchProfile(env, session.authUser!.id);
-        return withCors(consentPageHtml(env, client, session.authUser!, profile, url.searchParams, url.toString()), session.newCookies);
+        const profile = await oauthQuery(() => fetchProfile(db, session.authUser!.id));
+        return withCors(
+          consentPageHtml(env, client, session.authUser, profile, url.searchParams, url.toString()),
+          session.newCookies,
+        );
       }
 
-      // ---------------------------------------------- /oauth/decision (POST)
-      // Consent screen se: user ne Allow/Deny kiya.
       if ((route === '/oauth/decision' || route === '/oauth/authorize/decision') && request.method === 'POST') {
-        const session = await resolveSession(request, env);
-        oauthCookies = session.newCookies || []; // Also preserve rotation on later error responses.
-        if (!session.ok) return withCors(apiError('Please sign in first', 401));
+        const session = await oauthQuery(() => resolveSession(request, db, env));
+        oauthCookies = session.newCookies || [];
+        if (!session.ok || !session.authUser) return withCors(apiError('Please sign in first', 401));
 
         const respond = (res: Response) => withCors(res, session.newCookies);
         const body = await readJson(request);
@@ -1985,13 +2483,12 @@ export default {
         const challenge = body.code_challenge ? String(body.code_challenge) : null;
         const challengeMethod = body.code_challenge_method ? String(body.code_challenge_method) : null;
 
-        const client = await findOAuthClient(env, clientId);
+        const client = await findOAuthClient(db, clientId);
         if (!client) return respond(apiError('Unknown client_id', 400));
         if (!isRedirectUriAllowed(env, client, redirectUri)) {
           return respond(apiError('redirect_uri is not registered', 400));
         }
 
-        // User ne DENY kiya → error ke saath app par wapas
         if (!approved) {
           const denyUrl = oauthCallbackUrl(redirectUri, { error: 'access_denied' }, state);
           return respond(json({ redirect_url: denyUrl }));
@@ -2001,80 +2498,82 @@ export default {
         const pkceError = pkceRequestError(client, challenge, challengeMethod);
         if (pkceError) return respond(apiError(pkceError, 400));
 
-        // One-time authorization code banao (5 minute valid)
         const code = randomToken();
-        const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-        await oauthDbFetch(env, '/rest/v1/oauth_auth_codes', {
-          method: 'POST',
-          body: JSON.stringify({
-            code,
-            client_id: client.id,
-            user_id: session.authUser!.id,
-            redirect_uri: redirectUri,
-            scopes,
-            code_challenge: challenge,
-            code_challenge_method: challenge ? challengeMethod : null,
-            expires_at: expiresAt,
-            used: false,
-          }),
-        });
+        const nowIso = new Date().toISOString();
+        const expiresAt = new Date(Date.now() + OAUTH_CODE_TTL_MS).toISOString();
+        const scopesJson = JSON.stringify(scopes);
 
-        // Grant save (dashboard mein "Connected apps" dikhta hai)
-        // Pehle check, phir insert/update — taaki duplicate na bane
-        const existingRows = await oauthDbRows(
-          env,
-          `/rest/v1/app_authorizations?user_id=eq.${encodeURIComponent(session.authUser!.id)}&app_id=eq.${encodeURIComponent(client.id)}&select=id`,
+        await oauthQuery(() =>
+          db
+            .prepare(
+              `INSERT INTO oauth_auth_codes (
+                 code, client_id, user_id, redirect_uri, scopes,
+                 code_challenge, code_challenge_method, expires_at, used, created_at
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+            )
+            .bind(
+              code,
+              client.id,
+              session.authUser!.id,
+              redirectUri,
+              scopesJson,
+              challenge,
+              challenge ? challengeMethod : null,
+              expiresAt,
+              nowIso,
+            )
+            .run(),
         );
-        const grantBody = {
-          user_id: session.authUser!.id,
-          app_id: client.id,
-          scopes,
-          granted_at: new Date().toISOString(),
-          last_used_at: new Date().toISOString(),
-        };
-        if (existingRows.length > 0) {
-          await oauthDbFetch(env, `/rest/v1/app_authorizations?id=eq.${encodeURIComponent(existingRows[0].id)}`, {
-            method: 'PATCH',
-            body: JSON.stringify({ scopes, last_used_at: new Date().toISOString() }),
-          });
-        } else {
-          await oauthDbFetch(env, '/rest/v1/app_authorizations', { method: 'POST', body: JSON.stringify(grantBody) });
-        }
 
-        // Activity feed: app connected
-        await logActivity(env, session.authUser!.id, 'app_authorized', `App connected: ${client.name}`, `Scopes: ${scopes.join(', ')}`, request);
+        await oauthQuery(() =>
+          db
+            .prepare(
+              `INSERT INTO app_authorizations (id, user_id, app_id, scopes, granted_at, last_used_at)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT (user_id, app_id) DO UPDATE SET
+                 scopes = excluded.scopes,
+                 last_used_at = excluded.last_used_at`,
+            )
+            .bind(crypto.randomUUID(), session.authUser!.id, client.id, scopesJson, nowIso, nowIso)
+            .run(),
+        );
 
-        // App par wapas: code + state ke saath (standard OAuth redirect)
+        await logActivity(
+          db,
+          session.authUser.id,
+          'app_authorized',
+          `App connected: ${client.name}`,
+          `Scopes: ${scopes.join(', ')}`,
+          request,
+        );
+
         const backUrl = oauthCallbackUrl(redirectUri, { code }, state);
         return respond(json({ redirect_url: backUrl }));
       }
 
-      // -------------------------------------------------- /oauth/token (POST)
-      // App apna code yahan token se exchange karta hai.
-      // grant_type=authorization_code  ya  grant_type=refresh_token
-      // (form-encoding standard hai — JSON bhi accept karte hain)
       if (route === '/oauth/token' && request.method === 'POST') {
         const body = await readFormOrJson(request);
         const grantType = String(body.grant_type || '');
         const clientId = String(body.client_id || '');
         const clientSecret = body.client_secret ? String(body.client_secret) : undefined;
 
-        const client = await findOAuthClient(env, clientId);
-        if (!client) return withCors(json({ error: 'invalid_client', error_description: 'Unknown client_id' }, 401));
+        const client = await findOAuthClient(db, clientId);
+        if (!client) {
+          return withCors(json({ error: 'invalid_client', error_description: 'Unknown client_id' }, 401));
+        }
         if (!(await verifyClientSecret(client, clientSecret))) {
           return withCors(json({ error: 'invalid_client', error_description: 'Bad client_secret' }, 401));
         }
 
-        // ---- Authorization Code grant ----
         if (grantType === 'authorization_code') {
           const code = String(body.code || '');
           const redirectUri = String(body.redirect_uri || '');
           const codeVerifier = body.code_verifier ? String(body.code_verifier) : '';
 
-          const codeRows = await oauthDbRows(env, `/rest/v1/oauth_auth_codes?code=eq.${encodeURIComponent(code)}&select=*`);
-          const row = codeRows[0];
+          const row = await oauthQuery(() =>
+            db.prepare('SELECT * FROM oauth_auth_codes WHERE code = ? LIMIT 1').bind(code).first(),
+          );
 
-          // Har check zaroori hai: code ek baar hi use ho sakta hai!
           if (!row || row.used) {
             return withCors(json({ error: 'invalid_grant', error_description: 'Code is invalid or already used' }, 400));
           }
@@ -2084,62 +2583,80 @@ export default {
           if (row.client_id !== client.id || row.redirect_uri !== redirectUri) {
             return withCors(json({ error: 'invalid_grant', error_description: 'redirect_uri or client mismatch' }, 400));
           }
-          if (pkceRequestError(client, row.code_challenge, row.code_challenge_method)
-            || !(await verifyPkce(codeVerifier, row.code_challenge, row.code_challenge_method))) {
+          if (
+            pkceRequestError(client, row.code_challenge ?? null, row.code_challenge_method ?? null) ||
+            !(await verifyPkce(codeVerifier, row.code_challenge ?? null, row.code_challenge_method ?? null))
+          ) {
             return withCors(json({ error: 'invalid_grant', error_description: 'PKCE verification failed' }, 400));
           }
 
-          // Conditional UPDATE is atomic: two concurrent exchanges cannot both win.
-          const consumed = await oauthDbRows(env,
-            `/rest/v1/oauth_auth_codes?code=eq.${encodeURIComponent(code)}&used=eq.false&expires_at=gt.${encodeURIComponent(new Date().toISOString())}`, {
-              method: 'PATCH', headers: { Prefer: 'return=representation' },
-              body: JSON.stringify({ used: true }),
-            });
-          if (consumed.length !== 1) {
+          const nowIso = new Date().toISOString();
+          const consumed = await oauthQuery(() =>
+            db
+              .prepare(
+                `UPDATE oauth_auth_codes
+                    SET used = 1
+                  WHERE code = ? AND used = 0 AND expires_at > ?
+                  RETURNING user_id, scopes`,
+              )
+              .bind(code, nowIso)
+              .first(),
+          );
+          if (!consumed) {
             return withCors(json({ error: 'invalid_grant', error_description: 'Code is invalid or already used' }, 400));
           }
 
-          const profile = await fetchProfile(env, row.user_id);
-          const username = profile?.username || '';
-          const scopes: string[] = row.scopes || [];
-          const accessToken = await issueAccessToken(env, {
-            userId: row.user_id, username, clientId: client.id, scopes,
+          const userId = String(consumed.user_id);
+          const profile = await fetchProfile(db, userId);
+          const scopes = parseJsonStringArray(consumed.scopes);
+          const accessToken = await issueOAuthAccessToken(env, {
+            userId,
+            username: profile?.username || '',
+            clientId: client.id,
+            scopes,
           });
 
           const response: Record<string, any> = {
             access_token: accessToken,
             token_type: 'Bearer',
-            expires_in: 3600,
+            expires_in: ACCESS_TOKEN_TTL_SECONDS,
             scope: scopes.join(' '),
           };
 
-          // offline_access scope → refresh token (30 din, DB mein sirf hash)
           if (scopes.includes('offline_access')) {
             const rt = randomToken();
-            await oauthDbFetch(env, '/rest/v1/oauth_refresh_tokens', {
-              method: 'POST',
-              body: JSON.stringify({
-                token_hash: await sha256Hex(rt),
-                user_id: row.user_id,
-                client_id: client.id,
-                scopes,
-                expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-                revoked: false,
-              }),
-            });
+            const rtHash = await sha256Hex(rt);
+            await oauthQuery(() =>
+              db
+                .prepare(
+                  `INSERT INTO oauth_refresh_tokens (id, token_hash, user_id, client_id, scopes, expires_at, revoked, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, 0, ?)`,
+                )
+                .bind(
+                  crypto.randomUUID(),
+                  rtHash,
+                  userId,
+                  client.id,
+                  JSON.stringify(scopes),
+                  new Date(Date.now() + REFRESH_TOKEN_TTL_MS).toISOString(),
+                  nowIso,
+                )
+                .run(),
+            );
             response.refresh_token = rt;
           }
 
           return withCors(json(response));
         }
 
-        // ---- Refresh Token grant (rotation ke saath) ----
+        // ---- Refresh Token grant (with atomic one-winner rotation) ----
         if (grantType === 'refresh_token') {
           const rt = String(body.refresh_token || '');
           const hash = await sha256Hex(rt);
 
-          const rtRows = await oauthDbRows(env, `/rest/v1/oauth_refresh_tokens?token_hash=eq.${encodeURIComponent(hash)}&select=*`);
-          const row = rtRows[0];
+          const row = await oauthQuery(() =>
+            db.prepare('SELECT * FROM oauth_refresh_tokens WHERE token_hash = ? LIMIT 1').bind(hash).first(),
+          );
 
           if (!row || row.revoked || new Date(row.expires_at).getTime() < Date.now()) {
             return withCors(json({ error: 'invalid_grant', error_description: 'Refresh token invalid or expired' }, 400));
@@ -2148,157 +2665,194 @@ export default {
             return withCors(json({ error: 'invalid_grant', error_description: 'Token was issued to another app' }, 400));
           }
 
-          // Rotation must also have exactly one winner under parallel requests.
-          const consumed = await oauthDbRows(env,
-            `/rest/v1/oauth_refresh_tokens?token_hash=eq.${encodeURIComponent(hash)}&revoked=eq.false&expires_at=gt.${encodeURIComponent(new Date().toISOString())}`, {
-              method: 'PATCH', headers: { Prefer: 'return=representation' },
-              body: JSON.stringify({ revoked: true }),
-            });
-          if (consumed.length !== 1) {
+          const nowIso = new Date().toISOString();
+          const consumed = await oauthQuery(() =>
+            db
+              .prepare(
+                `UPDATE oauth_refresh_tokens
+                    SET revoked = 1
+                  WHERE token_hash = ? AND revoked = 0 AND expires_at > ?
+                  RETURNING user_id, scopes`,
+              )
+              .bind(hash, nowIso)
+              .first(),
+          );
+          if (!consumed) {
             return withCors(json({ error: 'invalid_grant', error_description: 'Refresh token invalid or expired' }, 400));
           }
 
-          const profile = await fetchProfile(env, row.user_id);
-          const accessToken = await issueAccessToken(env, {
-            userId: row.user_id,
+          const userId = String(consumed.user_id);
+          const scopes = parseJsonStringArray(consumed.scopes);
+          const profile = await fetchProfile(db, userId);
+          const accessToken = await issueOAuthAccessToken(env, {
+            userId,
             username: profile?.username || '',
             clientId: client.id,
-            scopes: row.scopes || [],
+            scopes,
           });
 
           const newRt = randomToken();
-          await oauthDbFetch(env, '/rest/v1/oauth_refresh_tokens', {
-            method: 'POST',
-            body: JSON.stringify({
-              token_hash: await sha256Hex(newRt),
-              user_id: row.user_id,
-              client_id: client.id,
-              scopes: row.scopes || [],
-              expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-              revoked: false,
-            }),
-          });
+          const newRtHash = await sha256Hex(newRt);
+          await oauthQuery(() =>
+            db
+              .prepare(
+                `INSERT INTO oauth_refresh_tokens (id, token_hash, user_id, client_id, scopes, expires_at, revoked, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, 0, ?)`,
+              )
+              .bind(
+                crypto.randomUUID(),
+                newRtHash,
+                userId,
+                client.id,
+                JSON.stringify(scopes),
+                new Date(Date.now() + REFRESH_TOKEN_TTL_MS).toISOString(),
+                nowIso,
+              )
+              .run(),
+          );
 
-          return withCors(json({
-            access_token: accessToken,
-            token_type: 'Bearer',
-            expires_in: 3600,
-            scope: (row.scopes || []).join(' '),
-            refresh_token: newRt,
-          }));
+          return withCors(
+            json({
+              access_token: accessToken,
+              token_type: 'Bearer',
+              expires_in: ACCESS_TOKEN_TTL_SECONDS,
+              scope: scopes.join(' '),
+              refresh_token: newRt,
+            }),
+          );
         }
 
         return withCors(json({ error: 'unsupported_grant_type' }, 400));
       }
 
-      // ------------------------------------------------ /oauth/userinfo (GET)
-      // Apps yahan se user ka profile leti hain (Bearer access_token ke saath).
-      // Response scopes par depend karta hai — jyada data kabhi nahi.
+      // ----------------------------------------------------- /oauth/userinfo
       if (route === '/oauth/userinfo' && request.method === 'GET') {
         const authHeader = request.headers.get('Authorization') || '';
         const token = authHeader.replace('Bearer ', '').trim();
         if (!token) return withCors(json({ error: 'invalid_token' }, 401));
 
-        const payload = await verifyJwt(token, env.JWT_SECRET || env.SUPABASE_SERVICE_ROLE_KEY);
-        if (!payload) return withCors(json({ error: 'invalid_token' }, 401));
+        const payload = await verifyJwt(token, getSigningSecret(env));
+        if (!payload || payload.token_use !== 'oauth_access') {
+          return withCors(json({ error: 'invalid_token' }, 401));
+        }
 
-        const scopes: string[] = String(payload.scope || '').split(' ').filter(Boolean);
-        const profile = await fetchProfile(env, String(payload.sub));
+        const scopes: string[] = String(payload.scope || '')
+          .split(' ')
+          .filter(Boolean);
+        const profile = await fetchProfile(db, String(payload.sub));
+        if (!profile) {
+          return withCors(json({ error: 'invalid_token' }, 401));
+        }
 
         const info: Record<string, any> = { sub: payload.sub };
 
         if (scopes.includes('profile')) {
-          info.name = `${profile?.first_name || ''} ${profile?.last_name || ''}`.trim();
-          info.preferred_username = profile?.username || payload.username;
-          info.picture = profile?.avatar_url || null;
-          info.updated_at = profile?.updated_at || null;
+          info.name = `${profile.first_name || ''} ${profile.last_name || ''}`.trim();
+          info.preferred_username = profile.username || payload.username;
+          info.picture = resolveAvatarUrl(profile.avatar_url, env);
+          info.updated_at = profile.updated_at || null;
         }
         if (scopes.includes('email')) {
-          info.email = `${profile?.username || payload.username}@${env.APP_DOMAIN}`; // derived (Rule #2)
+          info.email = `${profile.username || payload.username}@${env.APP_DOMAIN}`;
           info.email_verified = true;
         }
         if (scopes.includes('drive') || scopes.includes('drive.read')) {
           info.drive = {
-            used_bytes: Number(profile?.storage_used_bytes || 0),
-            limit_bytes: Number(profile?.storage_limit_bytes || 0),
+            used_bytes: Number(profile.storage_used_bytes || 0),
+            limit_bytes: Number(profile.storage_limit_bytes || 0),
             write_access: scopes.includes('drive'),
           };
         }
         return withCors(json(info));
       }
 
-      // ------------------------------ /api/oauth/authorizations (GET, session)
-      // Dashboard ke "Connected apps" tab ke liye: user ke grants + app details.
+      // ----------------------------------------------- /oauth/authorizations
       if (route === '/oauth/authorizations' && request.method === 'GET') {
-        const session = await resolveSession(request, env);
-        if (!session.ok) return withCors(apiError('Please sign in first', 401));
+        const session = await resolveSession(request, db, env);
+        if (!session.ok || !session.authUser) return withCors(apiError('Please sign in first', 401));
 
-        const uid = session.authUser!.id;
-        const [grantsRes, appsRes] = await Promise.all([
-          SB.adminFetch(env, `/rest/v1/app_authorizations?user_id=eq.${encodeURIComponent(uid)}&select=*`),
-          SB.adminFetch(env, `/rest/v1/ecosystem_apps?select=*`),
+        const uid = session.authUser.id;
+        const [grantsOut, appsOut] = await Promise.all([
+          db.prepare('SELECT * FROM app_authorizations WHERE user_id = ?').bind(uid).all(),
+          db.prepare('SELECT * FROM ecosystem_apps').all(),
         ]);
-        const grants = (await grantsRes.json()) as Record<string, any>[];
-        const apps = (await appsRes.json()) as Record<string, any>[];
 
-        const connected = (grants || []).map((g) => {
-          const app = (apps || []).find((a) => a.id === g.app_id) || {};
+        const grants = grantsOut.results || [];
+        const apps = appsOut.results || [];
+
+        const connected = grants.map((g) => {
+          const app = apps.find((a) => a.id === g.app_id) || {};
           return {
             app_id: g.app_id,
             name: app.name || g.app_id,
             icon: app.icon || 'app',
-            scopes: g.scopes || [],
+            scopes: parseJsonStringArray(g.scopes),
             granted_at: g.granted_at,
             last_used_at: g.last_used_at,
             core: CORE_GOTHWAD_SERVICES.has(g.app_id),
           };
         });
-        const catalog = (apps || []).map((a) => ({
+
+        const catalog = apps.map((a) => ({
           id: a.id,
           name: a.name,
           icon: a.icon,
           description: a.description,
-          core: CORE_GOTHWAD_SERVICES.has(a.id) || a.is_core === true,
+          core: CORE_GOTHWAD_SERVICES.has(a.id) || !!a.is_core,
           homepage: a.homepage_url || null,
         }));
+
         return withCors(json({ ok: true, connected, apps: catalog }));
       }
 
-      // ------------------------------------- /api/oauth/revoke (POST, session)
-      // Dashboard se "Disconnect" — grant + refresh tokens sab revoke.
+      // ------------------------------------------------------- /oauth/revoke
       if (route === '/oauth/revoke' && request.method === 'POST') {
-        const session = await resolveSession(request, env);
-        if (!session.ok) return withCors(apiError('Please sign in first', 401));
+        const session = await resolveSession(request, db, env);
+        if (!session.ok || !session.authUser) return withCors(apiError('Please sign in first', 401));
 
         const body = await readJson(request);
         const appId = String(body.app_id || '');
         if (!appId) return withCors(apiError('app_id is required'));
         if (CORE_GOTHWAD_SERVICES.has(appId)) {
-          return withCors(apiError('Gothwad Services stay connected to your account and cannot be disconnected.', 403));
+          return withCors(
+            apiError('Gothwad Services stay connected to your account and cannot be disconnected.', 403),
+          );
         }
-        const uid = session.authUser!.id;
 
-        await SB.adminFetch(
-          env,
-          `/rest/v1/app_authorizations?user_id=eq.${encodeURIComponent(uid)}&app_id=eq.${encodeURIComponent(appId)}`,
-          { method: 'DELETE' },
+        const uid = session.authUser.id;
+        await db.batch([
+          db.prepare('DELETE FROM app_authorizations WHERE user_id = ? AND app_id = ?').bind(uid, appId),
+          db
+            .prepare('UPDATE oauth_refresh_tokens SET revoked = 1 WHERE user_id = ? AND client_id = ?')
+            .bind(uid, appId),
+        ]);
+
+        await logActivity(
+          db,
+          uid,
+          'app_revoked',
+          'App disconnected',
+          `Access removed for ${appId}`,
+          request,
         );
-        await SB.adminFetch(
-          env,
-          `/rest/v1/oauth_refresh_tokens?user_id=eq.${encodeURIComponent(uid)}&client_id=eq.${encodeURIComponent(appId)}`,
-          { method: 'PATCH', body: JSON.stringify({ revoked: true }) },
-        );
-        await logActivity(env, uid, 'app_revoked', 'App disconnected', `Access removed for ${appId}`, request);
         return withCors(json({ ok: true, message: 'App disconnected' }));
       }
 
       return withCors(apiError('Endpoint not found', 404));
     } catch (err: any) {
       if (err instanceof OAuthDatabaseError) {
-        return withCors(json({
-          error: 'temporarily_unavailable',
-          error_description: 'OAuth storage is unavailable. Please try again later.',
-        }, 503));
+        return withCors(
+          json(
+            {
+              error: 'temporarily_unavailable',
+              error_description: 'OAuth storage is unavailable. Please try again later.',
+            },
+            503,
+          ),
+        );
+      }
+      if (err instanceof DatabaseUnavailableError) {
+        return withCors(json({ error: 'service_unavailable', message: err.message }, 503));
       }
       console.error('Worker error:', err);
       return withCors(apiError('Internal server error', 500));
