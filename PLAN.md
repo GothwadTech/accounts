@@ -1,23 +1,17 @@
-# 🗺️ PLAN.md — Gothwad Master Plan (100% Cloudflare Native Ecosystem)
+# 🗺️ PLAN.md — Gothwad Hybrid Cloud Master Plan
 
-> **Last updated:** 2026-10-20
-> Deep technical plan & per-repo migration guide: **[`docs/CLOUDFLARE_NATIVE_PLAN.md`](docs/CLOUDFLARE_NATIVE_PLAN.md)**
+> **Last updated:** 2026-10-20 (Final Hybrid Architecture Locked)
+> Deep technical blueprint & Mail retention math: **[`docs/CLOUDFLARE_NATIVE_PLAN.md`](docs/CLOUDFLARE_NATIVE_PLAN.md)**
 > Step-by-step Cloudflare Dashboard setup: **[`docs/SETUP.md`](docs/SETUP.md)**
 
 ---
 
-## 🎯 VISION & INFRASTRUCTURE DECISION
+## 🏗️ FINAL ECOSYSTEM ARCHITECTURE (HYBRID FREE-TIER POWERHOUSE)
 
-**Gothwad Tech** ek complete independent ecosystem bana raha hai (`Accounts`, `Mail`, `Kiwi Store`, `Meet`, `PlusTube`, `GrixChat`, `Indogram`, `Drive`, `Notes`, `Calendar`, `Browser`).
-
-**2026-10-20 Architectural Upgrade — Goodbye Supabase, Hello 100% Cloudflare Native:**
-- **Zero Supabase Dependency:** Na 2-project limit, na 50K MAU cap, na 7-day inactivity pause!
-- **Cloudflare Workers + Cloudflare D1 (10 Free SQLite DBs) + Global Edge Cache (+ Optional R2):**
-  1. `gothwad-accounts-db` → **Gothwad Accounts (`GothwadTech/accounts`) — ✅ COMPLETED!**
-  2. `gothwad-mail-db` → **Gothwad Mail (`GothwadTech/mail`) — 🔜 Next Repo Migration**
-  3. `gothwad-store-db` → **Kiwi Store (`GothwadTech/store`) — 📋 Next After Mail**
-  4. `gothwad-workspace-db` → **Notes + Calendar + Contacts + Sync**
-  5. `gothwad-chat-db` + **Durable Objects WebSockets** → **GrixChat (`GothwadTech/grixchat`)**
+| Zone | Apps | Backend Stack | Why |
+|------|------|---------------|-----|
+| **🟠 Zone A: Cloudflare Native (Zero Supabase!)** | **1. `Gothwad Accounts`** (`accounts.*`)<br>**2. `Gothwad Mail`** (`mail.*`) | **Cloudflare Pages + Workers + D1 SQLite** (`gothwad-accounts-db` & `gothwad-mail-db`) | `24×7` Zero Sleep (logins & inbound emails never pause!), `<15ms` speed, Unlimited MAU (`$0`), saves **both** free Supabase projects! |
+| **🟢 Zone B: Supabase Powerhouse (Kept Forever!)** | **`PlusTube`** · **`Indogram`** · **`GrixChat`** *(+ heavy media apps)* | **Supabase PostgreSQL + Realtime WebSockets + Free Storage** *(authenticated via Gothwad SSO!)* | Full Postgres power for heavy feeds/search, live WebSockets for chat, and card-free media buckets! |
 
 ---
 
@@ -27,7 +21,7 @@
 |-------|-----------|--------|
 | **Step 1** | Gothwad Accounts UI (`/signin`, `/signup`, `/me`) + Google-style Light/Dark Dashboard | ✅ DONE |
 | **Step 2** | OAuth 2.0 + S256 PKCE Provider (`"Sign in with Gothwad"`) + Subdomain Cookie SSO | ✅ DONE |
-| **Step 2.5** | **100% Cloudflare Native Upgrade (`D1` + `PBKDF2-SHA256` + Edge Avatars — Zero Supabase!)** | ✅ **DONE (2026-10-20)** |
-| **Step 3** | Deploy `gothwad-accounts-db` on Cloudflare Dashboard (`docs/SETUP.md` — 10 min!) | 🔜 Owner Action |
-| **Step 4** | Migrate `GothwadTech/mail` & `GothwadTech/store` Workers to Cloudflare D1 | 📋 Planned |
-| **Step 5** | Connect `GothwadTech/grixchat` to `"Sign in with Gothwad"` SSO + D1/Durable Objects | 📋 Planned |
+| **Step 2.5** | **`Gothwad Accounts` 100% Cloudflare D1 Native Upgrade (Zero Supabase, 62/62 Tests Passing)** | ✅ **DONE (2026-10-20)** |
+| **Step 3** | Connect `gothwad-accounts-db` on Cloudflare Dashboard (`docs/SETUP.md`) | 🔜 Owner Action |
+| **Step 4** | **`Gothwad Mail` (`GothwadTech/mail`) 100% Cloudflare D1 Migration + `500`-Email Smart Retention & User Settings Toggle** | 🔜 Next Repo Session |
+| **Step 5** | Connect `PlusTube`, `Indogram`, `GrixChat` (on Supabase) seamlessly with `"Sign in with Gothwad"` SSO | 📋 Planned |
