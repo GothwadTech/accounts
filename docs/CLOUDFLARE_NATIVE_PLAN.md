@@ -24,10 +24,10 @@
 
 ---
 
-## 2. Phase 1: `Gothwad Accounts` (`gothwad-accounts-db`) — ✅ COMPLETED
+## 2. Phase 1: `Gothwad Accounts` (D1 DB: `accounts`) — ✅ COMPLETED
 
 Implemented and verified across **62 automated tests (`npm test`)** in `GothwadTech/accounts`:
-- **Database:** `gothwad-accounts-db` (`Cloudflare D1`)
+- **Database:** `accounts` (`392aacf8-1b43-490a-9519-ced4daf5a40f` on Cloudflare D1)
 - **Zero Email Columns (`Rule #2`):** `users` & `profiles` store strictly lowercase `username`; switching `APP_DOMAIN` (e.g. `gothwad.in`) requires **zero DB migrations**.
 - **Native Password Engine:** WebCrypto `PBKDF2-HMAC-SHA256` (`100,000` iterations + 16-byte CSPRNG salt + timing-safe comparison).
 - **Token Security:** Strict JWT `token_use` isolation (`session` vs `oauth_access`), single-use `UPDATE ... RETURNING` consumption locks, and instant remote device logout.
@@ -36,7 +36,7 @@ Implemented and verified across **62 automated tests (`npm test`)** in `GothwadT
 
 ---
 
-## 3. Phase 2: `Gothwad Mail` (`gothwad-mail-db`) — Blueprint & Retention Architecture
+## 3. Phase 2: `Gothwad Mail` (D1 DB: `mail`) — Blueprint & Retention Architecture
 
 ### Why `GothwadTech/mail` Fits Cloudflare D1 Cleanly
 Inspection of `GothwadTech/mail` confirms **90% of the app already runs inside Cloudflare Workers**:

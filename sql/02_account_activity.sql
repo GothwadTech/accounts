@@ -13,8 +13,6 @@
 -- SAFE HAI: First-run aur re-run dono 100% safe (`IF NOT EXISTS`).
 -- =============================================================================
 
-PRAGMA foreign_keys = ON;
-
 CREATE TABLE IF NOT EXISTS account_activity (
   id         TEXT PRIMARY KEY,
   user_id    TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,

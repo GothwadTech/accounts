@@ -13,19 +13,17 @@ name = "accounts"
 main = "src/index.ts"
 compatibility_date = "2024-11-01"
 
+# Do not delete dashboard-only variables on deploy (Secrets survive deploys automatically)
+keep_vars = true
+
 # -----------------------------------------------------------------------------
 # 1. CLOUDFLARE D1 DATABASE BINDING (REQUIRED)
 # -----------------------------------------------------------------------------
-# STEP TO GO LIVE ON CLOUDFLARE DASHBOARD:
-#   1. Cloudflare Dashboard -> Storage & Databases -> D1 SQL Database -> Create
-#   2. Database Name: gothwad-accounts-db
-#   3. Copy the "Database ID" (UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
-#   4. Paste that UUID into `database_id` below and push to GitHub!
-#      (First API call will automatically create all tables & ecosystem seeds!)
+# Bound to Cloudflare D1 SQL Database: "accounts"
 [[d1_databases]]
 binding = "DB"
-database_name = "gothwad-accounts-db"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_name = "accounts"
+database_id = "392aacf8-1b43-490a-9519-ced4daf5a40f"
 
 # -----------------------------------------------------------------------------
 # 2. OPTIONAL: CLOUDFLARE R2 BUCKET FOR PROFILE AVATARS

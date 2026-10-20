@@ -19,7 +19,7 @@
 |-------|------|------------|
 | **Frontend** | Vanilla HTML/CSS/JS (`web/`) → Cloudflare Pages | Unlimited bandwidth |
 | **Backend API** | Cloudflare Worker (`cloudflare-worker/src/index.ts`, TypeScript) | 100K req/day |
-| **Database** | **Cloudflare D1** (`env.DB` SQLite — `gothwad-accounts-db`) | 5 GB / 10 DBs free, **NEVER auto-pauses!** |
+| **Database** | **Cloudflare D1** (`env.DB` SQLite — `accounts` DB `392aacf8-1b43-490a-9519-ced4daf5a40f`) | 5 GB / 10 DBs free, **NEVER auto-pauses!** |
 | **Password Auth** | **Worker WebCrypto `PBKDF2-HMAC-SHA256`** (`100,000` iter + 16B random salt) | **$0 Unlimited MAU!** |
 | **Avatars** | **D1 `user_avatars` + Cloudflare Edge Cache** (`0` card required) + drop-in **R2** (`env.AVATARS_BUCKET`) | Free |
 | **Email Out** | Resend API (`RESEND_API_KEY`, optional) | 3,000 emails/month |

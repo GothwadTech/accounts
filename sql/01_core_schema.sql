@@ -27,8 +27,6 @@
 --     aur password-reset tokens (`SHA-256`) SIRF hashed roop mein store hote hain.
 -- =============================================================================
 
-PRAGMA foreign_keys = ON;
-
 -- -----------------------------------------------------------------------------
 -- 1. USERS — Core Identity Vault (Replaces Supabase `auth.users`)
 -- -----------------------------------------------------------------------------
