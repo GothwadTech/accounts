@@ -1,10 +1,13 @@
-# 📚 `docs/` — Gothwad Accounts Documentation Hub
+# 📚 Gothwad Accounts Documentation (`docs/`)
 
-| Document | Audience | What's Inside |
-|----------|----------|---------------|
-| **[CLOUDFLARE_NATIVE_PLAN.md](CLOUDFLARE_NATIVE_PLAN.md)** | 🧭 Founder & Architects | **Master Plan:** 100% Cloudflare Native (`D1` + Worker Auth + R2) architecture for `Accounts` (completed!) + step-by-step roadmap to eliminate Supabase across `Mail`, `Store`, `GrixChat` & future apps |
-| **[SETUP.md](SETUP.md)** | 👤 Everyone (Beginner Friendly) | **Step-by-Step Deployment Guide:** Exact click-by-click Cloudflare Dashboard instructions (works from mobile or desktop browser — no CLI required!) |
-| **[ARCHITECTURE.md](ARCHITECTURE.md)** | 🏗️ Developers & AI | Complete technical flows: PBKDF2-SHA256 hashing, `session` vs `oauth_access` JWTs, D1 schema, Edge-cached avatars, SSO cookies |
-| **[OAUTH.md](OAUTH.md)** | 🧩 App Developers | How to integrate **"Sign in with Gothwad"** (OAuth 2.0 + S256 PKCE) into any web or Android app |
-| **[MAIL_INTERNAL.md](MAIL_INTERNAL.md)** | 📧 Mail Maintainers | Server-to-server `GET /api/internal/usernames/:username` contract & naming rules |
-| **[STORE_OAUTH.md](STORE_OAUTH.md)** | 🥝 Store Maintainers | Kiwi Store web + Android (`gothwadstore://` & `kiwistore://`) callback registration in D1 |
+Welcome to **Gothwad Accounts v2.0 (100% Cloudflare Native — Zero Supabase)** documentation!
+
+| Document | Purpose |
+|---|---|
+| **[`SETUP.md`](SETUP.md)** | **Step-by-step Cloudflare Dashboard deployment guide** (`accounts` D1 + Worker Secrets) |
+| **[`CLOUDFLARE_NATIVE_PLAN.md`](CLOUDFLARE_NATIVE_PLAN.md)** | **Master Hybrid Architecture Plan** (`Accounts` + `Mail` on Cloudflare D1 · `PlusTube` + `Indogram` + `GrixChat` on Supabase) |
+| **[`MAIL_D1_MIGRATION_PROMPT.md`](MAIL_D1_MIGRATION_PROMPT.md)** | **Copy-Paste Master Prompt & Spec for `GothwadTech/mail` AI Agents** (100% Cloudflare D1 `mail` DB + `500`-email smart retention) |
+| **[`MAIL_INTERNAL.md`](MAIL_INTERNAL.md)** | **Mail ↔ Accounts HTTP Contract** (`GET /api/internal/usernames/:username`, `/api/auth/me`, cookie forwarding & naming rules) |
+| **[`ARCHITECTURE.md`](ARCHITECTURE.md)** | Deep technical diagram of WebCrypto PBKDF2, JWT separation (`session` vs `oauth_access`), edge-cached avatars & D1 tables |
+| **[`OAUTH.md`](OAUTH.md)** | Developer integration guide for `"Sign in with Gothwad"` (OAuth 2.0 + S256 PKCE) |
+| **[`STORE_OAUTH.md`](STORE_OAUTH.md)** | Exact callback allowlist & Android deep-link setup for **Kiwi Store** |
