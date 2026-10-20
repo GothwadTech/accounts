@@ -15,6 +15,7 @@ compatibility_date = "2024-11-01"
 
 # Do not delete dashboard-only variables on deploy (Secrets survive deploys automatically)
 keep_vars = true
+preview_urls = true
 
 # -----------------------------------------------------------------------------
 # 1. CLOUDFLARE D1 DATABASE BINDING (REQUIRED)
@@ -72,8 +73,3 @@ DEV_MODE = "false"
 #   npx wrangler secret put MAIL_INTERNAL_TOKEN
 #   npx wrangler secret put RESEND_API_KEY
 # -----------------------------------------------------------------------------
-
-# -----------------------------------------------------------------------------
-# 5. PREVIEWS — Required by Cloudflare Workers Builds branch preview checks
-# -----------------------------------------------------------------------------
-[previews]
