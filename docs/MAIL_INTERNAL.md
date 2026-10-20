@@ -1,9 +1,9 @@
-# 📧 MAIL_INTERNAL.md — Gothwad Mail ↔ Gothwad Accounts Contract (v2.0 — 100% Cloudflare D1 Native)
+# 📧 MAIL_INTERNAL.md — Gothwad Mail ↔ Gothwad Accounts Contract (v2.1 — Multi-Account Sessions on 100% Cloudflare D1)
 
 > **Architecture Status (2026-10-20 — Final Locked Architecture):**
 > - **`GothwadTech/accounts` (`accounts.gothwadtech.com` / `api.gothwadtech.com`):** **LIVE on 100% Cloudflare Workers + Cloudflare D1 (`accounts` DB — Zero Supabase!)**
 > - **`GothwadTech/mail` (`mail.gothwadtech.com`):** Runs on **100% Cloudflare Pages + Cloudflare Worker (`mail`) + Cloudflare D1 (`mail` DB — Zero Supabase!)**
-> - **Strict Isolation Rule:** Mail **NEVER** queries Accounts' `accounts` D1 database directly. Mail validates usernames, sessions, and OAuth tokens exclusively over HTTP against **`AUTH_HUB_URL = "https://api.gothwadtech.com"`**.
+> - **Strict Isolation Rule:** Mail **NEVER** queries Accounts' `accounts` D1 database directly. Mail validates usernames, multi-account sessions, and OAuth tokens exclusively over HTTP against **`AUTH_HUB_URL = "https://api.gothwadtech.com"`**.
 
 ---
 
@@ -23,42 +23,141 @@
 > 🚨 **CRITICAL SAME-ZONE WORKER RULE (Already bit production once — never break this!):**
 > - Inside `GothwadTech/mail` Worker (`server-to-server fetch()`), **ALWAYS** call **`AUTH_HUB_URL = "https://api.gothwadtech.com"`** (Accounts Worker's Custom Domain).
 > - **NEVER** call `https://accounts.gothwadtech.com/api/...` from another Cloudflare Worker in the same zone — Cloudflare routes same-zone subrequests to Pages (`200 text/html`), causing `503 accounts_unexpected_response`!
-> - Browser redirects (`Sign in`, `Manage your Gothwad Account`) use **`AUTH_SIGNIN_URL = "https://accounts.gothwadtech.com"`**.
+> - Browser redirects (`Sign in`, `Use another account`, `Manage your Gothwad Account`) use **`AUTH_SIGNIN_URL = "https://accounts.gothwadtech.com"`**.
 
 ---
 
-## 🔌 All 3 Accounts Endpoints Used by `GothwadTech/mail`
+## 🍪 Final SSO & Multi-Account Cookie Naming Table
+
+Every cookie emitted by `GothwadTech/accounts`:
+- Strictly matches Mail's upstream cookie allowlist regex **`/^gothwad_[a-z_]+=/`** (lowercase ASCII letters + underscores only; **never** `__Host-` or `__Secure-`, never digits or dots in cookie names).
+- Uses slot cookies strictly matching **`/^gothwad_sess_[a-z]$/`** (`gothwad_sess_a` .. `gothwad_sess_f`, up to **6** signed-in accounts per browser).
+- Is emitted as an **individual `Set-Cookie` header** (`headers.append('Set-Cookie', ...)` — never comma-joined) so `res.headers.getSetCookie()` in Mail's `worker/src/session.ts` forwards every cookie cleanly.
+- Carries flags **`Path=/; HttpOnly; SameSite=Lax; Secure; Domain=.gothwadtech.com`** in production (host-only without `Secure` on plain `http://localhost` / `127.0.0.1` local dev).
+- Never stores tokens or account lists in `localStorage` or `sessionStorage`.
+
+| Cookie Name | Format / Value | Max-Age | Purpose |
+|---|---|---|---|
+| **`gothwad_sess_a`** .. **`gothwad_sess_f`** | `s1~<session_jwt>~<refresh_token>~<session_id>~<1\|0>` | `2592000` (30d) or session | Per-slot server-verifiable session credentials (`^gothwad_sess_[a-z]$`, ~360 B per slot). Validated live against D1 `users` + `user_sessions` + `auth_refresh_tokens`. |
+| **`gothwad_active`** | `"a"` .. `"f"` | `2592000` (30d) | Active slot letter read first on `GET /api/auth/me` and all session-protected endpoints. If absent or revoked, Accounts seamlessly falls back to legacy cookies. |
+| **`gothwad_accounts`** | `v1.<base64url(json)>.<hmac_sha256>` | `2592000` (30d) | Signed display index (`[{ slot, username, firstName, lastName, addedAt, lastUsedAt }]`) — **zero tokens/secrets**, signed with `JWT_SECRET` using constant-time HMAC verification. Any tampered/corrupted byte is treated as absent (`null`) with zero `500` errors. |
+| **`gothwad_at`** | `<session_jwt>` | `3600` (1h) or session | Active account access JWT mirror — preserves 100% backward compatibility with single-account / legacy consumers. |
+| **`gothwad_rt`** | `<refresh_token>` | `2592000` (30d) or session | Active account refresh token mirror — rotated atomically in lockstep with `gothwad_sess_<active>`. |
+| **`gothwad_sid`** | `<uuid>` | `2592000` (30d) or session | Active account device session UUID (`user_sessions.id`). |
+
+---
+
+## 🔀 Multi-Account Session Endpoints Contract
+
+All multi-account endpoints enable CORS (`Access-Control-Allow-Credentials: true`, `Vary: Origin`) for `https://*.gothwadtech.com` and return JSON only (`503` on D1/upstream failure — **never** a false `401` and **never** `Max-Age=0` cookies during transient DB errors).
+
+### 1. List Signed-In Accounts — `GET /api/auth/accounts`
+- Validates every candidate slot against live D1 `users` + `user_sessions` (auto-promoting pre-existing single-account legacy cookies into slot `a` on first use, rotating expired 1h slot JWTs seamlessly, and pruning any remotely revoked slots via `Set-Cookie`).
+- **`200 OK`:**
+  ```json
+  {
+    "activeId": "a",
+    "accounts": [
+      {
+        "id": "a",
+        "username": "pawan",
+        "firstName": "Pawan",
+        "lastName": "Gothwad",
+        "email": "pawan@gothwadtech.com",
+        "lastUsedAt": "2026-10-20T13:12:15.407Z"
+      },
+      {
+        "id": "b",
+        "username": "work",
+        "firstName": "Pawan",
+        "lastName": "Work",
+        "email": "work@gothwadtech.com",
+        "lastUsedAt": "2026-10-20T13:12:15.437Z"
+      }
+    ]
+  }
+  ```
+- **`401 Unauthorized`** *(no valid signed-in accounts)*:
+  ```json
+  { "authenticated": false }
+  ```
+
+### 2. Instant Zero-Password Switch — `POST /api/auth/switch`
+- **CSRF Required:** Must include a trusted Gothwad `Origin` (e.g. `Origin: https://mail.gothwadtech.com`) or `Referer`; missing/untrusted/null/HTTP origin returns **`403` `{"error": "csrf_rejected", "message": "Cross-site request rejected"}`**.
+- **Request Body:** `{ "id": "b" }` (`"a"` .. `"f"`). Idempotent if `"id"` is already active.
+- **`200 OK`:** Rotates slot `b`'s session token, sets `gothwad_active=b`, updates `lastUsedAt` in `gothwad_accounts`, updates active mirror cookies, and returns:
+  ```json
+  {
+    "ok": true,
+    "activeId": "b",
+    "user": {
+      "id": "uuid",
+      "username": "work",
+      "email": "work@gothwadtech.com",
+      "first_name": "Pawan",
+      "last_name": "Work",
+      "recovery_email": "work@personal.example",
+      "phone_number": "",
+      "avatar_url": null,
+      "date_of_birth": null,
+      "gender": null,
+      "two_factor_enabled": false,
+      "storage_used_bytes": 0,
+      "storage_limit_bytes": 16106127360,
+      "created_at": "2026-10-20T13:12:15.000Z"
+    }
+  }
+  ```
+- **`409 Conflict`** *(target slot session was revoked/expired)*: Keeps the current active account untouched, clears `gothwad_sess_b`, prunes `"b"` from `gothwad_accounts`, and returns:
+  ```json
+  { "error": "account_not_signed_in" }
+  ```
+  Mail / caller should route the browser to `https://accounts.gothwadtech.com/signin?choose=1&add=1&next=<encoded_return_url>`.
+
+### 3. Per-Slot Sign-Out — `POST /api/auth/accounts/:id/signout`
+- **CSRF Required:** Trusted Gothwad `Origin` / `Referer` required (`403` otherwise).
+- Revokes ONLY slot `:id`'s D1 `auth_refresh_tokens` + `user_sessions` row and clears `gothwad_sess_<id>`.
+- If other valid accounts remain: promotes the most recently used remaining slot (`activeId`) and keeps the browser signed in (`signedOutAll: false`).
+- If `:id` was the last account: clears all `gothwad_*` cookies (`signedOutAll: true`, `activeId: null`, `accounts: []`), after which `GET /api/auth/me` returns `401 {"authenticated": false}`.
+- **`200 OK`:**
+  ```json
+  {
+    "ok": true,
+    "signedOutAll": false,
+    "activeId": "a",
+    "accounts": [
+      {
+        "id": "a",
+        "username": "pawan",
+        "firstName": "Pawan",
+        "lastName": "Gothwad",
+        "email": "pawan@gothwadtech.com",
+        "lastUsedAt": "2026-10-20T13:12:15.567Z"
+      }
+    ]
+  }
+  ```
+
+### 4. Browser Chooser & Add-Account Flows (`accounts.gothwadtech.com`)
+- **`GET https://accounts.gothwadtech.com/signin?choose=1&next=<url>`**: Lists all server-verified signed-in accounts plus **"Use another account"**; clicking an account runs `POST /api/auth/switch` in 1 request and redirects straight to `next`.
+- **`GET https://accounts.gothwadtech.com/signin?choose=1&add=1&next=<url>`**: Signs in an additional account (`POST /api/auth/signin?add=1` / `{ add: true }`), allocating the next free slot (`a`..`f`) without replacing already signed-in slots, then redirects to `next`. Signing in without `add=1` keeps replace behavior.
+
+---
+
+## 🔌 Core Existing Accounts Endpoints Used by `GothwadTech/mail`
 
 ### 1. Inbound Recipient Existence Check (`worker/src/inbound.ts`)
 - **Method & URL:** `GET https://api.gothwadtech.com/api/internal/usernames/:username`
 - **Auth Header:** `Authorization: Bearer <ACCOUNTS_INTERNAL_TOKEN>` *(must match `MAIL_INTERNAL_TOKEN` set on `accounts` Worker; compared in constant time via SHA-256)*
-- **Path normalization:** `username.trim().toLowerCase()`, regex `^[a-z0-9][a-z0-9._-]{0,63}$`
 - **Responses (`Cache-Control: no-store`, no CORS headers, no cookies):**
-  - `200 {"exists": true}` — valid registered Gothwad account (`users` / `profiles` in `accounts` D1)
-  - `200 {"exists": false}` — no such user (Mail Worker rejects SMTP with `550 5.1.1 Unknown recipient`)
-  - `400 {"error": "bad_username"}` — malformed username shape
-  - `401 {"error": "unauthorized"}` — missing or mismatched token (`451` temp failure in SMTP so legitimate mail retries)
-  - `500 {"error": "server_not_configured"}` / `{"error": "internal_error"}`
+  - `200 {"exists": true}` / `200 {"exists": false}` / `400 {"error": "bad_username"}` / `401 {"error": "unauthorized"}` / `500`
 
 ### 2. First-Party Cookie Session Resolution (`worker/src/session.ts`)
 - **Method & URL:** `GET https://api.gothwadtech.com/api/auth/me`
-- **Forwarded Header:** `Cookie: <incoming gothwad_at / gothwad_rt / gothwad_sid cookies>` (scoped to `Domain=.gothwadtech.com`, `HttpOnly; Secure; SameSite=Lax`)
-- **Cookie Rotation Forwarding (IMPORTANT):** If `gothwad_at` expired and `accounts` rotated `gothwad_at` + `gothwad_rt` via `Set-Cookie`, `GothwadTech/mail` **MUST forward all upstream `Set-Cookie` headers back to the browser** (`takeUpstreamCookies(request)` in `worker/src/session.ts` already does this — preserve it!).
-- **Authenticated Response (`200`):**
-  ```json
-  {
-    "authenticated": true,
-    "user": {
-      "id": "uuid",
-      "username": "pawan",
-      "email": "pawan@gothwadtech.com",
-      "first_name": "Pawan",
-      "last_name": "Gothwad",
-      "avatar_url": "https://accounts.gothwadtech.com/api/avatars/uuid?v=etag"
-    }
-  }
-  ```
-- **Signed-Out Response:** `200 {"authenticated": false}` or `401` → Mail returns `401 {"error": "unauthenticated", "signinUrl": "https://accounts.gothwadtech.com/signin"}`.
+- **Forwarded Header:** `Cookie: <incoming gothwad_* cookies>`
+- **Cookie Rotation Forwarding:** Mail forwards every upstream `Set-Cookie` matching `/^gothwad_[a-z_]+=/` back to the browser as individual headers.
+- **Authenticated Response (`200`):** Byte-compatible single-account user object `{ "authenticated": true, "user": { ... } }`.
+- **Signed-Out Response (`401`):** `401 {"authenticated": false}` → Mail redirects unauthenticated browsers to `https://accounts.gothwadtech.com/signin?choose=1`.
 
 ### 3. OAuth 2.0 Bearer Token Verification (`worker/src/session.ts`)
 - **Method & URL:** `GET https://api.gothwadtech.com/api/oauth/userinfo`
@@ -66,9 +165,3 @@
 - **Pre-registered Callbacks in Accounts D1 (`ecosystem_apps` where `id = 'gothwad-mail'`):**
   - `https://mail.gothwadtech.com/auth/callback`
   - `https://mail.gothwadtech.com/oauth/callback`
-
----
-
-## 📋 Full Migration Prompt & D1 Blueprint for `GothwadTech/mail`
-
-See **[`docs/MAIL_D1_MIGRATION_PROMPT.md`](MAIL_D1_MIGRATION_PROMPT.md)** and **[`docs/CLOUDFLARE_NATIVE_PLAN.md`](CLOUDFLARE_NATIVE_PLAN.md)** in this repository for the complete file-by-file `GothwadTech/mail` Cloudflare D1 migration specification, retention SQL, compression helpers, `SettingsModal.tsx` spec, and Cloudflare Dashboard setup guide.

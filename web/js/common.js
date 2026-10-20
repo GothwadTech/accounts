@@ -1,26 +1,21 @@
 /**
  * =============================================================================
- * COMMON HELPERS — shared UI + auth logic (har page yeh use karta hai)
- * Routes: /signin · /signup · /me   (iske alawa koi page nahi)
+ * COMMON HELPERS — shared UI + auth logic (`/signin` · `/signup` · `/me`)
  * =============================================================================
  */
 
-import { api, clearTokens, getTokens } from './api.js';
+import { api, clearTokens } from './api.js';
 import {
-  rememberAccount,
-  listAccounts,
-  removeAccount,
-  clearAllAccounts,
+  fetchAccounts,
   switchToAccount,
-  switchToNextAvailable,
+  signOutAccount,
+  signOutAllAccounts,
   initialsFor,
-  canAddAccount,
   MAX_ACCOUNTS,
   safeNextUrl,
+  addAccountHref,
 } from './accounts.js';
 
-/* ----------------------------------------------------------------- toasts */
-/** toast('Saved!', 'success') ya toast('Something went wrong', 'error') */
 export function toast(message, type = 'success') {
   let wrap = document.querySelector('.toast-wrap');
   if (!wrap) {
@@ -30,8 +25,6 @@ export function toast(message, type = 'success') {
   }
   const el = document.createElement('div');
   el.className = `toast ${type}`;
-  // Material Symbols font load hota hai (naye dashboard jaisi page) tabhi icon
-  // use karo — purani (legacy) pages par wahi purana emoji style bana rahe.
   const hasMaterialIcons = !!document.querySelector('link[href*="Material+Symbols"]');
   const icon = hasMaterialIcons
     ? `<span class="msym" style="font-size:18px;">${type === 'error' ? 'error' : 'check_circle'}</span>`
@@ -43,29 +36,27 @@ export function toast(message, type = 'success') {
   setTimeout(() => el.remove(), 4200);
 }
 
-/** HTML-escape (XSS se bachav — user input ko kabhi directly mat chhapo) */
 export function escapeHtml(str) {
   return String(str ?? '').replace(/[&<>"']/g, (c) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
   }[c]));
 }
 
-/**
- * Auth pages ke links (signin ↔ signup) par maujood ?next= carry karo.
- * Mail se aaya next signup tak na kho jaaye — warna naya user bhi /me par
- * land karega aur apne inbox par kabhi nahi pahunchega.
- */
 export function carryNextOnAuthLinks() {
-  const next = new URLSearchParams(location.search).get('next');
-  if (!next) return;
-  document.querySelectorAll('a[href="/signin"], a[href="/signup"]').forEach((a) => {
+  const cur = new URLSearchParams(location.search);
+  const next = cur.get('next');
+  const add = cur.get('add');
+  const choose = cur.get('choose');
+  if (!next && !add && !choose) return;
+  document.querySelectorAll('a[href^="/signin"], a[href^="/signup"]').forEach((a) => {
     const url = new URL(a.getAttribute('href'), location.origin);
-    url.searchParams.set('next', next);
+    if (next) url.searchParams.set('next', next);
+    if (add === '1') url.searchParams.set('add', '1');
+    if (choose === '1') url.searchParams.set('choose', '1');
     a.setAttribute('href', url.pathname + url.search);
   });
 }
 
-/* ------------------------------------------------------------ button busy */
 export function setBusy(btn, busy, busyText = 'Please wait...') {
   if (!btn) return;
   if (busy) {
@@ -78,24 +69,14 @@ export function setBusy(btn, busy, busyText = 'Please wait...') {
   }
 }
 
-/* ---------------------------------------------------------------- session */
-/**
- * Current session check: /api/auth/me call karta hai.
- * Returns: { authenticated, user }
- */
 export async function getSession() {
   const res = await api.get('/auth/me');
   if (res.ok && res.data && res.data.authenticated) {
-    rememberAccount(res.data.user);
     return { authenticated: true, user: res.data.user };
   }
   return { authenticated: false, user: null };
 }
 
-/**
- * Protected page (/me): login nahi hai to /signin par bhej do.
- * Returns user object (logged-in case mein).
- */
 export async function requireAuth() {
   const session = await getSession();
   if (!session.authenticated) {
@@ -106,7 +87,6 @@ export async function requireAuth() {
   return session.user;
 }
 
-/** /signin, /signup: pehle se logged-in hai to /me par bhej do. */
 export async function redirectIfAuthed() {
   const params = new URLSearchParams(location.search);
   const add = params.get('add') === '1';
@@ -114,14 +94,19 @@ export async function redirectIfAuthed() {
   const choose = params.get('choose') === '1';
   const next = params.get('next') || '';
   const isOAuth = /\/oauth\/authorize/i.test(next);
-  const saved = listAccounts();
 
-  // Form: add account / use another account — picker skip
-  if (add || form) return { authenticated: false, user: null, showChooser: false };
+  // Explicit form mode (`add=1` or `form=1`): stay on Sign-In / Sign-Up form without redirect
+  if (add || form) {
+    return { authenticated: false, user: null, showChooser: false };
+  }
 
-  // Google-style chooser: saved accounts (OAuth ya 1+ accounts)
-  if (saved.length >= 1 && (choose || isOAuth || saved.length >= 1)) {
-    return { authenticated: false, user: null, showChooser: true };
+  // Chooser mode (`?choose=1` or OAuth authorize flow): check live server accounts in 1 request
+  if (choose || isOAuth) {
+    const state = await fetchAccounts();
+    if (state.accounts.length >= 1) {
+      return { authenticated: false, user: null, showChooser: true, accountsState: state };
+    }
+    return { authenticated: false, user: null, showChooser: false };
   }
 
   const session = await getSession();
@@ -131,51 +116,39 @@ export async function redirectIfAuthed() {
   return session;
 }
 
-/** Sign out current account. Agar doosra saved hai to uspe switch. */
+/** Sign out only the active slot (or all accounts when `{ all: true }`). */
 export async function signOut({ all = false } = {}) {
   if (all) {
-    const list = listAccounts();
-    for (const a of list) {
-      await api.post('/auth/signout', { session_id: a.session_id || null });
-    }
-    clearAllAccounts();
+    await signOutAllAccounts();
     clearTokens();
     location.href = '/signin';
     return;
   }
 
-  const tokens = getTokens();
-  await api.post('/auth/signout', { session_id: tokens.session_id || null });
-  const current = listAccounts().find(
-    (a) => a.session_id === tokens.session_id || a.refresh_token === tokens.refresh_token,
-  );
-  const except = [current?.id, current?.username, tokens.session_id].filter(Boolean);
-  if (current) removeAccount(current.id);
-  clearTokens();
-
-  const sw = await switchToNextAvailable(except);
-  if (sw.ok) {
-    location.href = '/me';
+  const state = await fetchAccounts();
+  if (state.activeId) {
+    const out = await signOutAccount(state.activeId);
+    clearTokens();
+    if (out.ok && !out.signedOutAll) {
+      location.href = '/me';
+      return;
+    }
+    location.href = '/signin?choose=1';
     return;
   }
+
+  await signOutAllAccounts();
+  clearTokens();
   location.href = '/signin';
 }
 
-/* ---------------------------------------------------------------- header */
-/**
- * Topbar render karo (real Gothwad logo + auth state ke hisaab se buttons).
- * Har page mein <header id="topbar"></header> hona chahiye.
- * NOTE: agar session pehle se pata ho (getPageSession()) to use bhejo —
- * warna ye khud /auth/me call karega.
- */
 export async function renderTopbar(existingSession = null) {
   const el = document.getElementById('topbar');
   if (!el) return;
 
   const session = existingSession || (await getSession());
   const authed = session.authenticated;
-
-  const accounts = listAccounts();
+  const { activeId, accounts } = authed ? await fetchAccounts() : { activeId: null, accounts: [] };
   const user = session.user || {};
   const ini = initialsFor(user);
 
@@ -193,21 +166,17 @@ export async function renderTopbar(existingSession = null) {
               <span class="avatar sm">${escapeHtml(ini)}</span>
             </button>
             <div class="acct-menu hidden" id="acct-menu" role="menu">
-              <div class="acct-menu-head">
-                <div class="acct-menu-name">${escapeHtml(`${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username || 'Account')}</div>
-                <div class="acct-menu-email mono">${escapeHtml(user.email || '')}</div>
-              </div>
               ${accounts.map((a) => `
                 <button type="button" class="acct-menu-item" data-switch="${escapeHtml(a.id)}" role="menuitem">
                   <span class="avatar sm">${escapeHtml(initialsFor(a))}</span>
                   <span>
-                    <span class="acct-item-name">${escapeHtml(`${a.first_name || ''} ${a.last_name || ''}`.trim() || a.username)}</span>
+                    <span class="acct-item-name">${escapeHtml(`${a.firstName || ''} ${a.lastName || ''}`.trim() || a.username)}</span>
                     <span class="acct-item-email mono">${escapeHtml(a.email || a.username)}</span>
                   </span>
-                  ${a.username === user.username ? '<span class="acct-check">✓</span>' : ''}
+                  ${a.id === activeId || a.username === user.username ? '<span class="acct-check">✓</span>' : ''}
                 </button>
               `).join('')}
-              <a class="acct-menu-item" id="link-add-account" href="/signin?add=1">
+              <a class="acct-menu-item" id="link-add-account" href="${escapeHtml(addAccountHref(location.pathname + location.search))}">
                 <span class="acct-plus">+</span>
                 <span>Add another account</span>
               </a>
@@ -222,10 +191,10 @@ export async function renderTopbar(existingSession = null) {
       </nav>
     </div>`;
 
-  bindAccountMenu(accounts, user);
+  bindAccountMenu(accounts, activeId, user);
 }
 
-function bindAccountMenu(accounts, user) {
+function bindAccountMenu(accounts, activeId, user) {
   const btn = document.getElementById('acct-switch-btn');
   const menu = document.getElementById('acct-menu');
   if (btn && menu) {
@@ -240,14 +209,16 @@ function bindAccountMenu(accounts, user) {
   menu?.querySelectorAll('[data-switch]').forEach((el) => {
     el.addEventListener('click', async () => {
       const id = el.getAttribute('data-switch');
-      const acc = accounts.find((a) => a.id === id);
-      if (!acc || acc.username === user.username) {
+      if (!id || id === activeId) {
         menu.classList.add('hidden');
         return;
       }
-      const sw = await switchToAccount(acc);
+      const sw = await switchToAccount(id);
       if (!sw.ok) {
         toast(sw.error || 'Could not switch account', 'error');
+        if (sw.status === 409) {
+          location.href = addAccountHref(location.pathname + location.search);
+        }
         return;
       }
       location.reload();
@@ -257,10 +228,12 @@ function bindAccountMenu(accounts, user) {
   const addLink = document.getElementById('link-add-account');
   if (addLink) {
     addLink.addEventListener('click', (e) => {
-      const gate = canAddAccount();
-      if (!gate.ok) {
+      if (accounts.length >= MAX_ACCOUNTS) {
         e.preventDefault();
-        toast(gate.error, 'error');
+        toast(
+          `Maximum ${MAX_ACCOUNTS} accounts can stay signed in on one browser. Sign out of one first.`,
+          'error',
+        );
       }
     });
   }
@@ -271,8 +244,6 @@ function bindAccountMenu(accounts, user) {
   if (all) all.addEventListener('click', () => signOut({ all: true }));
 }
 
-/* ---------------------------------------------------------------- format */
-/** Bytes ko human-readable banao: 1536 → "1.5 KB" */
 export function formatBytes(bytes) {
   if (!bytes) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -280,7 +251,6 @@ export function formatBytes(bytes) {
   return `${(bytes / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
-/** ISO date → "9 Oct 2026, 2:30 PM" */
 export function formatDate(iso) {
   if (!iso) return '—';
   try {
@@ -292,8 +262,6 @@ export function formatDate(iso) {
   }
 }
 
-/* -------------------------------------------------------- password strength */
-/** 0-4 score: very weak → strong */
 export function passwordStrength(pw) {
   if (!pw) return 0;
   let score = 0;
@@ -304,11 +272,6 @@ export function passwordStrength(pw) {
   return Math.min(score, 4);
 }
 
-/* ------------------------------------------------------------- eye toggle */
-/**
- * Show/hide password buttons — har page par <button class="input-eye" data-eye="FIELD_ID">
- * Setup: setupPasswordEyes() call karo page load par.
- */
 export function setupPasswordEyes() {
   document.querySelectorAll('.input-eye').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -316,7 +279,6 @@ export function setupPasswordEyes() {
       if (!input) return;
       const isPassword = input.type === 'password';
       input.type = isPassword ? 'text' : 'password';
-      // Material Symbols icon ho to usse toggle karo, warna emoji (purana style)
       const icon = btn.querySelector('.msym');
       if (icon) {
         icon.textContent = isPassword ? 'visibility_off' : 'visibility';

@@ -1,6 +1,6 @@
-import { api } from '../../../js/api.js';
+import { api, clearTokens } from '../../../js/api.js';
 import { setBusy, toast } from '../../../js/common.js';
-import { rememberAccount, canAddAccount, safeNextUrl } from '../../../js/accounts.js';
+import { safeNextUrl } from '../../../js/accounts.js';
 
 export function initSignupSubmit(form, submitBtn, showError, clearError) {
   if (!form || !submitBtn) return;
@@ -30,9 +30,14 @@ export function initSignupSubmit(form, submitBtn, showError, clearError) {
       return showError('Please enter a valid recovery email (e.g. your Gmail).');
     }
 
-    setBusy(submitBtn, true, 'Creating your account...');
+    const params = new URLSearchParams(location.search);
+    const addMode = params.get('add') === '1';
+    const path = addMode ? '/auth/signup?add=1' : '/auth/signup';
 
-    const res = await api.post('/auth/signup', {
+    setBusy(submitBtn, true, 'Creating your account...');
+    clearTokens();
+
+    const res = await api.post(path, {
       first_name: firstName,
       last_name: lastName,
       username,
@@ -40,6 +45,7 @@ export function initSignupSubmit(form, submitBtn, showError, clearError) {
       recovery_email: recoveryEmail,
       phone_number: phoneNumber || null,
       remember: true,
+      add: addMode,
     });
 
     setBusy(submitBtn, false);
@@ -48,18 +54,10 @@ export function initSignupSubmit(form, submitBtn, showError, clearError) {
       return showError(res.error || 'Could not create account. Please try again.');
     }
 
-    if (res.data && res.data.user) {
-      rememberAccount(res.data.user, {
-        access_token: res.data.access_token,
-        refresh_token: res.data.refresh_token,
-        session_id: res.data.session_id,
-      });
-    }
     toast(`Account created! Welcome to Gothwad, ${firstName}!`);
 
     setTimeout(() => {
-      // ?next= ho to wahi (jaise mail.gothwadtech.com) — warna dashboard
-      const next = new URLSearchParams(location.search).get('next');
+      const next = params.get('next');
       location.href = safeNextUrl(next, '/me');
     }, 600);
   });

@@ -73,8 +73,7 @@ is the failing step.
 >
 > Rules & working style: [`AGENTS.md`](AGENTS.md) · Master plan: [`PLAN.md`](PLAN.md)
 
-**Last updated:** 2026-10-17 (Session 28 — Store/web Android AI handoff prompts,
-Accounts OAuth hardening + full callback SQL generator; live deployment/DB run pending)
+**Last updated:** 2026-10-20 (Session 30 — Google-style Multi-Account Cookie Sessions v2.1 across Accounts + Mail SSO contract; 69/69 tests green)
 
 ---
 
@@ -85,14 +84,34 @@ Accounts OAuth hardening + full callback SQL generator; live deployment/DB run p
 | 1 | Gothwad Accounts — UI + sessions + profile + avatars + export/delete | ✅ DONE |
 | 2 | OAuth 2.0 + S256 PKCE provider ("Sign in with Gothwad") | ✅ DONE |
 | 2.5 | **100% Cloudflare Native Upgrade (`D1` + Worker Native Auth — Zero Supabase!)** | ✅ **DONE (2026-10-20)** |
-| 3 | Owner Cloudflare Dashboard D1 binding (`docs/SETUP.md`) + `Mail`/`Store` D1 migration | 🔜 NEXT |
+| 2.6 | **Google-Style Multi-Account Cookie Sessions (`a`..`f` `HttpOnly` `.gothwadtech.com` slots — Zero Client Token Storage!)** | ✅ **DONE (2026-10-20)** |
+| 3 | Merge & deploy `accounts` + `mail` multi-account switcher UI | 🔜 NEXT |
 | 4 | Cross-app SSO (`GrixChat`, `ClashDrive`, `Notes`, `Calendar`) | 📋 Planned |
 
-**Current state in one line:** **v2.0 — 100% Cloudflare Native (`Pages` + `Worker` + `Cloudflare D1 SQLite` + `Edge-Cached Avatars` — Zero Supabase!)**; pure username-only DB (`users` + `profiles`), WebCrypto `PBKDF2-SHA256` (`100k` iterations), `session` vs `oauth_access` JWT separation, instant device revocation, auto-bootstrapping D1 schema, **62/62 automated tests passing**, TypeScript strict clean, Wrangler dry-run verified (`21.23 KiB` gzipped).
+**Current state in one line:** **v2.1 — Multi-Account Cookie Sessions on 100% Cloudflare Native (`Pages` + `Worker` + `Cloudflare D1 SQLite`)**; up to 6 signed-in accounts per browser (`gothwad_sess_a`..`gothwad_sess_f`, HMAC-signed `gothwad_accounts`, `gothwad_active`), 1-request zero-password switching (`POST /api/auth/switch`), per-slot signout (`POST /api/auth/accounts/:id/signout`), zero client-stored tokens, **69/69 automated tests passing**, TypeScript strict clean, Wrangler dry-run verified (`28.15 KiB` gzipped).
 
 ---
 
 ## ✅ DONE (completed work — newest first)
+
+### Session 30 — 2026-10-20 — Google-Style Multi-Account Cookie Sessions (`v2.1` — `accounts` ↔ `mail`)
+- **Owner goal:** Add Google-style multiple signed-in accounts on one browser so users stay signed into multiple Gothwad accounts simultaneously across `.gothwadtech.com` and switch active identity in 1 request with zero password re-entry, zero new Worker secrets, zero manual SQL, and zero tokens in `localStorage` / `sessionStorage`.
+- **Cookie & Session Architecture (`cloudflare-worker/src/index.ts`):**
+  - Per-slot `HttpOnly; Secure; SameSite=Lax; Domain=.APP_DOMAIN` credentials in `gothwad_sess_a` .. `gothwad_sess_f` (`^gothwad_sess_[a-z]$`, all cookies matching Mail proxy regex `/^gothwad_[a-z_]+=/`, individual `Set-Cookie` headers).
+  - Constant-time HMAC-SHA256 signed `gothwad_accounts` cookie (`v1.<base64url(json)>.<hmac>` using existing `JWT_SECRET`, zero tokens/secrets inside; tampered/corrupted bytes safely treated as absent with zero `500`s) + `gothwad_active` slot selector (`a`..`f`).
+  - Seamless single-account compatibility & automatic legacy session promotion: `GET /api/auth/me` remains byte-compatible (`200` on valid session, `401` on invalid/missing session); pre-existing browsers holding only `gothwad_at`/`gothwad_rt`/`gothwad_sid` continue working identically and automatically promote into slot `a`.
+  - Added 10-second concurrent cookie rotation grace window in `validateCredentialsAgainstDb()` so parallel requests with an expired 1-hour access cookie never race or clear rotated cookies, while preserving 0ms instant sign-out & remote device revocation.
+  - Added endpoints:
+    1. `GET /api/auth/accounts` — live D1 verification, dead-slot pruning, `{ activeId, accounts }`.
+    2. `POST /api/auth/switch` — CSRF-protected 1-request active slot switch + refresh rotation (`409 { error: "account_not_signed_in" }` pruning dead slot while leaving current active account untouched).
+    3. `POST /api/auth/accounts/:id/signout` — CSRF-protected per-slot revocation + promotion of most recently used remaining slot (`signedOutAll: false`) or full browser sign-out (`signedOutAll: true`).
+    4. `POST /api/auth/signin` & `POST /api/auth/signup` `?add=1` / `{ add: true }` append mode vs default replace mode.
+- **Cookie-Only Frontend (`web/`):**
+  - Removed all `sessionStorage` and `localStorage` token persistence from `web/js/api.js` and `web/js/accounts.js` (plus auto-purge of legacy client keys on load).
+  - Updated `web/js/common.js`, `web/me/js/me.js`, `web/signin/js/{signin.js,modules/account-chooser.js,modules/signin-form.js}`, and `web/signup/js/modules/signup-submit.js` for `/signin?choose=1` and `/signin?choose=1&add=1`.
+- **Documentation & Verification:**
+  - Updated [`docs/MAIL_INTERNAL.md`](docs/MAIL_INTERNAL.md) with final cookie table + multi-account API contract.
+  - Added [`tests/multi-account.test.mjs`](tests/multi-account.test.mjs) covering all 8 required test cases + resilience, CSRF, cookie flags, and static client storage audit (**69/69 tests passing** + live `tools/test-singleflight.mjs` + live `curl` `a → b → a` verification).
 
 ### Session 29 — 2026-10-20 — Full Upgrade to 100% Cloudflare Native (`D1` + Worker Auth — Zero Supabase!)
 - **Owner goal:** Remove Supabase completely from `Gothwad Accounts`, write the complete Cloudflare-native master plan across the Gothwad ecosystem, execute the full `D1 + Native Worker Auth` upgrade in this repository, and provide a crystal-clear step-by-step Cloudflare Dashboard setup guide from basics.

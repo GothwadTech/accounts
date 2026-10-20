@@ -299,7 +299,7 @@ async function getDb(env: Env): Promise<D1Database> {
       .then(() => undefined)
       .catch((err) => {
         initializedDbs.delete(key);
-        throw err;
+        throw err instanceof DatabaseUnavailableError ? err : new DatabaseUnavailableError();
       });
     initializedDbs.set(key, pending);
   }
@@ -316,6 +316,15 @@ class DatabaseUnavailableError extends Error {
 class OAuthDatabaseError extends Error {
   constructor() {
     super('OAuth database temporarily unavailable');
+  }
+}
+
+async function authQuery<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (err instanceof DatabaseUnavailableError || err instanceof OAuthDatabaseError) throw err;
+    throw new DatabaseUnavailableError('Database temporarily unavailable');
   }
 }
 
@@ -355,7 +364,12 @@ async function readFormOrJson(request: Request): Promise<Record<string, any>> {
   const ct = request.headers.get('Content-Type') || '';
   if (ct.includes('application/x-www-form-urlencoded')) {
     const text = await request.text();
-    return Object.fromEntries(new URLSearchParams(text));
+    const params = new URLSearchParams(text);
+    const out: Record<string, string> = {};
+    params.forEach((v, k) => {
+      out[k] = v;
+    });
+    return out;
   }
   return readJson(request);
 }
@@ -644,11 +658,6 @@ export function cookieDomain(request: Request, env: Env): string | null {
   return null;
 }
 
-function isApiHost(request: Request, env: Env): boolean {
-  const apiHost = (env.API_DOMAIN || '').trim().toLowerCase();
-  return apiHost !== '' && new URL(request.url).hostname.toLowerCase() === apiHost;
-}
-
 function makeCookie(
   request: Request,
   env: Env,
@@ -880,6 +889,232 @@ function parseUserAgent(ua: string): { device_name: string; browser: string; os:
 }
 
 // -----------------------------------------------------------------------------
+// Multi-Account Cookie Session Engine & CSRF Protection
+// -----------------------------------------------------------------------------
+// Cookie names strictly match `^gothwad_[a-z_]+=` (Mail proxy filter) and
+// per-slot session cookies strictly match `^gothwad_sess_[a-z]$`:
+//   - `gothwad_sess_a` .. `gothwad_sess_f`: HttpOnly per-slot session credentials
+//   - `gothwad_accounts`: `v1.<base64url(json)>.<hmac>` (display metadata only, zero secrets)
+//   - `gothwad_active`: active slot letter (`a`..`f`)
+//   - `gothwad_at` / `gothwad_rt` / `gothwad_sid`: legacy & active-slot mirror cookies
+
+export const ACCOUNT_SLOTS = ['a', 'b', 'c', 'd', 'e', 'f'] as const;
+export type AccountSlot = (typeof ACCOUNT_SLOTS)[number];
+export const ACCOUNTS_COOKIE_NAME = 'gothwad_accounts';
+export const ACTIVE_COOKIE_NAME = 'gothwad_active';
+const MULTI_ACCOUNT_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
+
+export interface AccountCookieEntry {
+  slot: AccountSlot;
+  username: string;
+  firstName: string;
+  lastName: string;
+  addedAt: string;
+  lastUsedAt: string;
+}
+
+export interface PublicAccountSummary {
+  id: AccountSlot;
+  username: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  lastUsedAt: string;
+}
+
+interface SlotCredentials {
+  accessToken: string;
+  refreshToken: string;
+  sessionId: string;
+  remember: boolean;
+}
+
+export function isAccountSlot(value: unknown): value is AccountSlot {
+  return typeof value === 'string' && (ACCOUNT_SLOTS as readonly string[]).includes(value);
+}
+
+export function slotCookieName(slot: AccountSlot): string {
+  return `gothwad_sess_${slot}`;
+}
+
+function encodeSlotCredentials(creds: SlotCredentials): string {
+  return `s1~${creds.accessToken}~${creds.refreshToken}~${creds.sessionId}~${creds.remember ? '1' : '0'}`;
+}
+
+function decodeSlotCredentials(raw: string | null | undefined): SlotCredentials | null {
+  if (!raw || typeof raw !== 'string') return null;
+  const parts = raw.split('~');
+  if (parts.length !== 5 || parts[0] !== 's1') return null;
+  const [, accessToken, refreshToken, sessionId, remFlag] = parts;
+  if (!accessToken && !refreshToken) return null;
+  return {
+    accessToken: accessToken || '',
+    refreshToken: refreshToken || '',
+    sessionId: sessionId || '',
+    remember: remFlag !== '0',
+  };
+}
+
+function makeSlotSessionCookie(request: Request, env: Env, slot: AccountSlot, creds: SlotCredentials): string {
+  return makeCookie(
+    request,
+    env,
+    slotCookieName(slot),
+    encodeSlotCredentials(creds),
+    creds.remember ? MULTI_ACCOUNT_MAX_AGE : null,
+  );
+}
+
+async function computeAccountsCookieHmac(payloadB64: string, secret: string): Promise<Uint8Array> {
+  const enc = new TextEncoder();
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    enc.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const sig = await crypto.subtle.sign('HMAC', cryptoKey, enc.encode(`gothwad_accounts:v1:${payloadB64}`));
+  return new Uint8Array(sig);
+}
+
+export async function signAccountsCookieValue(entries: AccountCookieEntry[], env: Env): Promise<string> {
+  const payloadB64 = b64url(new TextEncoder().encode(JSON.stringify(entries)));
+  const sigBytes = await computeAccountsCookieHmac(payloadB64, getSigningSecret(env));
+  return `v1.${payloadB64}.${b64url(sigBytes)}`;
+}
+
+export async function verifyAccountsCookieValue(
+  raw: string | null | undefined,
+  env: Env,
+): Promise<AccountCookieEntry[] | null> {
+  if (!raw || typeof raw !== 'string') return null;
+  try {
+    const parts = raw.split('.');
+    if (parts.length !== 3 || parts[0] !== 'v1' || !parts[1] || !parts[2]) return null;
+    if (!/^[A-Za-z0-9_-]+$/.test(parts[1]) || !/^[A-Za-z0-9_-]+$/.test(parts[2])) return null;
+
+    const providedSig = b64urlToBytes(parts[2]);
+    const expectedSig = await computeAccountsCookieHmac(parts[1], getSigningSecret(env));
+    if (providedSig.length === 0 || !timingSafeBytesEqual(providedSig, expectedSig)) return null;
+
+    const jsonText = new TextDecoder('utf-8', { fatal: true }).decode(b64urlToBytes(parts[1]));
+    const parsed = JSON.parse(jsonText);
+    if (!Array.isArray(parsed)) return null;
+
+    const seen = new Set<AccountSlot>();
+    const clean: AccountCookieEntry[] = [];
+    for (const item of parsed) {
+      if (!item || typeof item !== 'object' || !isAccountSlot(item.slot) || seen.has(item.slot)) continue;
+      if (typeof item.username !== 'string' || !item.username) continue;
+      seen.add(item.slot);
+      clean.push({
+        slot: item.slot,
+        username: String(item.username),
+        firstName: typeof item.firstName === 'string' ? item.firstName : '',
+        lastName: typeof item.lastName === 'string' ? item.lastName : '',
+        addedAt: typeof item.addedAt === 'string' && item.addedAt ? item.addedAt : new Date(0).toISOString(),
+        lastUsedAt: typeof item.lastUsedAt === 'string' && item.lastUsedAt ? item.lastUsedAt : new Date(0).toISOString(),
+      });
+    }
+    return clean;
+  } catch {
+    return null;
+  }
+}
+
+function makeAccountsCookie(request: Request, env: Env, signedValue: string): string {
+  return makeCookie(request, env, ACCOUNTS_COOKIE_NAME, signedValue, MULTI_ACCOUNT_MAX_AGE);
+}
+
+function makeActiveCookie(request: Request, env: Env, slot: AccountSlot): string {
+  return makeCookie(request, env, ACTIVE_COOKIE_NAME, slot, MULTI_ACCOUNT_MAX_AGE);
+}
+
+function clearAllAuthCookies(request: Request, env: Env): string[] {
+  const cookies = clearCookies(request, env);
+  if (getCookie(request, ACTIVE_COOKIE_NAME) !== null) {
+    cookies.push(makeCookie(request, env, ACTIVE_COOKIE_NAME, '', 0));
+  }
+  if (getCookie(request, ACCOUNTS_COOKIE_NAME) !== null) {
+    cookies.push(makeCookie(request, env, ACCOUNTS_COOKIE_NAME, '', 0));
+  }
+  for (const slot of ACCOUNT_SLOTS) {
+    if (getCookie(request, slotCookieName(slot)) !== null) {
+      cookies.push(makeCookie(request, env, slotCookieName(slot), '', 0));
+    }
+  }
+  return cookies;
+}
+
+export function isTrustedGothwadOrigin(rawOrigin: string, request: Request, env: Env): boolean {
+  if (!rawOrigin || rawOrigin === 'null') return false;
+  let parsed: URL;
+  try {
+    parsed = new URL(rawOrigin);
+  } catch {
+    return false;
+  }
+
+  const normalizedOrigin = parsed.origin;
+  const extra = (env.ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (extra.includes(normalizedOrigin)) return true;
+
+  try {
+    if (env.AUTH_HUB_URL && new URL(env.AUTH_HUB_URL).origin === normalizedOrigin) return true;
+  } catch {
+    // Ignore malformed AUTH_HUB_URL
+  }
+
+  const appDomain = (env.APP_DOMAIN || '').trim().toLowerCase();
+  const host = parsed.hostname.toLowerCase();
+  if (appDomain && (host === appDomain || host.endsWith(`.${appDomain}`))) {
+    return parsed.protocol === 'https:' || env.DEV_MODE === 'true';
+  }
+
+  const reqHost = new URL(request.url).hostname.toLowerCase();
+  const isLoopbackReq = reqHost === 'localhost' || reqHost === '127.0.0.1';
+  if ((isLoopbackReq || env.DEV_MODE === 'true') && (host === 'localhost' || host === '127.0.0.1')) {
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  }
+
+  return false;
+}
+
+export function verifyCsrfOrigin(
+  request: Request,
+  env: Env,
+  opts: { requireHeader: boolean } = { requireHeader: true },
+): boolean {
+  const origin = request.headers.get('Origin');
+  if (origin !== null) {
+    return isTrustedGothwadOrigin(origin.trim(), request, env);
+  }
+  const referer = request.headers.get('Referer');
+  if (referer !== null) {
+    try {
+      return isTrustedGothwadOrigin(new URL(referer.trim()).origin, request, env);
+    } catch {
+      return false;
+    }
+  }
+  return !opts.requireHeader;
+}
+
+function refererHasQueryParam(request: Request, key: string, expectedValue: string): boolean {
+  const referer = request.headers.get('Referer');
+  if (!referer) return false;
+  try {
+    return new URL(referer).searchParams.get(key) === expectedValue;
+  } catch {
+    return false;
+  }
+}
+
+// -----------------------------------------------------------------------------
 // Native Session Resolution + Atomic Refresh Token Rotation
 // -----------------------------------------------------------------------------
 
@@ -900,60 +1135,472 @@ async function rotateSessionRefreshToken(
   refresh_token: string;
   session_id: string | null;
 } | null> {
-  const hash = await sha256Hex(rawRefreshToken);
-  const nowIso = new Date().toISOString();
+  return authQuery(async () => {
+    const hash = await sha256Hex(rawRefreshToken);
+    const nowIso = new Date().toISOString();
 
-  // Atomic consumption: parallel requests cannot both consume the same refresh token
-  const consumed = await db
-    .prepare(
-      `UPDATE auth_refresh_tokens
-          SET revoked = 1
-        WHERE token_hash = ? AND revoked = 0 AND expires_at > ?
-        RETURNING user_id, session_id`,
-    )
-    .bind(hash, nowIso)
-    .first();
-
-  if (!consumed?.user_id) return null;
-
-  const userId = String(consumed.user_id);
-  const userRow = await db
-    .prepare('SELECT id, username FROM users WHERE id = ? LIMIT 1')
-    .bind(userId)
-    .first();
-  if (!userRow?.username) return null;
-
-  const sid = (consumed.session_id ? String(consumed.session_id) : null) || fallbackSessionId || null;
-  if (sid) {
-    // Verify device session wasn't remotely revoked & touch `last_active`
-    const updatedSession = await db
-      .prepare('UPDATE user_sessions SET last_active = ? WHERE id = ? AND user_id = ? RETURNING id')
-      .bind(nowIso, sid, userId)
+    // Atomic consumption: parallel requests cannot both consume the same refresh token
+    const consumed = await db
+      .prepare(
+        `UPDATE auth_refresh_tokens
+            SET revoked = 1
+          WHERE token_hash = ? AND revoked = 0 AND expires_at > ?
+          RETURNING user_id, session_id`,
+      )
+      .bind(hash, nowIso)
       .first();
-    if (!updatedSession) return null;
+
+    if (!consumed?.user_id) return null;
+
+    const userId = String(consumed.user_id);
+    const userRow = await db
+      .prepare('SELECT id, username FROM users WHERE id = ? LIMIT 1')
+      .bind(userId)
+      .first();
+    if (!userRow?.username) return null;
+
+    const sid = (consumed.session_id ? String(consumed.session_id) : null) || fallbackSessionId || null;
+    if (sid) {
+      // Verify device session wasn't remotely revoked & touch `last_active`
+      const updatedSession = await db
+        .prepare('UPDATE user_sessions SET last_active = ? WHERE id = ? AND user_id = ? RETURNING id')
+        .bind(nowIso, sid, userId)
+        .first();
+      if (!updatedSession) return null;
+    }
+
+    const newRefresh = randomToken();
+    const newRefreshHash = await sha256Hex(newRefresh);
+    const newExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS).toISOString();
+
+    await db
+      .prepare(
+        `INSERT INTO auth_refresh_tokens (token_hash, user_id, session_id, expires_at, revoked, created_at)
+         VALUES (?, ?, ?, ?, 0, ?)`,
+      )
+      .bind(newRefreshHash, userId, sid, newExpiresAt, nowIso)
+      .run();
+
+    const username = String(userRow.username);
+    const newAccess = await issueSessionAccessToken(env, { userId, username, sessionId: sid });
+
+    return {
+      user: { id: userId, username, sessionId: sid },
+      access_token: newAccess,
+      refresh_token: newRefresh,
+      session_id: sid,
+    };
+  });
+}
+
+async function validateCredentialsAgainstDb(
+  db: D1Database,
+  env: Env,
+  creds: { accessToken?: string | null; refreshToken?: string | null; sessionId?: string | null; remember?: boolean },
+): Promise<{
+  ok: boolean;
+  authUser?: SessionUser;
+  accessToken?: string;
+  rotated?: { access_token: string; refresh_token: string; session_id: string | null };
+}> {
+  const accessToken = creds.accessToken || '';
+  const refreshToken = creds.refreshToken || '';
+  const cookieSid = creds.sessionId || null;
+
+  if (!accessToken && !refreshToken) return { ok: false };
+
+  if (accessToken) {
+    const payload = await verifyJwt(accessToken, getSigningSecret(env));
+    if (payload && payload.token_use === 'session' && payload.sub) {
+      const userId = String(payload.sub);
+      const tokenSid = payload.sid ? String(payload.sid) : null;
+      const verified = await authQuery(async () => {
+        const userRow = await db
+          .prepare('SELECT id, username FROM users WHERE id = ? LIMIT 1')
+          .bind(userId)
+          .first();
+        if (!userRow?.username) return null;
+        if (tokenSid) {
+          const sessRow = await db
+            .prepare('SELECT id FROM user_sessions WHERE id = ? AND user_id = ? LIMIT 1')
+            .bind(tokenSid, userId)
+            .first();
+          if (!sessRow) return null;
+        }
+        return {
+          id: userId,
+          username: String(userRow.username),
+          sessionId: tokenSid || cookieSid || null,
+        };
+      });
+      if (verified) {
+        return { ok: true, authUser: verified, accessToken };
+      }
+    }
   }
 
-  const newRefresh = randomToken();
-  const newRefreshHash = await sha256Hex(newRefresh);
-  const newExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS).toISOString();
+  if (refreshToken) {
+    const rotated = await rotateSessionRefreshToken(db, env, refreshToken, cookieSid);
+    if (rotated) {
+      return {
+        ok: true,
+        authUser: rotated.user,
+        accessToken: rotated.access_token,
+        rotated: {
+          access_token: rotated.access_token,
+          refresh_token: rotated.refresh_token,
+          session_id: rotated.session_id,
+        },
+      };
+    }
 
-  await db
-    .prepare(
-      `INSERT INTO auth_refresh_tokens (token_hash, user_id, session_id, expires_at, revoked, created_at)
-       VALUES (?, ?, ?, ?, 0, ?)`,
-    )
-    .bind(newRefreshHash, userId, sid, newExpiresAt, nowIso)
-    .run();
+    // Parallel browser tab / request grace window (10 seconds):
+    // When multiple concurrent requests arrive with the same expired 1h cookie,
+    // request #1 rotates `RT_1 -> RT_2` and sends `Set-Cookie`. Sibling requests
+    // still carrying `RT_1` within 10s of `RT_2`'s creation succeed cleanly
+    // without re-rotating or clearing `RT_2`, provided the underlying `user_sessions`
+    // row is still active (so sign-out & remote device revocation remain 0ms instant!).
+    const graceUser = await authQuery(async () => {
+      const hash = await sha256Hex(refreshToken);
+      const prevRow = await db
+        .prepare('SELECT user_id, session_id FROM auth_refresh_tokens WHERE token_hash = ? LIMIT 1')
+        .bind(hash)
+        .first();
+      if (!prevRow?.user_id || !prevRow?.session_id) return null;
 
-  const username = String(userRow.username);
-  const newAccess = await issueSessionAccessToken(env, { userId, username, sessionId: sid });
+      const userId = String(prevRow.user_id);
+      const sid = String(prevRow.session_id);
+      const cutoffIso = new Date(Date.now() - 10_000).toISOString();
 
+      const [sessRow, freshSibling, userRow] = await Promise.all([
+        db.prepare('SELECT id FROM user_sessions WHERE id = ? AND user_id = ? LIMIT 1').bind(sid, userId).first(),
+        db
+          .prepare(
+            `SELECT token_hash FROM auth_refresh_tokens
+              WHERE user_id = ? AND session_id = ? AND revoked = 0 AND created_at >= ?
+              LIMIT 1`,
+          )
+          .bind(userId, sid, cutoffIso)
+          .first(),
+        db.prepare('SELECT id, username FROM users WHERE id = ? LIMIT 1').bind(userId).first(),
+      ]);
+
+      if (!sessRow || !freshSibling || !userRow?.username) return null;
+      return { id: userId, username: String(userRow.username), sessionId: sid };
+    });
+
+    if (graceUser) {
+      const freshAccess = await issueSessionAccessToken(env, {
+        userId: graceUser.id,
+        username: graceUser.username,
+        sessionId: graceUser.sessionId,
+      });
+      return {
+        ok: true,
+        authUser: graceUser,
+        accessToken: freshAccess,
+      };
+    }
+  }
+
+  return { ok: false };
+}
+
+interface VerifiedBrowserSlot {
+  slot: AccountSlot;
+  userId: string;
+  username: string;
+  firstName: string;
+  lastName: string;
+  addedAt: string;
+  lastUsedAt: string;
+  creds: SlotCredentials;
+  rotated: boolean;
+}
+
+async function inspectBrowserAccounts(
+  request: Request,
+  db: D1Database,
+  env: Env,
+  opts: { excludeSlot?: AccountSlot } = {},
+): Promise<{
+  validSlots: VerifiedBrowserSlot[];
+  cookiesToSet: string[];
+  hadValidAccountsCookie: boolean;
+}> {
+  const parsedEntries = await verifyAccountsCookieValue(getCookie(request, ACCOUNTS_COOKIE_NAME), env);
+  const hadValidAccountsCookie = parsedEntries !== null;
+  const entryMap = new Map<AccountSlot, AccountCookieEntry>();
+  const orderedCandidates: AccountSlot[] = [];
+
+  for (const entry of parsedEntries || []) {
+    entryMap.set(entry.slot, entry);
+    orderedCandidates.push(entry.slot);
+  }
+  for (const slot of ACCOUNT_SLOTS) {
+    if (!entryMap.has(slot) && getCookie(request, slotCookieName(slot)) !== null) {
+      orderedCandidates.push(slot);
+    }
+  }
+
+  const validSlots: VerifiedBrowserSlot[] = [];
+  const cookiesToSet: string[] = [];
+  let droppedAnySlot = false;
+  const nowIso = new Date().toISOString();
+
+  for (const slot of orderedCandidates) {
+    if (opts.excludeSlot === slot) continue;
+    const rawSlotCookie = getCookie(request, slotCookieName(slot));
+    const slotCreds = decodeSlotCredentials(rawSlotCookie);
+    if (!slotCreds) {
+      droppedAnySlot = true;
+      if (rawSlotCookie !== null) {
+        cookiesToSet.push(makeCookie(request, env, slotCookieName(slot), '', 0));
+      }
+      continue;
+    }
+
+    const check = await validateCredentialsAgainstDb(db, env, slotCreds);
+    if (!check.ok || !check.authUser) {
+      droppedAnySlot = true;
+      cookiesToSet.push(makeCookie(request, env, slotCookieName(slot), '', 0));
+      continue;
+    }
+
+    const profile = await authQuery(() => fetchProfile(db, check.authUser!.id));
+    const prevMeta = entryMap.get(slot);
+    const updatedCreds: SlotCredentials = check.rotated
+      ? {
+          accessToken: check.rotated.access_token,
+          refreshToken: check.rotated.refresh_token,
+          sessionId: check.rotated.session_id || slotCreds.sessionId,
+          remember: slotCreds.remember,
+        }
+      : {
+          accessToken: check.accessToken || slotCreds.accessToken,
+          refreshToken: slotCreds.refreshToken,
+          sessionId: check.authUser.sessionId || slotCreds.sessionId,
+          remember: slotCreds.remember,
+        };
+
+    if (check.rotated) {
+      cookiesToSet.push(makeSlotSessionCookie(request, env, slot, updatedCreds));
+    }
+
+    validSlots.push({
+      slot,
+      userId: check.authUser.id,
+      username: String(profile?.username || check.authUser.username),
+      firstName: String(profile?.first_name || prevMeta?.firstName || ''),
+      lastName: String(profile?.last_name || prevMeta?.lastName || ''),
+      addedAt: prevMeta?.addedAt || nowIso,
+      lastUsedAt: prevMeta?.lastUsedAt || nowIso,
+      creds: updatedCreds,
+      rotated: !!check.rotated,
+    });
+  }
+
+  // Seamless legacy promotion: if a pre-existing browser only has `gothwad_at` / `gothwad_rt`,
+  // promote that live session into slot `a` automatically so existing logged-in users never
+  // have to re-enter their password to start adding or switching accounts!
+  if (validSlots.length === 0 && opts.excludeSlot !== 'a') {
+    const legacyAt = getCookie(request, 'gothwad_at');
+    const legacyRt = getCookie(request, 'gothwad_rt');
+    const legacySid = getCookie(request, 'gothwad_sid');
+    if (legacyAt || legacyRt) {
+      const legacyCheck = await validateCredentialsAgainstDb(db, env, {
+        accessToken: legacyAt,
+        refreshToken: legacyRt,
+        sessionId: legacySid,
+        remember: true,
+      });
+      if (legacyCheck.ok && legacyCheck.authUser) {
+        const profile = await authQuery(() => fetchProfile(db, legacyCheck.authUser!.id));
+        const promotedCreds: SlotCredentials = legacyCheck.rotated
+          ? {
+              accessToken: legacyCheck.rotated.access_token,
+              refreshToken: legacyCheck.rotated.refresh_token,
+              sessionId: legacyCheck.rotated.session_id || legacySid || '',
+              remember: true,
+            }
+          : {
+              accessToken: legacyCheck.accessToken || legacyAt || '',
+              refreshToken: legacyRt || '',
+              sessionId: legacyCheck.authUser.sessionId || legacySid || '',
+              remember: true,
+            };
+        cookiesToSet.push(makeSlotSessionCookie(request, env, 'a', promotedCreds));
+        if (legacyCheck.rotated) {
+          cookiesToSet.push(
+            ...sessionCookies(request, env, {
+              access_token: promotedCreds.accessToken,
+              refresh_token: promotedCreds.refreshToken,
+              session_id: promotedCreds.sessionId,
+              remember: true,
+            }),
+          );
+        }
+        validSlots.push({
+          slot: 'a',
+          userId: legacyCheck.authUser.id,
+          username: String(profile?.username || legacyCheck.authUser.username),
+          firstName: String(profile?.first_name || ''),
+          lastName: String(profile?.last_name || ''),
+          addedAt: nowIso,
+          lastUsedAt: nowIso,
+          creds: promotedCreds,
+          rotated: !!legacyCheck.rotated,
+        });
+        droppedAnySlot = true; // Trigger signing `gothwad_accounts` for newly promoted slot `a`
+      }
+    }
+  }
+
+  if ((!hadValidAccountsCookie || droppedAnySlot) && validSlots.length > 0) {
+    const entries: AccountCookieEntry[] = validSlots.map((s) => ({
+      slot: s.slot,
+      username: s.username,
+      firstName: s.firstName,
+      lastName: s.lastName,
+      addedAt: s.addedAt,
+      lastUsedAt: s.lastUsedAt,
+    }));
+    cookiesToSet.push(makeAccountsCookie(request, env, await signAccountsCookieValue(entries, env)));
+  }
+
+  return { validSlots, cookiesToSet, hadValidAccountsCookie };
+}
+
+function toPublicAccountSummary(slotInfo: VerifiedBrowserSlot, env: Env): PublicAccountSummary {
   return {
-    user: { id: userId, username, sessionId: sid },
-    access_token: newAccess,
-    refresh_token: newRefresh,
-    session_id: sid,
+    id: slotInfo.slot,
+    username: slotInfo.username,
+    firstName: slotInfo.firstName,
+    lastName: slotInfo.lastName,
+    email: `${slotInfo.username}@${env.APP_DOMAIN}`,
+    lastUsedAt: slotInfo.lastUsedAt,
   };
+}
+
+function pickMostRecentSlot(slots: VerifiedBrowserSlot[]): VerifiedBrowserSlot {
+  return slots.reduce((best, cur) =>
+    new Date(cur.lastUsedAt).getTime() > new Date(best.lastUsedAt).getTime() ? cur : best,
+  );
+}
+
+async function buildSignInCookies(
+  request: Request,
+  db: D1Database,
+  env: Env,
+  opts: {
+    userId: string;
+    username: string;
+    firstName: string;
+    lastName: string;
+    accessToken: string;
+    refreshToken: string;
+    sessionId: string;
+    remember: boolean;
+    addMode: boolean;
+  },
+): Promise<{ ok: true; slot: AccountSlot; cookies: string[] } | { ok: false; error: string; message: string }> {
+  const nowIso = new Date().toISOString();
+  const newCreds: SlotCredentials = {
+    accessToken: opts.accessToken,
+    refreshToken: opts.refreshToken,
+    sessionId: opts.sessionId,
+    remember: opts.remember,
+  };
+
+  if (!opts.addMode) {
+    // Default replace behavior: slot `a` holds the active session; clear any stale other slots.
+    const cookies: string[] = [
+      ...sessionCookies(request, env, {
+        access_token: opts.accessToken,
+        refresh_token: opts.refreshToken,
+        session_id: opts.sessionId,
+        remember: opts.remember,
+      }),
+      makeSlotSessionCookie(request, env, 'a', newCreds),
+      makeActiveCookie(request, env, 'a'),
+    ];
+    for (const slot of ACCOUNT_SLOTS) {
+      if (slot !== 'a' && getCookie(request, slotCookieName(slot)) !== null) {
+        cookies.push(makeCookie(request, env, slotCookieName(slot), '', 0));
+      }
+    }
+    const entries: AccountCookieEntry[] = [
+      {
+        slot: 'a',
+        username: opts.username,
+        firstName: opts.firstName,
+        lastName: opts.lastName,
+        addedAt: nowIso,
+        lastUsedAt: nowIso,
+      },
+    ];
+    cookies.push(makeAccountsCookie(request, env, await signAccountsCookieValue(entries, env)));
+    return { ok: true, slot: 'a', cookies };
+  }
+
+  // Add-another-account mode (`add=1` / `add: true`): keep existing live slots intact
+  // and allocate next free slot `a`..`f` (or update in-place if same username re-signs in).
+  const inspected = await inspectBrowserAccounts(request, db, env);
+  const existingForSameUser = inspected.validSlots.find(
+    (s) => s.username.toLowerCase() === opts.username.toLowerCase(),
+  );
+
+  let targetSlot: AccountSlot | undefined = existingForSameUser?.slot;
+  if (!targetSlot) {
+    const used = new Set<AccountSlot>(inspected.validSlots.map((s) => s.slot));
+    targetSlot = ACCOUNT_SLOTS.find((s) => !used.has(s));
+  }
+
+  if (!targetSlot) {
+    return {
+      ok: false,
+      error: 'max_accounts_reached',
+      message: `Maximum ${ACCOUNT_SLOTS.length} accounts can stay signed in on one browser. Sign out of one first.`,
+    };
+  }
+
+  const entries: AccountCookieEntry[] = [];
+  for (const s of inspected.validSlots) {
+    if (s.slot === targetSlot) continue;
+    entries.push({
+      slot: s.slot,
+      username: s.username,
+      firstName: s.firstName,
+      lastName: s.lastName,
+      addedAt: s.addedAt,
+      lastUsedAt: s.lastUsedAt,
+    });
+  }
+  entries.push({
+    slot: targetSlot,
+    username: opts.username,
+    firstName: opts.firstName,
+    lastName: opts.lastName,
+    addedAt: existingForSameUser?.addedAt || nowIso,
+    lastUsedAt: nowIso,
+  });
+
+  // Preserve any rotation/promotion cookies for kept slots, but skip stale `gothwad_accounts` header
+  const keptAuxCookies = inspected.cookiesToSet.filter((c) => !c.startsWith(`${ACCOUNTS_COOKIE_NAME}=`));
+  const cookies: string[] = [
+    ...keptAuxCookies,
+    ...sessionCookies(request, env, {
+      access_token: opts.accessToken,
+      refresh_token: opts.refreshToken,
+      session_id: opts.sessionId,
+      remember: opts.remember,
+    }),
+    makeSlotSessionCookie(request, env, targetSlot, newCreds),
+    makeActiveCookie(request, env, targetSlot),
+    makeAccountsCookie(request, env, await signAccountsCookieValue(entries, env)),
+  ];
+
+  return { ok: true, slot: targetSlot, cookies };
 }
 
 async function resolveSession(
@@ -966,72 +1613,95 @@ async function resolveSession(
   newCookies?: string[];
   newTokens?: { access_token: string; refresh_token: string };
   authUser?: SessionUser;
+  slot?: AccountSlot;
 }> {
   const authHeader = request.headers.get('Authorization') || '';
   const headerAccess = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
   const headerRefresh = (request.headers.get('X-Gothwad-Refresh') || '').trim();
-  const accessToken = headerAccess || getCookie(request, 'gothwad_at');
-  const refreshToken = headerRefresh || getCookie(request, 'gothwad_rt');
-  const cookieSid = getCookie(request, 'gothwad_sid');
 
-  if (!accessToken && !refreshToken) return { ok: false };
-
-  // 1) Validate active `session` JWT + verify account & device session still exist in D1
-  if (accessToken) {
-    const payload = await verifyJwt(accessToken, getSigningSecret(env));
-    if (payload && payload.token_use === 'session' && payload.sub) {
-      const userId = String(payload.sub);
-      const tokenSid = payload.sid ? String(payload.sid) : null;
-      const userRow = await db
-        .prepare('SELECT id, username FROM users WHERE id = ? LIMIT 1')
-        .bind(userId)
-        .first();
-
-      if (userRow?.username) {
-        let sessionValid = true;
-        if (tokenSid) {
-          const sessRow = await db
-            .prepare('SELECT id FROM user_sessions WHERE id = ? AND user_id = ? LIMIT 1')
-            .bind(tokenSid, userId)
-            .first();
-          sessionValid = !!sessRow;
-        }
-        if (sessionValid) {
+  // Explicit header credentials take priority when present (API callers / integration tests)
+  if (!headerAccess && !headerRefresh) {
+    const rawActive = getCookie(request, ACTIVE_COOKIE_NAME);
+    if (isAccountSlot(rawActive)) {
+      const slotCreds = decodeSlotCredentials(getCookie(request, slotCookieName(rawActive)));
+      if (slotCreds) {
+        const slotCheck = await validateCredentialsAgainstDb(db, env, slotCreds);
+        if (slotCheck.ok && slotCheck.authUser) {
+          if (slotCheck.rotated) {
+            const newTokens = {
+              access_token: slotCheck.rotated.access_token,
+              refresh_token: slotCheck.rotated.refresh_token,
+            };
+            const updatedSlotCreds: SlotCredentials = {
+              accessToken: slotCheck.rotated.access_token,
+              refreshToken: slotCheck.rotated.refresh_token,
+              sessionId: slotCheck.rotated.session_id || slotCreds.sessionId,
+              remember: slotCreds.remember,
+            };
+            return {
+              ok: true,
+              slot: rawActive,
+              accessToken: slotCheck.rotated.access_token,
+              authUser: slotCheck.authUser,
+              newTokens,
+              newCookies: [
+                ...sessionCookies(request, env, {
+                  access_token: newTokens.access_token,
+                  refresh_token: newTokens.refresh_token,
+                  session_id: slotCheck.rotated.session_id,
+                  remember: slotCreds.remember,
+                }),
+                makeSlotSessionCookie(request, env, rawActive, updatedSlotCreds),
+              ],
+            };
+          }
           return {
             ok: true,
-            accessToken,
-            authUser: {
-              id: userId,
-              username: String(userRow.username),
-              sessionId: tokenSid || cookieSid || null,
-            },
+            slot: rawActive,
+            accessToken: slotCheck.accessToken,
+            authUser: slotCheck.authUser,
           };
         }
       }
     }
   }
 
-  // 2) Access token expired/missing -> atomically rotate refresh token
-  if (refreshToken) {
-    const rotated = await rotateSessionRefreshToken(db, env, refreshToken, cookieSid);
-    if (rotated) {
+  // Fallback to pre-existing single-account cookies / explicit headers
+  const accessToken = headerAccess || getCookie(request, 'gothwad_at');
+  const refreshToken = headerRefresh || getCookie(request, 'gothwad_rt');
+  const cookieSid = getCookie(request, 'gothwad_sid');
+
+  const fallbackCheck = await validateCredentialsAgainstDb(db, env, {
+    accessToken,
+    refreshToken,
+    sessionId: cookieSid,
+    remember: true,
+  });
+
+  if (fallbackCheck.ok && fallbackCheck.authUser) {
+    if (fallbackCheck.rotated) {
       const newTokens = {
-        access_token: rotated.access_token,
-        refresh_token: rotated.refresh_token,
+        access_token: fallbackCheck.rotated.access_token,
+        refresh_token: fallbackCheck.rotated.refresh_token,
       };
       return {
         ok: true,
-        accessToken: rotated.access_token,
-        authUser: rotated.user,
+        accessToken: fallbackCheck.rotated.access_token,
+        authUser: fallbackCheck.authUser,
         newTokens,
         newCookies: sessionCookies(request, env, {
           access_token: newTokens.access_token,
           refresh_token: newTokens.refresh_token,
-          session_id: rotated.session_id,
+          session_id: fallbackCheck.rotated.session_id,
           remember: true,
         }),
       };
     }
+    return {
+      ok: true,
+      accessToken: fallbackCheck.accessToken,
+      authUser: fallbackCheck.authUser,
+    };
   }
 
   return { ok: false };
@@ -1647,6 +2317,26 @@ export default {
           return withCors(apiError('Gender must be one of: ' + GENDER_VALUES.join(', ')));
         }
 
+        const addMode =
+          url.searchParams.get('add') === '1' ||
+          body.add === true ||
+          refererHasQueryParam(request, 'add', '1');
+
+        if (addMode) {
+          const preCheck = await inspectBrowserAccounts(request, db, env);
+          if (preCheck.validSlots.length >= ACCOUNT_SLOTS.length) {
+            return withCors(
+              json(
+                {
+                  error: 'max_accounts_reached',
+                  message: `Maximum ${ACCOUNT_SLOTS.length} accounts can stay signed in on one browser. Sign out of one first.`,
+                },
+                409,
+              ),
+            );
+          }
+        }
+
         const existing = await db
           .prepare('SELECT id FROM users WHERE username = ? LIMIT 1')
           .bind(username)
@@ -1726,12 +2416,25 @@ export default {
         const profile = await fetchProfile(db, userId);
         await logActivity(db, userId, 'signup', 'Account created', `Welcome to Gothwad, ${firstName}!`, request);
 
-        const cookies = sessionCookies(request, env, {
-          access_token: accessToken,
-          refresh_token: rawRefresh,
-          session_id: sessionId,
+        const slotResult = await buildSignInCookies(request, db, env, {
+          userId,
+          username,
+          firstName,
+          lastName,
+          accessToken,
+          refreshToken: rawRefresh,
+          sessionId,
           remember,
+          addMode,
         });
+        const cookies = slotResult.ok
+          ? slotResult.cookies
+          : sessionCookies(request, env, {
+              access_token: accessToken,
+              refresh_token: rawRefresh,
+              session_id: sessionId,
+              remember,
+            });
 
         return withCors(
           json(
@@ -1754,6 +2457,10 @@ export default {
         const rawIdentifier = String(body.identifier || '').trim();
         const password = String(body.password || '');
         const remember = body.remember === true;
+        const addMode =
+          url.searchParams.get('add') === '1' ||
+          body.add === true ||
+          refererHasQueryParam(request, 'add', '1');
 
         if (!rawIdentifier || !password) {
           return withCors(apiError('Username, email or phone and password are required'));
@@ -1780,6 +2487,25 @@ export default {
         const validPassword = await verifyPassword(password, found.passwordHash);
         if (!validPassword) {
           return withCors(apiError('Incorrect password. Try again or use Forgot password.', 401));
+        }
+
+        let inspectedBeforeSignIn: Awaited<ReturnType<typeof inspectBrowserAccounts>> | null = null;
+        if (addMode) {
+          inspectedBeforeSignIn = await inspectBrowserAccounts(request, db, env);
+          const alreadyPresent = inspectedBeforeSignIn.validSlots.some(
+            (s) => s.username.toLowerCase() === found.username.toLowerCase(),
+          );
+          if (!alreadyPresent && inspectedBeforeSignIn.validSlots.length >= ACCOUNT_SLOTS.length) {
+            return withCors(
+              json(
+                {
+                  error: 'max_accounts_reached',
+                  message: `Maximum ${ACCOUNT_SLOTS.length} accounts can stay signed in on one browser. Sign out of one first.`,
+                },
+                409,
+              ),
+            );
+          }
         }
 
         const sessionId = crypto.randomUUID();
@@ -1815,6 +2541,20 @@ export default {
             .bind(refreshHash, found.userId, sessionId, refreshExpiresAt, nowIso),
         ]);
 
+        // If re-signing into an already occupied slot, retire the previous session row for that slot cleanly
+        if (inspectedBeforeSignIn) {
+          const prevSameSlot = inspectedBeforeSignIn.validSlots.find(
+            (s) => s.username.toLowerCase() === found.username.toLowerCase(),
+          );
+          if (prevSameSlot?.creds.sessionId) {
+            await db
+              .prepare('DELETE FROM user_sessions WHERE id = ? AND user_id = ?')
+              .bind(prevSameSlot.creds.sessionId, found.userId)
+              .run()
+              .catch(() => undefined);
+          }
+        }
+
         const accessToken = await issueSessionAccessToken(env, {
           userId: found.userId,
           username: found.username,
@@ -1830,12 +2570,20 @@ export default {
           request,
         );
 
-        const cookies = sessionCookies(request, env, {
-          access_token: accessToken,
-          refresh_token: rawRefresh,
-          session_id: sessionId,
+        const slotResult = await buildSignInCookies(request, db, env, {
+          userId: found.userId,
+          username: found.username,
+          firstName: String(profile?.first_name || ''),
+          lastName: String(profile?.last_name || ''),
+          accessToken,
+          refreshToken: rawRefresh,
+          sessionId,
           remember,
+          addMode,
         });
+        if (!slotResult.ok) {
+          return withCors(json({ error: slotResult.error, message: slotResult.message }, 409));
+        }
 
         return withCors(
           json(
@@ -1847,7 +2595,276 @@ export default {
               session_id: sessionId,
             },
             200,
+            slotResult.cookies.map((c) => ['Set-Cookie', c] as [string, string]),
+          ),
+        );
+      }
+
+      // ------------------------------------------------------- /auth/accounts
+      if (route === '/auth/accounts' && request.method === 'GET') {
+        const inspected = await inspectBrowserAccounts(request, db, env);
+        if (inspected.validSlots.length === 0) {
+          return withCors(
+            json(
+              { authenticated: false },
+              401,
+              clearAllAuthCookies(request, env).map((c) => ['Set-Cookie', c] as [string, string]),
+            ),
+          );
+        }
+
+        const requestedActive = getCookie(request, ACTIVE_COOKIE_NAME);
+        let activeSlotInfo = inspected.validSlots.find((s) => s.slot === requestedActive);
+        const cookies = [...inspected.cookiesToSet];
+
+        if (!activeSlotInfo) {
+          activeSlotInfo = pickMostRecentSlot(inspected.validSlots);
+          cookies.push(makeActiveCookie(request, env, activeSlotInfo.slot));
+          cookies.push(
+            ...sessionCookies(request, env, {
+              access_token: activeSlotInfo.creds.accessToken,
+              refresh_token: activeSlotInfo.creds.refreshToken,
+              session_id: activeSlotInfo.creds.sessionId,
+              remember: activeSlotInfo.creds.remember,
+            }),
+          );
+        } else if (activeSlotInfo.rotated) {
+          cookies.push(
+            ...sessionCookies(request, env, {
+              access_token: activeSlotInfo.creds.accessToken,
+              refresh_token: activeSlotInfo.creds.refreshToken,
+              session_id: activeSlotInfo.creds.sessionId,
+              remember: activeSlotInfo.creds.remember,
+            }),
+          );
+        }
+
+        return withCors(
+          json(
+            {
+              activeId: activeSlotInfo.slot,
+              accounts: inspected.validSlots.map((s) => toPublicAccountSummary(s, env)),
+            },
+            200,
             cookies.map((c) => ['Set-Cookie', c] as [string, string]),
+          ),
+        );
+      }
+
+      // --------------------------------------------------------- /auth/switch
+      if (route === '/auth/switch' && request.method === 'POST') {
+        if (!verifyCsrfOrigin(request, env, { requireHeader: true })) {
+          return withCors(json({ error: 'csrf_rejected', message: 'Cross-site request rejected' }, 403));
+        }
+
+        const body = await readJson(request);
+        const targetId = String(body.id || '').trim();
+        if (!isAccountSlot(targetId)) {
+          return withCors(json({ error: 'invalid_account_id', message: 'Invalid account slot' }, 400));
+        }
+
+        // First validate target slot's session & rotate its refresh token
+        const rawTargetCookie = getCookie(request, slotCookieName(targetId));
+        const targetCreds = decodeSlotCredentials(rawTargetCookie);
+        const rotated = targetCreds?.refreshToken
+          ? await rotateSessionRefreshToken(db, env, targetCreds.refreshToken, targetCreds.sessionId)
+          : null;
+
+        if (!rotated) {
+          // Target slot is missing or revoked/expired: DO NOT sign out the active account!
+          // Remove only `targetId` from `gothwad_accounts` & clear `gothwad_sess_<targetId>`, return 409.
+          const pruneCookies: string[] = [makeCookie(request, env, slotCookieName(targetId), '', 0)];
+          const existingEntries = await verifyAccountsCookieValue(getCookie(request, ACCOUNTS_COOKIE_NAME), env);
+          if (existingEntries) {
+            const remainingEntries = existingEntries.filter((e) => e.slot !== targetId);
+            if (remainingEntries.length > 0) {
+              pruneCookies.push(makeAccountsCookie(request, env, await signAccountsCookieValue(remainingEntries, env)));
+            } else {
+              pruneCookies.push(makeCookie(request, env, ACCOUNTS_COOKIE_NAME, '', 0));
+            }
+          }
+          return withCors(
+            json(
+              { error: 'account_not_signed_in' },
+              409,
+              pruneCookies.map((c) => ['Set-Cookie', c] as [string, string]),
+            ),
+          );
+        }
+
+        const nowIso = new Date().toISOString();
+        const profile = await authQuery(() => fetchProfile(db, rotated.user.id));
+        const newTargetCreds: SlotCredentials = {
+          accessToken: rotated.access_token,
+          refreshToken: rotated.refresh_token,
+          sessionId: rotated.session_id || targetCreds?.sessionId || '',
+          remember: targetCreds?.remember ?? true,
+        };
+
+        // Keep remaining live slots in `gothwad_accounts` and update `lastUsedAt` for `targetId`
+        const inspectedOthers = await inspectBrowserAccounts(request, db, env, { excludeSlot: targetId });
+        const existingEntries = await verifyAccountsCookieValue(getCookie(request, ACCOUNTS_COOKIE_NAME), env);
+        const prevTargetMeta = (existingEntries || []).find((e) => e.slot === targetId);
+
+        const nextEntries: AccountCookieEntry[] = [];
+        for (const s of inspectedOthers.validSlots) {
+          nextEntries.push({
+            slot: s.slot,
+            username: s.username,
+            firstName: s.firstName,
+            lastName: s.lastName,
+            addedAt: s.addedAt,
+            lastUsedAt: s.lastUsedAt,
+          });
+        }
+        nextEntries.push({
+          slot: targetId,
+          username: String(profile?.username || rotated.user.username),
+          firstName: String(profile?.first_name || prevTargetMeta?.firstName || ''),
+          lastName: String(profile?.last_name || prevTargetMeta?.lastName || ''),
+          addedAt: prevTargetMeta?.addedAt || nowIso,
+          lastUsedAt: nowIso,
+        });
+        // Preserve deterministic slot order based on `ACCOUNT_SLOTS`
+        nextEntries.sort((a, b) => ACCOUNT_SLOTS.indexOf(a.slot) - ACCOUNT_SLOTS.indexOf(b.slot));
+
+        const otherAuxCookies = inspectedOthers.cookiesToSet.filter(
+          (c) => !c.startsWith(`${ACCOUNTS_COOKIE_NAME}=`),
+        );
+        const switchCookies: string[] = [
+          ...otherAuxCookies,
+          ...sessionCookies(request, env, {
+            access_token: rotated.access_token,
+            refresh_token: rotated.refresh_token,
+            session_id: rotated.session_id,
+            remember: newTargetCreds.remember,
+          }),
+          makeSlotSessionCookie(request, env, targetId, newTargetCreds),
+          makeActiveCookie(request, env, targetId),
+          makeAccountsCookie(request, env, await signAccountsCookieValue(nextEntries, env)),
+        ];
+
+        const username = String(profile?.username || rotated.user.username);
+        const profileWithUsername = { ...(profile || {}), id: rotated.user.id, username };
+
+        return withCors(
+          json(
+            {
+              ok: true,
+              activeId: targetId,
+              user: presentUser(profileWithUsername, env),
+            },
+            200,
+            switchCookies.map((c) => ['Set-Cookie', c] as [string, string]),
+          ),
+        );
+      }
+
+      // ------------------------------------------- /auth/accounts/:id/signout
+      if (route.startsWith('/auth/accounts/') && route.endsWith('/signout') && request.method === 'POST') {
+        if (!verifyCsrfOrigin(request, env, { requireHeader: true })) {
+          return withCors(json({ error: 'csrf_rejected', message: 'Cross-site request rejected' }, 403));
+        }
+
+        const slotParam = route.slice('/auth/accounts/'.length, -'/signout'.length);
+        if (!isAccountSlot(slotParam)) {
+          return withCors(json({ error: 'invalid_account_id', message: 'Invalid account slot' }, 400));
+        }
+
+        // Revoke ONLY target slot's session & refresh token in D1
+        const rawTargetSlot = getCookie(request, slotCookieName(slotParam));
+        const targetCreds = decodeSlotCredentials(rawTargetSlot);
+        const currentActive = getCookie(request, ACTIVE_COOKIE_NAME);
+        const isLegacySingleSlot =
+          !targetCreds &&
+          slotParam === 'a' &&
+          !isAccountSlot(currentActive) &&
+          (getCookie(request, 'gothwad_at') || getCookie(request, 'gothwad_rt'));
+
+        const rtToRevoke = targetCreds?.refreshToken || (isLegacySingleSlot ? getCookie(request, 'gothwad_rt') : null);
+        const sidToRevoke = targetCreds?.sessionId || (isLegacySingleSlot ? getCookie(request, 'gothwad_sid') : null);
+
+        if (rtToRevoke) {
+          const rtHash = await sha256Hex(rtToRevoke);
+          await authQuery(() =>
+            db.prepare('UPDATE auth_refresh_tokens SET revoked = 1 WHERE token_hash = ?').bind(rtHash).run(),
+          );
+        }
+        if (sidToRevoke) {
+          const sessRow = await authQuery(() =>
+            db.prepare('SELECT user_id FROM user_sessions WHERE id = ? LIMIT 1').bind(sidToRevoke).first(),
+          );
+          await authQuery(() => db.prepare('DELETE FROM user_sessions WHERE id = ?').bind(sidToRevoke).run());
+          if (sessRow?.user_id) {
+            await logActivity(db, String(sessRow.user_id), 'signout', 'Signed out', undefined, request);
+          }
+        }
+
+        // Inspect remaining valid accounts (excluding `slotParam`)
+        const remaining = await inspectBrowserAccounts(request, db, env, { excludeSlot: slotParam });
+        if (remaining.validSlots.length === 0) {
+          const clearList = [
+            ...clearAllAuthCookies(request, env),
+            makeCookie(request, env, slotCookieName(slotParam), '', 0),
+          ];
+          const deduped = Array.from(new Set(clearList));
+          return withCors(
+            json(
+              {
+                ok: true,
+                signedOutAll: true,
+                activeId: null,
+                accounts: [],
+              },
+              200,
+              deduped.map((c) => ['Set-Cookie', c] as [string, string]),
+            ),
+          );
+        }
+
+        // At least 1 valid account remains: keep current active if still valid & != slotParam,
+        // otherwise promote the most recently used remaining slot!
+        const stillActive =
+          currentActive && currentActive !== slotParam
+            ? remaining.validSlots.find((s) => s.slot === currentActive)
+            : undefined;
+        const nextActive = stillActive || pickMostRecentSlot(remaining.validSlots);
+
+        const nextEntries: AccountCookieEntry[] = remaining.validSlots.map((s) => ({
+          slot: s.slot,
+          username: s.username,
+          firstName: s.firstName,
+          lastName: s.lastName,
+          addedAt: s.addedAt,
+          lastUsedAt: s.lastUsedAt,
+        }));
+
+        const remAuxCookies = remaining.cookiesToSet.filter(
+          (c) => !c.startsWith(`${ACCOUNTS_COOKIE_NAME}=`),
+        );
+        const outCookies: string[] = [
+          ...remAuxCookies,
+          makeCookie(request, env, slotCookieName(slotParam), '', 0),
+          makeActiveCookie(request, env, nextActive.slot),
+          ...sessionCookies(request, env, {
+            access_token: nextActive.creds.accessToken,
+            refresh_token: nextActive.creds.refreshToken,
+            session_id: nextActive.creds.sessionId,
+            remember: nextActive.creds.remember,
+          }),
+          makeAccountsCookie(request, env, await signAccountsCookieValue(nextEntries, env)),
+        ];
+
+        return withCors(
+          json(
+            {
+              ok: true,
+              signedOutAll: false,
+              activeId: nextActive.slot,
+              accounts: remaining.validSlots.map((s) => toPublicAccountSummary(s, env)),
+            },
+            200,
+            outCookies.map((c) => ['Set-Cookie', c] as [string, string]),
           ),
         );
       }
@@ -1856,15 +2873,28 @@ export default {
       if (route === '/auth/signout' && request.method === 'POST') {
         const session = await resolveSession(request, db, env);
         const body = await readJson(request);
-        const sessionId =
+        const sessionIdsToDelete = new Set<string>();
+        const refreshTokensToRevoke = new Set<string>();
+
+        const explicitSid =
           String(body.session_id || '') ||
           session.authUser?.sessionId ||
           getCookie(request, 'gothwad_sid');
-        const rawRefresh =
-          (request.headers.get('X-Gothwad-Refresh') || '').trim() || getCookie(request, 'gothwad_rt');
+        if (explicitSid) sessionIdsToDelete.add(explicitSid);
 
-        if (rawRefresh) {
-          const refreshHash = await sha256Hex(rawRefresh);
+        const explicitRt =
+          (request.headers.get('X-Gothwad-Refresh') || '').trim() || getCookie(request, 'gothwad_rt');
+        if (explicitRt) refreshTokensToRevoke.add(explicitRt);
+
+        // Also revoke any multi-account slot credentials present in browser cookies
+        for (const slot of ACCOUNT_SLOTS) {
+          const creds = decodeSlotCredentials(getCookie(request, slotCookieName(slot)));
+          if (creds?.refreshToken) refreshTokensToRevoke.add(creds.refreshToken);
+          if (creds?.sessionId) sessionIdsToDelete.add(creds.sessionId);
+        }
+
+        for (const rt of refreshTokensToRevoke) {
+          const refreshHash = await sha256Hex(rt);
           await db
             .prepare('UPDATE auth_refresh_tokens SET revoked = 1 WHERE token_hash = ?')
             .bind(refreshHash)
@@ -1872,14 +2902,15 @@ export default {
             .catch(() => undefined);
         }
 
+        for (const sid of sessionIdsToDelete) {
+          await db
+            .prepare('DELETE FROM user_sessions WHERE id = ?')
+            .bind(sid)
+            .run()
+            .catch(() => undefined);
+        }
+
         if (session.ok && session.authUser) {
-          if (sessionId) {
-            await db
-              .prepare('DELETE FROM user_sessions WHERE id = ? AND user_id = ?')
-              .bind(sessionId, session.authUser.id)
-              .run()
-              .catch(() => undefined);
-          }
           await logActivity(db, session.authUser.id, 'signout', 'Signed out', undefined, request);
         }
 
@@ -1887,7 +2918,7 @@ export default {
           json(
             { ok: true, message: 'Signed out' },
             200,
-            clearCookies(request, env).map((c) => ['Set-Cookie', c] as [string, string]),
+            clearAllAuthCookies(request, env).map((c) => ['Set-Cookie', c] as [string, string]),
           ),
         );
       }
@@ -1896,17 +2927,16 @@ export default {
       if (route === '/auth/me' && request.method === 'GET') {
         const session = await resolveSession(request, db, env);
         if (!session.ok || !session.authUser) {
-          const status = isApiHost(request, env) ? 401 : 200;
           return withCors(
             json(
               { authenticated: false },
-              status,
-              clearCookies(request, env).map((c) => ['Set-Cookie', c] as [string, string]),
+              401,
+              clearAllAuthCookies(request, env).map((c) => ['Set-Cookie', c] as [string, string]),
             ),
           );
         }
 
-        const profile = await fetchProfile(db, session.authUser.id);
+        const profile = await authQuery(() => fetchProfile(db, session.authUser!.id));
         const username = profile?.username || session.authUser.username;
         if (!username) {
           return withCors(
@@ -1932,25 +2962,42 @@ export default {
       // -------------------------------------------------------- /auth/refresh
       if (route === '/auth/refresh' && request.method === 'POST') {
         const body = await readJson(request);
+        const activeSlot = getCookie(request, ACTIVE_COOKIE_NAME);
+        const activeSlotCreds = isAccountSlot(activeSlot)
+          ? decodeSlotCredentials(getCookie(request, slotCookieName(activeSlot)))
+          : null;
         const refresh =
           (request.headers.get('X-Gothwad-Refresh') || '').trim() ||
           String(body.refresh_token || '').trim() ||
+          activeSlotCreds?.refreshToken ||
           getCookie(request, 'gothwad_rt') ||
           '';
         if (!refresh) return withCors(apiError('Missing refresh token', 401));
 
-        const fallbackSid = String(body.session_id || '') || getCookie(request, 'gothwad_sid');
+        const fallbackSid =
+          String(body.session_id || '') || activeSlotCreds?.sessionId || getCookie(request, 'gothwad_sid');
         const rotated = await rotateSessionRefreshToken(db, env, refresh, fallbackSid);
         if (!rotated) {
           return withCors(apiError('Session expired, please sign in again', 401));
         }
 
-        const headers: [string, string][] = sessionCookies(request, env, {
+        const outCookies = sessionCookies(request, env, {
           access_token: rotated.access_token,
           refresh_token: rotated.refresh_token,
           session_id: rotated.session_id,
-          remember: true,
-        }).map((c) => ['Set-Cookie', c]);
+          remember: activeSlotCreds?.remember ?? true,
+        });
+        if (isAccountSlot(activeSlot)) {
+          outCookies.push(
+            makeSlotSessionCookie(request, env, activeSlot, {
+              accessToken: rotated.access_token,
+              refreshToken: rotated.refresh_token,
+              sessionId: rotated.session_id || activeSlotCreds?.sessionId || '',
+              remember: activeSlotCreds?.remember ?? true,
+            }),
+          );
+        }
+        const headers: [string, string][] = outCookies.map((c) => ['Set-Cookie', c]);
 
         return withCors(
           json(
@@ -2185,7 +3232,29 @@ export default {
         );
 
         const updatedProfile = await fetchProfile(db, session.authUser.id);
-        return withCors(json({ ok: true, user: presentUser(updatedProfile, env) }));
+        const extraCookies = [...(session.newCookies || [])];
+        if (session.slot) {
+          const existingEntries = await verifyAccountsCookieValue(getCookie(request, ACCOUNTS_COOKIE_NAME), env);
+          if (existingEntries && existingEntries.length > 0) {
+            const syncedEntries = existingEntries.map((entry) =>
+              entry.slot === session.slot
+                ? {
+                    ...entry,
+                    firstName: String(updatedProfile?.first_name || ''),
+                    lastName: String(updatedProfile?.last_name || ''),
+                  }
+                : entry,
+            );
+            extraCookies.push(makeAccountsCookie(request, env, await signAccountsCookieValue(syncedEntries, env)));
+          }
+        }
+        return withCors(
+          json(
+            { ok: true, user: presentUser(updatedProfile, env) },
+            200,
+            extraCookies.map((c) => ['Set-Cookie', c] as [string, string]),
+          ),
+        );
       }
 
       // ------------------------------------------------------- /auth/sessions
@@ -2405,11 +3474,41 @@ export default {
         // Foreign keys (`ON DELETE CASCADE`) atomically clean all 9 child tables!
         await db.prepare('DELETE FROM users WHERE id = ?').bind(userId).run();
 
+        // If another signed-in account remains on this browser, keep it active; otherwise clear all auth cookies.
+        const remaining = await inspectBrowserAccounts(request, db, env, { excludeSlot: session.slot });
+        let deleteOutCookies: string[];
+        if (remaining.validSlots.length > 0) {
+          const nextActive = pickMostRecentSlot(remaining.validSlots);
+          const nextEntries: AccountCookieEntry[] = remaining.validSlots.map((s) => ({
+            slot: s.slot,
+            username: s.username,
+            firstName: s.firstName,
+            lastName: s.lastName,
+            addedAt: s.addedAt,
+            lastUsedAt: s.lastUsedAt,
+          }));
+          const aux = remaining.cookiesToSet.filter((c) => !c.startsWith(`${ACCOUNTS_COOKIE_NAME}=`));
+          deleteOutCookies = [
+            ...aux,
+            ...(session.slot ? [makeCookie(request, env, slotCookieName(session.slot), '', 0)] : []),
+            makeActiveCookie(request, env, nextActive.slot),
+            ...sessionCookies(request, env, {
+              access_token: nextActive.creds.accessToken,
+              refresh_token: nextActive.creds.refreshToken,
+              session_id: nextActive.creds.sessionId,
+              remember: nextActive.creds.remember,
+            }),
+            makeAccountsCookie(request, env, await signAccountsCookieValue(nextEntries, env)),
+          ];
+        } else {
+          deleteOutCookies = clearAllAuthCookies(request, env);
+        }
+
         return withCors(
           json(
             { ok: true, message: 'Account deleted' },
             200,
-            clearCookies(request, env).map((c) => ['Set-Cookie', c] as [string, string]),
+            deleteOutCookies.map((c) => ['Set-Cookie', c] as [string, string]),
           ),
         );
       }

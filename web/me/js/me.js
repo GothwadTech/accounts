@@ -2,16 +2,13 @@
  * =============================================================================
  * /me — MAIN ORCHESTRATOR (Google-style My Account)
  * =============================================================================
- * Kaam: auth check → data load → sidebar navigation → search → account menu.
- * Sections apne modules mein hain (tabs/ folder): home, personal, security,
- * data, people, apps. Dialogs dialogs.js se khulte hain.
  */
 
-import { requireAuth, signOut, escapeHtml } from '../../js/common.js';
-import { listAccounts, switchToAccount, initialsFor } from '../../js/accounts.js';
+import { requireAuth, signOut, escapeHtml, toast } from '../../js/common.js';
+import { fetchAccounts, switchToAccount, initialsFor, addAccountHref, MAX_ACCOUNTS } from '../../js/accounts.js';
 import { renderAvatar } from './avatar.js';
 import { mountThemeToggles } from '../../js/theme.js';
-import { initNav, showSection } from './nav.js';
+import { initNav } from './nav.js';
 import { renderUserEverywhere, loadHome } from './tabs/home.js';
 import { initPersonalInfo } from './tabs/personal.js';
 import { initSecurity } from './tabs/security.js';
@@ -26,16 +23,14 @@ let currentUser = null;
 
 async function boot() {
   currentUser = await requireAuth();
-  if (!currentUser) return; // /signin par redirect ho gaya
+  if (!currentUser) return;
 
-  // Loader hatao, dashboard dikhao
   document.getElementById('auth-loading')?.classList.add('hidden');
   document.getElementById('dash-root')?.classList.remove('hidden');
 
   renderUserEverywhere(currentUser);
   renderAccountMenu(currentUser);
 
-  // Modules init
   initNav();
   initPersonalInfo(currentUser, onUserUpdated);
   initSecurity(currentUser, onUserUpdated);
@@ -45,11 +40,9 @@ async function boot() {
   initSearch();
   loadPeople(currentUser);
 
-  // Pehla data load (store.js cache se sab sections share karte hain)
   loadHome(currentUser);
 }
 
-/** Profile update hone par har jagah fresh data dikha do. */
 function onUserUpdated(user) {
   currentUser = user;
   renderUserEverywhere(user);
@@ -65,37 +58,63 @@ function refreshAll() {
 }
 
 /* ------------------------------------------------------ account menu */
-function renderAccountMenu(user) {
+async function renderAccountMenu(user) {
   const avatarEl = document.getElementById('appbar-avatar');
   renderAvatar(avatarEl, user);
   document.getElementById('menu-name').textContent =
     `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username;
   document.getElementById('menu-email').textContent = user.email || user.username;
 
-  const accounts = listAccounts();
+  const { activeId, accounts } = await fetchAccounts();
   const listEl = document.getElementById('menu-accounts');
-  listEl.innerHTML = accounts.map((a) => `
-    <button type="button" class="acct-menu-item" data-switch="${escapeHtml(a.id)}" role="menuitem">
-      <span class="avatar sm">${escapeHtml(initialsFor(a))}</span>
-      <span>
-        <span class="acct-item-name">${escapeHtml(`${a.first_name || ''} ${a.last_name || ''}`.trim() || a.username)}</span>
-        <span class="acct-item-email mono">${escapeHtml(a.email || a.username)}</span>
-      </span>
-      ${a.username === user.username ? '<span class="acct-check"><span class="msym" style="font-size:18px;">check</span></span>' : ''}
-    </button>`).join('');
+  if (listEl) {
+    listEl.innerHTML = accounts
+      .map((a) => `
+      <button type="button" class="acct-menu-item" data-switch="${escapeHtml(a.id)}" role="menuitem">
+        <span class="avatar sm">${escapeHtml(initialsFor(a))}</span>
+        <span>
+          <span class="acct-item-name">${escapeHtml(`${a.firstName || ''} ${a.lastName || ''}`.trim() || a.username)}</span>
+          <span class="acct-item-email mono">${escapeHtml(a.email || a.username)}</span>
+        </span>
+        ${a.id === activeId || a.username === user.username ? '<span class="acct-check"><span class="msym" style="font-size:18px;">check</span></span>' : ''}
+      </button>`)
+      .join('');
 
-  listEl.querySelectorAll('[data-switch]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const acc = accounts.find((a) => a.id === btn.getAttribute('data-switch'));
-      if (!acc || acc.username === user.username) {
-        document.getElementById('acct-menu')?.classList.add('hidden');
-        return;
-      }
-      const sw = await switchToAccount(acc);
-      if (!sw.ok) return;
-      location.reload();
+    listEl.querySelectorAll('[data-switch]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const slotId = btn.getAttribute('data-switch');
+        if (!slotId || slotId === activeId) {
+          document.getElementById('acct-menu')?.classList.add('hidden');
+          return;
+        }
+        btn.disabled = true;
+        const sw = await switchToAccount(slotId);
+        if (!sw.ok) {
+          btn.disabled = false;
+          toast(sw.error || 'Could not switch account', 'error');
+          if (sw.status === 409) {
+            location.href = addAccountHref('/me');
+          }
+          return;
+        }
+        location.reload();
+      });
     });
-  });
+  }
+
+  const addLink = document.getElementById('link-add-account');
+  if (addLink) {
+    addLink.setAttribute('href', addAccountHref('/me'));
+    addLink.onclick = (e) => {
+      if (accounts.length >= MAX_ACCOUNTS) {
+        e.preventDefault();
+        toast(
+          `Maximum ${MAX_ACCOUNTS} accounts can stay signed in on one browser. Sign out of one first.`,
+          'error',
+        );
+      }
+    };
+  }
 
   document.getElementById('btn-signout-all')?.classList.toggle('hidden', accounts.length <= 1);
 }
@@ -126,7 +145,6 @@ function closeDrawer() {
   sidebar?.classList.remove('open');
   backdrop?.classList.remove('show');
 }
-// Sidebar nav click par drawer band (mobile)
 document.getElementById('me-nav')?.addEventListener('click', () => closeDrawer());
 
 boot();

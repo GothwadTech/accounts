@@ -15,7 +15,9 @@ carryNextOnAuthLinks();
 const resetTokenEarly = extractResetToken();
 if (!resetTokenEarly) {
   redirectIfAuthed().then((state) => {
-    if (state && state.showChooser) initAccountChooser();
+    if (state && state.showChooser) {
+      initAccountChooser(state.accountsState || null);
+    }
   });
 }
 
@@ -24,11 +26,12 @@ if (new URLSearchParams(location.search).get('add') === '1') {
   if (sub) sub.textContent = 'Add another Gothwad Account on this device.';
 }
 
-// Domain suffix inputs
 const suffixText = `@${GOTHWAD_CONFIG.APP_DOMAIN}`;
 const suffixEl = document.getElementById('domain-suffix');
 if (suffixEl) suffixEl.textContent = suffixText;
-document.querySelectorAll('.suffix-copy').forEach((el) => { el.textContent = suffixText; });
+document.querySelectorAll('.suffix-copy').forEach((el) => {
+  el.textContent = suffixText;
+});
 
 /* ------------------------------------------------------------ mode switch */
 const modes = {
@@ -48,7 +51,11 @@ export function showMode(name) {
   if (sub) {
     if (name === 'forgot') sub.textContent = 'Reset password to access your account securely.';
     else if (name === 'reset') sub.textContent = 'Aapka reset link verified hai. Naya password choose karo.';
-    else sub.textContent = 'Connecting you to your world, one identity for Mail, Drive, Chat, Notes & more.';
+    else if (new URLSearchParams(location.search).get('add') === '1') {
+      sub.textContent = 'Add another Gothwad Account on this device.';
+    } else {
+      sub.textContent = 'Connecting you to your world, one identity for Mail, Drive, Chat, Notes & more.';
+    }
   }
 }
 
@@ -74,7 +81,6 @@ export function hideAlert(id) {
   if (box) box.classList.add('hidden');
 }
 
-// Initialize individual modules
 initSigninForm(showAlert, hideAlert);
 initForgotPassword(showAlert, hideAlert);
 
