@@ -1,12 +1,13 @@
 /**
  * =============================================================================
- * COMMON HELPERS — shared UI + auth logic (`/signin` · `/signup` · `/me`)
+ * COMMON HELPERS — shared UI + Google-style `authuser` auth logic
  * =============================================================================
  */
 
 import { api, clearTokens } from './api.js';
 import {
   fetchAccounts,
+  normalizeAccount,
   switchToAccount,
   signOutAccount,
   signOutAllAccounts,
@@ -15,6 +16,7 @@ import {
   safeNextUrl,
   addAccountHref,
 } from './accounts.js';
+import { isInternalAccountHubPath, mePathForAuthuser } from './authuser.js';
 
 export function toast(message, type = 'success') {
   let wrap = document.querySelector('.toast-wrap');
@@ -47,12 +49,14 @@ export function carryNextOnAuthLinks() {
   const next = cur.get('next');
   const add = cur.get('add');
   const choose = cur.get('choose');
-  if (!next && !add && !choose) return;
+  const authuser = cur.get('authuser') ?? cur.get('u');
+  if (!next && !add && !choose && !authuser) return;
   document.querySelectorAll('a[href^="/signin"], a[href^="/signup"]').forEach((a) => {
     const url = new URL(a.getAttribute('href'), location.origin);
     if (next) url.searchParams.set('next', next);
     if (add === '1') url.searchParams.set('add', '1');
     if (choose === '1') url.searchParams.set('choose', '1');
+    if (authuser) url.searchParams.set('authuser', authuser);
     a.setAttribute('href', url.pathname + url.search);
   });
 }
@@ -72,9 +76,18 @@ export function setBusy(btn, busy, busyText = 'Please wait...') {
 export async function getSession() {
   const res = await api.get('/auth/me');
   if (res.ok && res.data && res.data.authenticated) {
-    return { authenticated: true, user: res.data.user };
+    const accounts = Array.isArray(res.data.accounts)
+      ? res.data.accounts.map((a, idx) => normalizeAccount(a, idx))
+      : [];
+    return {
+      authenticated: true,
+      user: res.data.user,
+      activeId: res.data.activeId || null,
+      authuser: Number.isInteger(res.data.authuser) ? res.data.authuser : 0,
+      accounts,
+    };
   }
-  return { authenticated: false, user: null };
+  return { authenticated: false, user: null, activeId: null, authuser: 0, accounts: [] };
 }
 
 export async function requireAuth() {
@@ -84,7 +97,7 @@ export async function requireAuth() {
     location.href = `/signin?next=${next}`;
     return null;
   }
-  return session.user;
+  return session;
 }
 
 export async function redirectIfAuthed() {
@@ -93,14 +106,26 @@ export async function redirectIfAuthed() {
   const form = params.get('form') === '1';
   const choose = params.get('choose') === '1';
   const next = params.get('next') || '';
+  const requestedAuthuser = params.get('authuser') ?? params.get('u');
   const isOAuth = /\/oauth\/authorize/i.test(next);
 
-  // Explicit form mode (`add=1` or `form=1`): stay on Sign-In / Sign-Up form without redirect
   if (add || form) {
     return { authenticated: false, user: null, showChooser: false };
   }
 
-  // Chooser mode (`?choose=1` or OAuth authorize flow): check live server accounts in 1 request
+  // If `?authuser=<n>` was passed to `/signin` (without `?choose=1`) and matches a live session,
+  // activate that slot in 1 call and redirect straight to `next` or `/u/<n>/me`!
+  if (requestedAuthuser !== null && !choose && !isOAuth) {
+    const sw = await switchToAccount(requestedAuthuser);
+    if (sw.ok) {
+      const dest = isInternalAccountHubPath(next) || !next
+        ? mePathForAuthuser(sw.authuser)
+        : safeNextUrl(next, mePathForAuthuser(sw.authuser));
+      location.href = dest;
+      return { authenticated: true, user: sw.user, showChooser: false };
+    }
+  }
+
   if (choose || isOAuth) {
     const state = await fetchAccounts();
     if (state.accounts.length >= 1) {
@@ -111,13 +136,14 @@ export async function redirectIfAuthed() {
 
   const session = await getSession();
   if (session.authenticated) {
-    location.href = safeNextUrl(next, '/me');
+    const fallback = mePathForAuthuser(session.authuser);
+    location.href = isInternalAccountHubPath(next) || !next ? fallback : safeNextUrl(next, fallback);
   }
   return session;
 }
 
-/** Sign out only the active slot (or all accounts when `{ all: true }`). */
-export async function signOut({ all = false } = {}) {
+/** Sign out ONLY the active/current-tab slot (or all accounts when `{ all: true }`). */
+export async function signOut({ all = false, slotId = null } = {}) {
   if (all) {
     await signOutAllAccounts();
     clearTokens();
@@ -125,12 +151,12 @@ export async function signOut({ all = false } = {}) {
     return;
   }
 
-  const state = await fetchAccounts();
-  if (state.activeId) {
-    const out = await signOutAccount(state.activeId);
+  const targetSlot = slotId || (await fetchAccounts()).activeId;
+  if (targetSlot) {
+    const out = await signOutAccount(targetSlot);
     clearTokens();
     if (out.ok && !out.signedOutAll) {
-      location.href = '/me';
+      location.href = mePathForAuthuser(out.authuser || 0);
       return;
     }
     location.href = '/signin?choose=1';
@@ -148,19 +174,25 @@ export async function renderTopbar(existingSession = null) {
 
   const session = existingSession || (await getSession());
   const authed = session.authenticated;
-  const { activeId, accounts } = authed ? await fetchAccounts() : { activeId: null, accounts: [] };
+  const activeId = session.activeId || null;
+  const accounts = authed
+    ? session.accounts?.length
+      ? session.accounts
+      : (await fetchAccounts()).accounts
+    : [];
   const user = session.user || {};
+  const myAccountHref = mePathForAuthuser(session.authuser || 0);
   const ini = initialsFor(user);
 
   el.innerHTML = `
     <div class="container topbar-inner">
-      <a class="brand" href="${authed ? '/me' : '/signin'}">
+      <a class="brand" href="${authed ? escapeHtml(myAccountHref) : '/signin'}">
         <img class="brand-logo sm" src="/icon-192.png" alt="Gothwad" />
         <span class="brand-name">Gothwad</span>
       </a>
       <nav class="nav">
         ${authed ? `
-          <a class="nav-link hide-mobile" href="/me">My Account</a>
+          <a class="nav-link hide-mobile" href="${escapeHtml(myAccountHref)}">My Account</a>
           <div class="acct-switch" id="acct-switch">
             <button type="button" class="acct-switch-btn" id="acct-switch-btn" aria-label="Switch account">
               <span class="avatar sm">${escapeHtml(ini)}</span>
@@ -191,10 +223,10 @@ export async function renderTopbar(existingSession = null) {
       </nav>
     </div>`;
 
-  bindAccountMenu(accounts, activeId, user);
+  bindAccountMenu(accounts, activeId);
 }
 
-function bindAccountMenu(accounts, activeId, user) {
+function bindAccountMenu(accounts, activeId) {
   const btn = document.getElementById('acct-switch-btn');
   const menu = document.getElementById('acct-menu');
   if (btn && menu) {
@@ -221,7 +253,7 @@ function bindAccountMenu(accounts, activeId, user) {
         }
         return;
       }
-      location.reload();
+      location.href = mePathForAuthuser(sw.authuser || 0);
     });
   });
 
@@ -239,7 +271,7 @@ function bindAccountMenu(accounts, activeId, user) {
   }
 
   const one = document.getElementById('btn-signout-one');
-  if (one) one.addEventListener('click', () => signOut());
+  if (one) one.addEventListener('click', () => signOut({ slotId: activeId }));
   const all = document.getElementById('btn-signout-all');
   if (all) all.addEventListener('click', () => signOut({ all: true }));
 }

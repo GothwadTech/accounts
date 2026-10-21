@@ -8,7 +8,10 @@
   <link rel="icon" href="/favicon.ico" sizes="any" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="manifest" href="/manifest.json" />
-  <link rel="stylesheet" href="/css/legacy.css" />
+  <link rel="stylesheet" href="/css/legacy/variables.css" />
+  <link rel="stylesheet" href="/css/legacy/base.css" />
+  <link rel="stylesheet" href="/css/legacy/components.css" />
+  <link rel="stylesheet" href="/css/legacy/legal-content.css" />
 </head>
 <body>
   <main class="root-splash" aria-live="polite">
@@ -28,7 +31,9 @@
       new Promise((resolve) => setTimeout(() => resolve({ authenticated: false }), 1200)),
     ]);
 
-    window.location.replace(session.authenticated ? '/me' : '/signin');
+    window.location.replace(
+      session.authenticated ? `/u/${session.authuser || 0}/me` : '/signin',
+    );
   </script>
 </body>
 </html>

@@ -1,17 +1,23 @@
 /**
  * =============================================================================
- * API HELPER — 100% Cookie-Only Identity (`credentials: 'include'`)
+ * API HELPER — 100% Cookie-Only Identity + Per-Tab `authuser` Isolation
  * =============================================================================
  * SECURITY INVARIANT:
  *   - ZERO JWTs, refresh tokens, or session credentials in `localStorage` or `sessionStorage`.
  *   - All sessions live exclusively in `HttpOnly; Secure; SameSite=Lax; Domain=.APP_DOMAIN`
  *     cookies managed by the Accounts Worker.
- *   - Any legacy client storage keys from pre-v2.1 sessions (`gothwad_tokens`,
- *     `gothwad_accounts`, `gothwad_active_account`) are purged immediately on load.
+ *   - Whenever the current tab URL is `/u/<n>/...` or carries `?authuser=<n>`, every
+ *     API call automatically attaches `X-Gothwad-Authuser: <n>` so parallel tabs
+ *     (`/u/0/me` and `/u/1/me`) operate completely independently!
  * =============================================================================
  */
 
 import { apiUrl } from './config.js';
+import { parsePageAuthuser } from './authuser.js';
+
+export function getTokens() {
+  return {};
+}
 
 export function clearTokens() {
   try {
@@ -23,8 +29,16 @@ export function clearTokens() {
   } catch { /* sandboxed / private browsing */ }
 }
 
-// Immediately purge any stale client-stored tokens from older builds on page boot
 clearTokens();
+
+export function buildAuthHeaders(extra = {}) {
+  const headers = { ...extra };
+  const pageAuthuser = parsePageAuthuser();
+  if (pageAuthuser !== null && headers['X-Gothwad-Authuser'] === undefined) {
+    headers['X-Gothwad-Authuser'] = pageAuthuser;
+  }
+  return headers;
+}
 
 /* --------------------------------------------- single-flight cookie refresh */
 let refreshPromise = null;
@@ -32,14 +46,14 @@ let refreshPromise = null;
 async function doRefresh() {
   const res = await fetch(apiUrl('/auth/refresh'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
     credentials: 'include',
     body: '{}',
   }).catch(() => null);
   return !!(res && res.ok);
 }
 
-function refreshOnce() {
+export function refreshOnce() {
   if (!refreshPromise) {
     refreshPromise = doRefresh().finally(() => {
       refreshPromise = null;
@@ -69,11 +83,15 @@ const SKIP_REFRESH_PREFIXES = [
  * Call Worker API using first-party `HttpOnly` cookies (`credentials: 'include'`).
  * Always returns `{ ok, status, data, error }`.
  */
-export async function apiCall(path, { method = 'GET', body = null } = {}) {
+export async function apiCall(path, { method = 'GET', body = null, token = null } = {}) {
+  const headers = buildAuthHeaders({ 'Content-Type': 'application/json' });
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
   const opts = {
     method,
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: body ? JSON.stringify(body) : undefined,
   };
 
@@ -82,7 +100,7 @@ export async function apiCall(path, { method = 'GET', body = null } = {}) {
     let data = await parseJson(res);
 
     const canRetryRefresh =
-      res.status === 401 && !SKIP_REFRESH_PREFIXES.some((prefix) => path.startsWith(prefix));
+      res.status === 401 && !token && !SKIP_REFRESH_PREFIXES.some((prefix) => path.startsWith(prefix));
 
     if (canRetryRefresh && (await refreshOnce())) {
       res = await fetch(apiUrl(path), opts);

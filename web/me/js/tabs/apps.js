@@ -1,15 +1,15 @@
 /**
  * /me — CONNECTED APPS section.
- * Gothwad Services (always on) + Gothwad products (disconnect possible) +
- * sab products ka grid. /oauth/authorizations se real data aata hai.
+ * Links carry Google-style `authuser=<n>` handoff via `/api/auth/switch` so
+ * opening Gothwad Mail / Drive / Kiwi Store from `/u/1/me` opens into Account 1!
  */
 
 import { api } from '../../../js/api.js';
 import { toast, escapeHtml, formatDate } from '../../../js/common.js';
+import { buildEcosystemAppHref } from '../../../js/authuser.js';
 import { getAuthorizations } from '../store.js';
 import { GOTHWAD_SERVICES, GOTHWAD_PRODUCTS, isCoreApp } from '../../../js/gothwad-apps.js';
 
-/* Material Symbols icon mapping (ecosystem_apps.icon values se) */
 const APP_ICONS = {
   mail: 'mail',
   'hard-drive': 'cloud',
@@ -51,10 +51,11 @@ function mergeCatalog(apiApps) {
   };
 }
 
-function serviceRow(a) {
+function serviceRow(a, authuser) {
   const host = hostOf(a.url);
+  const href = a.url ? buildEcosystemAppHref(a.url, authuser) : '';
   const link = a.url
-    ? ` · <a href="${escapeHtml(a.url)}" target="_blank" rel="noopener">${escapeHtml(host)}</a>`
+    ? ` · <a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(host)}</a>`
     : '';
   return `
     <div class="device">
@@ -86,18 +87,19 @@ function productRow(a, connected) {
     </div>`;
 }
 
-function appCard(a) {
+function appCard(a, authuser) {
   const host = hostOf(a.url);
+  const href = a.url ? buildEcosystemAppHref(a.url, authuser) : '';
   return `
     <div class="app-card">
       <div class="app-icon"><span class="msym">${iconFor(a.icon)}</span></div>
       <div style="font-weight:500;margin-bottom:2px;">${escapeHtml(a.name)}</div>
       <div class="text-muted text-xs" style="margin-bottom:8px;">${escapeHtml(a.description || '')}</div>
-      ${a.url ? `<a href="${escapeHtml(a.url)}" target="_blank" rel="noopener" class="text-xs">${escapeHtml(host)}</a>` : ''}
+      ${a.url ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener" class="text-xs">${escapeHtml(host)}</a>` : ''}
     </div>`;
 }
 
-export async function loadConnectedApps() {
+export async function loadConnectedApps(authuser = 0) {
   const servicesList = document.getElementById('gothwad-services-list');
   const connectedList = document.getElementById('connected-list');
   const appsGrid = document.getElementById('apps-grid');
@@ -107,7 +109,7 @@ export async function loadConnectedApps() {
   const connected = (data.connected || []).filter((c) => !isCoreApp(c.app_id) && !c.core);
   const { services, products } = mergeCatalog(data.apps || []);
 
-  if (servicesList) servicesList.innerHTML = services.map(serviceRow).join('');
+  if (servicesList) servicesList.innerHTML = services.map((s) => serviceRow(s, authuser)).join('');
 
   const extraConnected = connected.filter((c) => !products.some((p) => p.id === c.app_id));
   connectedList.innerHTML =
@@ -127,7 +129,7 @@ export async function loadConnectedApps() {
       .join('');
 
   if (appsGrid) {
-    appsGrid.innerHTML = [...services, ...products].map(appCard).join('');
+    appsGrid.innerHTML = [...services, ...products].map((a) => appCard(a, authuser)).join('');
   }
 
   connectedList.querySelectorAll('.btn-disconnect').forEach((btn) => {
@@ -141,8 +143,8 @@ export async function loadConnectedApps() {
       const r = await api.post('/oauth/revoke', { app_id: btn.dataset.app });
       if (r.ok) {
         toast('App disconnected');
-        getAuthorizations(true); // cache refresh
-        loadConnectedApps();
+        getAuthorizations(true);
+        loadConnectedApps(authuser);
       } else {
         btn.disabled = false;
         btn.textContent = 'Disconnect';

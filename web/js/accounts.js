@@ -1,32 +1,30 @@
 /**
  * =============================================================================
- * MULTI-ACCOUNT SESSIONS — Server-Side `HttpOnly` Cookie Slots (`a`..`f`)
- * =============================================================================
- * Zero tokens or account records in `localStorage` or `sessionStorage`.
- * Every account slot is verified live by the Worker against D1 sessions:
- *   - GET  /api/auth/accounts
- *   - POST /api/auth/switch                { id: "<slot>" }
- *   - POST /api/auth/accounts/:id/signout
- *   - POST /api/auth/signout               (sign out all slots)
+ * MULTI-ACCOUNT SESSIONS — Server-Side `HttpOnly` Slots (`a`..`f` / `u/0..5`)
  * =============================================================================
  */
 
 import { api, clearTokens } from './api.js';
 import { GOTHWAD_CONFIG } from './config.js';
+import { mePathForAuthuser } from './authuser.js';
 
 export const MAX_ACCOUNTS = 6;
 
-function normalizeAccount(raw) {
+export function normalizeAccount(raw, fallbackIndex = 0) {
   const firstName = raw?.firstName ?? raw?.first_name ?? '';
   const lastName = raw?.lastName ?? raw?.last_name ?? '';
   const username = String(raw?.username || '');
+  const authuser = Number.isInteger(raw?.authuser) ? raw.authuser : fallbackIndex;
   return {
     id: String(raw?.id || raw?.slot || ''),
+    authuser,
     username,
     firstName,
     lastName,
     first_name: firstName,
     last_name: lastName,
+    avatar_url: raw?.avatarUrl ?? raw?.avatar_url ?? null,
+    accountUrl: raw?.accountUrl || mePathForAuthuser(authuser),
     email: raw?.email || (username ? `${username}@${GOTHWAD_CONFIG.APP_DOMAIN}` : ''),
     lastUsedAt: raw?.lastUsedAt || null,
   };
@@ -44,34 +42,43 @@ export function addAccountHref(nextUrl = '') {
   return `/signin?${q.toString()}`;
 }
 
-/**
- * Fetch live signed-in accounts from `GET /api/auth/accounts`.
- * Returns `{ activeId: string | null, accounts: Array }`.
- */
 export async function fetchAccounts() {
   const res = await api.get('/auth/accounts');
   if (!res.ok || !res.data || !Array.isArray(res.data.accounts)) {
-    return { activeId: null, accounts: [] };
+    return { activeId: null, authuser: 0, accounts: [] };
   }
+  const accounts = res.data.accounts.map((a, idx) => normalizeAccount(a, idx));
   return {
     activeId: res.data.activeId || null,
-    accounts: res.data.accounts.map(normalizeAccount),
+    authuser: Number.isInteger(res.data.authuser) ? res.data.authuser : 0,
+    accounts,
   };
 }
 
 /**
- * Switch active account in 1 request (`POST /api/auth/switch`) with zero password prompt.
- * On revoked session (`409`), server keeps active slot intact and returns `{ error: "account_not_signed_in" }`.
+ * Switch active account in 1 request (`POST /api/auth/switch`) using `{ id }` or `{ authuser }`.
+ * Returns `{ ok, activeId, authuser, user, accounts }`.
  */
-export async function switchToAccount(accountOrSlotId) {
-  const slotId =
-    typeof accountOrSlotId === 'string'
-      ? accountOrSlotId
-      : String(accountOrSlotId?.id || '');
-  if (!slotId) {
+export async function switchToAccount(accountOrSelector) {
+  const payload = {};
+  if (typeof accountOrSelector === 'number') {
+    payload.authuser = accountOrSelector;
+  } else if (typeof accountOrSelector === 'string') {
+    if (/^\d+$/.test(accountOrSelector)) {
+      payload.authuser = Number.parseInt(accountOrSelector, 10);
+    } else {
+      payload.id = accountOrSelector;
+    }
+  } else if (accountOrSelector && typeof accountOrSelector === 'object') {
+    if (accountOrSelector.id) payload.id = String(accountOrSelector.id);
+    if (Number.isInteger(accountOrSelector.authuser)) payload.authuser = accountOrSelector.authuser;
+  }
+
+  if (!payload.id && payload.authuser === undefined) {
     return { ok: false, status: 400, error: 'Invalid account selection.' };
   }
-  const res = await api.post('/auth/switch', { id: slotId });
+
+  const res = await api.post('/auth/switch', payload);
   if (!res.ok) {
     return {
       ok: false,
@@ -83,16 +90,18 @@ export async function switchToAccount(accountOrSlotId) {
           : res.error || 'Could not switch account.',
     };
   }
+  const accounts = Array.isArray(res.data?.accounts)
+    ? res.data.accounts.map((a, idx) => normalizeAccount(a, idx))
+    : null;
   return {
     ok: true,
-    activeId: res.data?.activeId || slotId,
+    activeId: res.data?.activeId || payload.id || null,
+    authuser: Number.isInteger(res.data?.authuser) ? res.data.authuser : (payload.authuser ?? 0),
     user: res.data?.user || null,
+    accounts,
   };
 }
 
-/**
- * Sign out ONLY slot `slotId` (`POST /api/auth/accounts/:id/signout`).
- */
 export async function signOutAccount(slotId) {
   const res = await api.post(`/auth/accounts/${encodeURIComponent(slotId)}/signout`, {});
   if (!res.ok) {
@@ -102,7 +111,10 @@ export async function signOutAccount(slotId) {
     ok: true,
     signedOutAll: !!res.data?.signedOutAll,
     activeId: res.data?.activeId || null,
-    accounts: Array.isArray(res.data?.accounts) ? res.data.accounts.map(normalizeAccount) : [],
+    authuser: Number.isInteger(res.data?.authuser) ? res.data.authuser : 0,
+    accounts: Array.isArray(res.data?.accounts)
+      ? res.data.accounts.map((a, idx) => normalizeAccount(a, idx))
+      : [],
   };
 }
 
@@ -111,27 +123,25 @@ export async function signOutAllAccounts() {
   return api.post('/auth/signout', {});
 }
 
-/**
- * Validate `?next=` destination — only relative paths or `APP_DOMAIN` / `*.APP_DOMAIN` allowed.
- */
-export function safeNextUrl(raw, fallback = '/me') {
+export function safeNextUrl(raw, fallback = '/u/0/me') {
   if (typeof raw !== 'string' || !raw) return fallback;
   if (raw.startsWith('/') && !raw.startsWith('//')) return raw;
   try {
-    const url = new URL(raw);
-    if (url.protocol !== 'https:' && url.protocol !== 'http:') return fallback;
-    const host = url.hostname.toLowerCase();
-    const app = String(GOTHWAD_CONFIG.APP_DOMAIN || '').toLowerCase();
-    const sameHost = typeof location !== 'undefined' && host === location.hostname;
-    const appDomain = !!app && (host === app || host.endsWith(`.${app}`));
-    if (sameHost || appDomain) return url.toString();
-  } catch { /* invalid URL */ }
+    const u = new URL(raw);
+    const domain = GOTHWAD_CONFIG.APP_DOMAIN;
+    if (
+      u.origin === location.origin ||
+      u.hostname === domain ||
+      u.hostname.endsWith(`.${domain}`)
+    ) {
+      return raw;
+    }
+  } catch { /* invalid URL -> use fallback */ }
   return fallback;
 }
 
-export function initialsFor(user) {
-  const f = (user?.firstName ?? user?.first_name ?? '')[0] || '';
-  const l = (user?.lastName ?? user?.last_name ?? '')[0] || '';
-  const u = (user?.username || '?')[0];
-  return ((f + l) || u || '?').toUpperCase();
+export function initialsFor(u) {
+  const fn = u?.first_name ?? u?.firstName ?? '';
+  const ln = u?.last_name ?? u?.lastName ?? '';
+  return (`${fn[0] || ''}${ln[0] || ''}`.toUpperCase() || u?.username?.[0]?.toUpperCase() || '?');
 }

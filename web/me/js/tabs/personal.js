@@ -2,31 +2,35 @@
  * /me — PERSONAL INFO section (photo, name, dob, gender, contact rows + dialogs).
  */
 
-import { escapeHtml } from '../../../js/common.js';
 import { gothwadEmail } from '../../../js/config.js';
 import { renderAvatar } from '../avatar.js';
 import { setDialogUser, openDialog } from '../dialogs.js';
 
 let user = null;
 let onUserUpdated = () => {};
+let bound = false;
 
-export function initPersonalInfo(currentUser, cb) {
-  user = currentUser;
-  if (cb) onUserUpdated = cb;
-
-  // Dialog system ko user do (save ke baad callback bhi)
+export function syncPersonalUser(nextUser) {
+  user = nextUser;
   setDialogUser(user, (updated) => {
     user = updated;
     onUserUpdated(updated);
     refreshRows();
   });
+  refreshRows();
+}
 
-  // Rows → dialogs
+export function initPersonalInfo(currentUser, cb) {
+  if (cb) onUserUpdated = cb;
+  syncPersonalUser(currentUser);
+
+  if (bound) return;
+  bound = true;
+
   document.querySelectorAll('#section-personal [data-dialog]').forEach((row) => {
     row.addEventListener('click', () => openDialog(row.dataset.dialog));
   });
 
-  // Photo overlay (click + keyboard)
   const overlay = document.getElementById('pi-photo-edit');
   overlay?.addEventListener('click', () => openDialog('photo'));
   overlay?.addEventListener('keydown', (e) => {
@@ -35,11 +39,8 @@ export function initPersonalInfo(currentUser, cb) {
       openDialog('photo');
     }
   });
-
-  refreshRows();
 }
 
-/** Rows ke values update karo (profile change ke baad bhi call hota hai). */
 export function refreshRows() {
   if (!user) return;
 
