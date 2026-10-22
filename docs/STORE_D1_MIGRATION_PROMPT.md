@@ -49,7 +49,7 @@ Communicate with founder **Pawan** in **clear, friendly Hinglish (simple Hindi +
    - **1 Cloudflare Pages project** (custom domains: `kiwistore.gothwadtech.com`, `kiwiconsole.gothwadtech.com`, `kiwiadmin.gothwadtech.com`, `kiwiapp.gothwadtech.com`) + **1 Cloudflare Worker** (`worker/wrangler.toml`, preserving existing production Worker name, routes, and secrets!).
    - Verify host-based routing in `shared/brand.ts` and `src/` so all 4 web hosts + local dev (`?surface=store|console|admin|app`) resolve cleanly and remain **domain-agnostic** (`APP_DOMAIN`, never hardcoded outside defaults).
    - Preserve **100% JSON wire compatibility** with live Android `GothwadTech/storeapp` (`StoreApi.kt` & `StoreModels.kt`) so existing installed APKs keep working without forced breaking changes.
-4. ** ecosystem Security & Hygiene Rules:**
+4. **Ecosystem Security & Hygiene Rules:**
    - **Zero secrets committed to Git** (never commit tokens/keys; keep `.env.example` / `.dev.vars.example` clean).
    - **Zero auth tokens stored in `localStorage` or `sessionStorage` on web** (rely on `HttpOnly; Secure` `.gothwadtech.com` SSO slot cookies + `/api/auth/me` & `/api/auth/signout`, while STILL accepting `Authorization: Bearer <oauth_access_token>` on the Worker for Android `storeapp`!).
    - **Pure lowercase `username` identity in D1** (derive `username@${appDomain}` dynamically; never store hardcoded domain emails as identity keys).

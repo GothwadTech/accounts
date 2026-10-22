@@ -6,7 +6,7 @@
 >
 > Rules & working style: [`AGENTS.md`](AGENTS.md) · Architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · Full session archive (`1–28`): [`docs/TASK_HISTORY.md`](docs/TASK_HISTORY.md)
 
-**Last updated:** 2026-10-20 (Session 32 — Google-grade `/u/0..5` · `authuser` multi-account URL & instant zero-reload switcher + fixed all cross-repo `GothwadTech/mail` `"Please sign in."` & `/me` asset bugs — **78/78 tests green**)
+**Last updated:** 2026-10-22 (Session 33 — Added `docs/STORE_D1_MIGRATION_PROMPT.md` Zero-Card Cloudflare D1 migration & independent audit specification for `GothwadTech/store` — **78/78 tests green**)
 
 ---
 
@@ -26,7 +26,12 @@
 
 ---
 
-## ✅ DONE (Newest First — Sessions 29 to 32)
+## ✅ DONE (Newest First — Sessions 29 to 33)
+
+### Session 33 — 2026-10-22 — `GothwadTech/store` Zero-Card Cloudflare D1 Migration & Independent Audit Spec (`docs/STORE_D1_MIGRATION_PROMPT.md`)
+- Audited `GothwadTech/store` + Android `GothwadTech/storeapp` end-to-end against `GothwadTech/accounts` (`v2.3`) and authored **[`docs/STORE_D1_MIGRATION_PROMPT.md`](docs/STORE_D1_MIGRATION_PROMPT.md)** (indexed in [`docs/README.md`](docs/README.md)):
+  - Enforces strict **Zero-Card / Zero-R2 / Zero-Supabase / Zero-ImgBB** architecture using live Cloudflare D1 `"store"` (`a3dc3e71-cf89-4e0a-89d1-693fcf6f227a`) + `store_images` D1 `BLOB` deduplication + Edge Cache (`caches.default`) + `GothwadTech/storefiles` APK storage across all 4 web surfaces (`kiwistore`, `kiwiconsole`, `kiwiadmin`, `kiwiapp`) and Android `storeapp`.
+  - Documents verified cross-repo auth, cookie rotation, `/u/0..5` multi-account, `PRAGMA`-free D1 bootstrap, `<= 500`-line modularization, independent code audit mandate, and full documentation maintenance requirements.
 
 ### Session 32 — 2026-10-20 — Google-Grade `/u/0..5` · `authuser` Multi-Account Engine + Full Cross-Repo `GothwadTech/mail` Switch Fix (`v2.3`)
 - **Cross-Repo Root Causes Found & Permanently Fixed (`GothwadTech/mail` ↔ `GothwadTech/accounts`):**
