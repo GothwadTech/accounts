@@ -56,7 +56,7 @@ const server = http.createServer(async (req, res) => {
         DEV_MODE: process.env.DEV_MODE || 'true',
         JWT_SECRET: process.env.JWT_SECRET || 'dev-only-jwt-secret-key',
         MAIL_INTERNAL_TOKEN: process.env.MAIL_INTERNAL_TOKEN || 'dev-mail-internal-token',
-        ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS || '',
+        ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS || origin,
       };
 
       const webRes = await workerModule.fetch(webReq, env);
@@ -99,10 +99,15 @@ const server = http.createServer(async (req, res) => {
   }
 
   const ext = path.extname(filePath).toLowerCase();
-  res.writeHead(200, {
+  const staticHeaders = {
     'Content-Type': MIME[ext] || 'application/octet-stream',
     'Cache-Control': 'no-store, max-age=0',
-  });
+  };
+  if (url.pathname.startsWith('/widget/')) {
+    staticHeaders['Access-Control-Allow-Origin'] = '*';
+    staticHeaders['Cross-Origin-Resource-Policy'] = 'cross-origin';
+  }
+  res.writeHead(200, staticHeaders);
   fs.createReadStream(filePath).pipe(res);
 });
 

@@ -223,14 +223,18 @@ export function toPublicAccountSummary(
   authuserIndex = 0,
 ): PublicAccountSummary {
   const hubBase = (env.AUTH_HUB_URL || `https://accounts.${env.APP_DOMAIN}`).replace(/\/+$/, '');
+  const fullName = `${slotInfo.firstName || ''} ${slotInfo.lastName || ''}`.trim() || slotInfo.username;
+  const avatar = slotInfo.avatarUrl || null;
   return {
     id: slotInfo.slot,
     authuser: authuserIndex,
     username: slotInfo.username,
+    name: fullName,
     firstName: slotInfo.firstName,
     lastName: slotInfo.lastName,
     email: `${slotInfo.username}@${env.APP_DOMAIN}`,
-    avatarUrl: slotInfo.avatarUrl || null,
+    avatarUrl: avatar,
+    avatar_url: avatar,
     accountUrl: `${hubBase}/u/${authuserIndex}/me`,
     lastUsedAt: slotInfo.lastUsedAt,
   };

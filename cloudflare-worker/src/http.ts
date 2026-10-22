@@ -115,7 +115,10 @@ export function buildCorsHeaders(request: Request, env: Env): Headers {
     headers.set('Access-Control-Allow-Credentials', 'true');
     headers.set('Vary', 'Origin');
     headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Gothwad-Refresh');
+    headers.set(
+      'Access-Control-Allow-Headers',
+      'Content-Type, Authorization, X-Gothwad-Refresh, X-Gothwad-Authuser',
+    );
     headers.set('Access-Control-Max-Age', '86400');
   }
   return headers;

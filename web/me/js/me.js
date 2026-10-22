@@ -14,11 +14,10 @@ import { requireAuth, getSession, signOut, escapeHtml, toast } from '../../js/co
 import {
   fetchAccounts,
   switchToAccount,
-  initialsFor,
   addAccountHref,
-  MAX_ACCOUNTS,
 } from '../../js/accounts.js';
 import { mePathForAuthuser, parsePageAuthuser, syncMeBrowserUrl } from '../../js/authuser.js';
+import { GothwadAccountMenu } from '../../widget/account-menu.js';
 import { renderAvatar } from './avatar.js';
 import { mountThemeToggles } from '../../js/theme.js';
 import { initNav } from './nav.js';
@@ -101,6 +100,7 @@ function applyHydratedAccount(user, authuser, activeId, accounts) {
 }
 
 async function switchAccountInPlace(targetAccount, { updateHistory = true } = {}) {
+  GothwadAccountMenu.close();
   document.getElementById('acct-menu')?.classList.add('hidden');
   if (!targetAccount) return;
 
@@ -114,13 +114,15 @@ async function switchAccountInPlace(targetAccount, { updateHistory = true } = {}
   if (updateHistory) {
     syncMeBrowserUrl(targetIndex, { push: true });
   }
+  const nextAvatar = targetAccount.avatarUrl || targetAccount.avatar_url || null;
   const optimisticUser = {
     ...currentUser,
     username: targetAccount.username,
     first_name: targetAccount.firstName || targetAccount.first_name || '',
     last_name: targetAccount.lastName || targetAccount.last_name || '',
     email: targetAccount.email,
-    avatar_url: targetAccount.avatar_url || null,
+    avatar_url: nextAvatar,
+    avatarUrl: nextAvatar,
   };
   currentActiveSlot = targetAccount.id;
   currentAuthuser = targetIndex;
@@ -158,6 +160,7 @@ function onUserUpdated(user) {
           lastName: user.last_name || '',
           first_name: user.first_name || '',
           last_name: user.last_name || '',
+          avatarUrl: user.avatar_url || null,
           avatar_url: user.avatar_url || null,
         }
       : a,
@@ -187,55 +190,50 @@ async function renderAccountMenu(user, preloaded = null) {
     const fetched = await fetchAccounts();
     currentActiveSlot = currentActiveSlot || fetched.activeId;
     accounts = fetched.accounts;
-    cachedAccounts = accounts;
   }
+  cachedAccounts = accounts;
 
-  const listEl = document.getElementById('menu-accounts');
-  if (listEl) {
-    listEl.innerHTML = accounts
-      .map((a, idx) => {
-        const idxNum = Number.isInteger(a.authuser) ? a.authuser : idx;
-        const href = mePathForAuthuser(idxNum, globalThis.location?.hash || '');
-        const isCurrent = a.username === user.username;
-        return `
-      <a href="${escapeHtml(href)}" class="acct-menu-item" data-switch="${escapeHtml(a.id)}" data-authuser="${idxNum}" role="menuitem">
-        <span class="avatar sm">${escapeHtml(initialsFor(a))}</span>
-        <span>
-          <span class="acct-item-name">${escapeHtml(`${a.firstName || ''} ${a.lastName || ''}`.trim() || a.username)}</span>
-          <span class="acct-item-email mono">${escapeHtml(a.email || a.username)}</span>
-        </span>
-        ${isCurrent ? '<span class="acct-check"><span class="msym" style="font-size:18px;">check</span></span>' : ''}
-      </a>`;
-      })
-      .join('');
-
-    listEl.querySelectorAll('[data-switch]').forEach((itemEl) => {
-      itemEl.addEventListener('click', (e) => {
-        // Preserve native Ctrl+Click / Cmd+Click / Middle-Click to open `/u/<n>/me` in a new tab!
-        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
-        e.preventDefault();
-        const slotId = itemEl.getAttribute('data-switch');
-        const target = accounts.find((x) => x.id === slotId);
-        switchAccountInPlace(target);
-      });
+  if (GothwadAccountMenu.isOpen()) {
+    GothwadAccountMenu.update({
+      user,
+      accounts: cachedAccounts,
+      activeId: currentActiveSlot,
+      authuser: currentAuthuser,
     });
   }
+}
 
-  const addLink = document.getElementById('link-add-account');
-  if (addLink) {
-    addLink.setAttribute('href', addAccountHref(mePathForAuthuser(currentAuthuser)));
-    addLink.onclick = (e) => {
-      if (accounts.length >= MAX_ACCOUNTS) {
-        e.preventDefault();
-        toast(
-          `Maximum ${MAX_ACCOUNTS} accounts can stay signed in on one browser. Sign out of one first.`,
-          'error',
-        );
-      }
-    };
+function openUniversalAccountSheet() {
+  if (!currentUser) return;
+  const menuBtnEl = document.getElementById('acct-switch-btn');
+  if (GothwadAccountMenu.isOpen()) {
+    GothwadAccountMenu.close();
+    return;
   }
-
-  document.getElementById('btn-signout-all')?.classList.toggle('hidden', accounts.length <= 1);
+  GothwadAccountMenu.open(
+    {
+      user: currentUser,
+      accounts: cachedAccounts,
+      activeId: currentActiveSlot,
+      authuser: currentAuthuser,
+    },
+    {
+      anchorEl: menuBtnEl,
+      nextUrl: globalThis.location?.href || mePathForAuthuser(currentAuthuser),
+      accountHref: (acct) => mePathForAuthuser(acct.authuser, globalThis.location?.hash || ''),
+      onSwitchAccount: (target) => switchAccountInPlace(target),
+      onSignOutAccount: (slotId) => signOut({ slotId: slotId || currentActiveSlot }),
+      onSignOutAll: () => signOut({ all: true }),
+      onEditAvatar: () => {
+        document.querySelector('[data-section="personal"]')?.click();
+        document.getElementById('btn-change-avatar')?.click();
+      },
+      onManageAccount: () => {
+        document.querySelector('[data-section="home"]')?.click();
+      },
+      onError: (msg) => toast(msg, 'error'),
+    },
+  );
 }
 
 /* Browser Back / Forward between `/u/0/me` <-> `/u/1/me` */
@@ -256,19 +254,14 @@ globalThis.addEventListener?.('popstate', async () => {
   }
 });
 
-/* Menu open/close + signout bindings */
+/* Universal Google-grade Account Sheet trigger */
 const menuBtn = document.getElementById('acct-switch-btn');
-const menu = document.getElementById('acct-menu');
-if (menuBtn && menu) {
+if (menuBtn) {
   menuBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    menu.classList.toggle('hidden');
+    openUniversalAccountSheet();
   });
-  document.addEventListener('click', () => menu.classList.add('hidden'));
-  menu.addEventListener('click', (e) => e.stopPropagation());
 }
-document.getElementById('btn-signout-one')?.addEventListener('click', () => signOut({ slotId: currentActiveSlot }));
-document.getElementById('btn-signout-all')?.addEventListener('click', () => signOut({ all: true }));
 
 /* Mobile sidebar drawer */
 const sidebar = document.getElementById('me-sidebar');

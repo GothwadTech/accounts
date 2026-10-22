@@ -86,10 +86,12 @@ export interface PublicAccountSummary {
   id: AccountSlot;
   authuser: number;
   username: string;
+  name: string;
   firstName: string;
   lastName: string;
   email: string;
   avatarUrl: string | null;
+  avatar_url: string | null;
   accountUrl: string;
   lastUsedAt: string;
 }

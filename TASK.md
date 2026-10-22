@@ -6,7 +6,7 @@
 >
 > Rules & working style: [`AGENTS.md`](AGENTS.md) · Architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · Full session archive (`1–28`): [`docs/TASK_HISTORY.md`](docs/TASK_HISTORY.md)
 
-**Last updated:** 2026-10-22 (Session 33 — Added `docs/STORE_D1_MIGRATION_PROMPT.md` Zero-Card Cloudflare D1 migration & independent audit specification for `GothwadTech/store` — **78/78 tests green**)
+**Last updated:** 2026-10-22 (Session 34 — Built Universal Google-Grade Shadow-DOM Account Widget `web/widget/account-menu.js` + `X-Gothwad-Authuser` CORS fix + Dedicated `Mail` & `Store` Universal SSO Prompts — **81/81 tests green**)
 
 ---
 
@@ -26,7 +26,13 @@
 
 ---
 
-## ✅ DONE (Newest First — Sessions 29 to 33)
+## ✅ DONE (Newest First — Sessions 29 to 34)
+
+### Session 34 — 2026-10-22 — Universal Google-Style Shadow-DOM Account Widget (`v2.4`) + Cross-Subdomain Silent SSO
+- **Central Universal Account Switcher (`web/widget/account-menu.js` + `web/widget/account-menu-styles.js`):**
+  - Built Google `OneGoogleBar`-grade Shadow-DOM account sheet & `<gothwad-account-menu>` custom element (`https://accounts.<domain>/widget/account-menu.js`) matching Material 3 Expressive segmented card groups (Light + Dark mode, full-screen sheet on mobile, `396px` anchored popover on desktop, `68px` hero avatar + `✏️` edit-photo badge, real `avatarUrl` photos across all secondary slots `0..5`, collapse chevron `^`/`⌄`, `+ Add another account`, inline `Manage accounts` per-slot/all sign-out, standalone `Manage your Account` pill, and `Privacy policy • Terms of Service` footer).
+  - Replaced `/me`'s legacy `#acct-menu` dropdown in `web/me/js/me.js` with `GothwadAccountMenu` (`< 16ms` zero-reload switch + 1-tap avatar edit modal).
+  - Added `X-Gothwad-Authuser` to `Access-Control-Allow-Headers` in `cloudflare-worker/src/http.ts`, enriched `toPublicAccountSummary()` (`name`, `avatarUrl`, `avatar_url`), exposed CORS headers on `/widget/*` in `web/_headers`, and wrote dedicated prompts **[`docs/MAIL_UNIVERSAL_ACCOUNT_MENU_PROMPT.md`](docs/MAIL_UNIVERSAL_ACCOUNT_MENU_PROMPT.md)** and **[`docs/STORE_UNIVERSAL_ACCOUNT_MENU_PROMPT.md`](docs/STORE_UNIVERSAL_ACCOUNT_MENU_PROMPT.md)**.
 
 ### Session 33 — 2026-10-22 — `GothwadTech/store` Zero-Card Cloudflare D1 Migration & Independent Audit Spec (`docs/STORE_D1_MIGRATION_PROMPT.md`)
 - Audited `GothwadTech/store` + Android `GothwadTech/storeapp` end-to-end against `GothwadTech/accounts` (`v2.3`) and authored **[`docs/STORE_D1_MIGRATION_PROMPT.md`](docs/STORE_D1_MIGRATION_PROMPT.md)** (indexed in [`docs/README.md`](docs/README.md)):
