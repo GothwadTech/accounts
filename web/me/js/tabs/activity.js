@@ -1,6 +1,6 @@
 /**
- * /me — activity row renderer (Security + Data & privacy + Home use karte hain).
- * Types worker ke logActivity() se aate hain (sql/02_account_activity.sql).
+ * `/me` — Activity row renderer shared by Security, Data & privacy, and Home tabs.
+ * Activity event types correspond to Worker `logActivity()` (`sql/02_account_activity.sql`).
  */
 
 import { escapeHtml, formatDate } from '../../../js/common.js';
@@ -18,7 +18,7 @@ const ACTIVITY_META = {
   app_revoked: { icon: 'link_off', label: 'App disconnected' },
 };
 
-/** Ek activity row ka HTML. */
+/** Renders a single activity entry row. */
 export function activityRow(a) {
   const meta = ACTIVITY_META[a.type] || { icon: 'history', label: 'Account activity' };
   const title = a.title || meta.label;
@@ -33,7 +33,7 @@ export function activityRow(a) {
     </div>`;
 }
 
-/** Activity list box fill karo. */
+/** Populates a target activity list container with formatted rows. */
 export function renderActivity(boxId, rows) {
   const box = document.getElementById(boxId);
   if (!box) return;

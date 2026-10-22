@@ -4,34 +4,32 @@
 -- File: sql/01_core_schema.sql
 -- Engine: Cloudflare D1 (SQLite)
 --
--- KYA HAI IS FILE MEIN?
---   Gothwad Accounts ki poori core database — native password auth (`users`),
---   user profile (`profiles`), active devices (`user_sessions`), refresh &
---   password-reset tokens, aur OAuth 2.0 provider tables (`ecosystem_apps`,
+-- OVERVIEW:
+--   Core identity database for Gothwad Accounts — native password credentials (`users`),
+--   user profile metadata (`profiles`), active signed-in devices (`user_sessions`),
+--   refresh & password-reset token vaults, and OAuth 2.0 provider tables (`ecosystem_apps`,
 --   `app_authorizations`, `oauth_auth_codes`, `oauth_refresh_tokens`).
 --
 -- AUTO-BOOTSTRAP + MANUAL CONSOLE SUPPORT:
---   1. Worker pehli request par khud bhi `ensureSchema()` chala deta hai, isliye
---      khali D1 database par bhi app zero error ke saath turant start hoti hai.
---   2. Aap Cloudflare Dashboard -> D1 -> `gothwad-accounts-db` -> Console mein
---      yeh poori file paste karke kabhi bhi run kar sakte ho (100% IDEMPOTENT:
---      first run aur re-run dono completely safe hain!).
+--   1. The Worker automatically runs `ensureSchema()` on startup so even a brand-new
+--      empty D1 database initializes automatically with zero downtime.
+--   2. Every statement in this file is 100% IDEMPOTENT (`IF NOT EXISTS`), making both
+--      first-time runs and repeated console re-runs completely safe.
 --
--- HARD RULES FOLLOWED:
---   * Rule #1 (Domain-agnostic): Kahin bhi domain hardcode nahi hai.
---   * Rule #2 (100% Pure Username DB): `users` ya `profiles` mein KOI BHI
---     `email` column nahi hai! Email hamesha `username || '@' || APP_DOMAIN`
---     Worker layer par calculate hota hai. Kal domain badalne par ZERO SQL
---     migration lagega!
+-- ARCHITECTURE INVARIANTS:
+--   * Rule #1 (Domain-agnostic): Zero hardcoded domain strings anywhere in SQL.
+--   * Rule #2 (100% Pure Username DB): Neither `users` nor `profiles` stores an
+--     `email` column. Primary email is always computed at runtime as
+--     `username || '@' || APP_DOMAIN` inside the Worker layer.
 --   * Security: Passwords (`PBKDF2-HMAC-SHA256`), refresh tokens (`SHA-256`),
---     aur password-reset tokens (`SHA-256`) SIRF hashed roop mein store hote hain.
+--     and password-reset tokens (`SHA-256`) are stored strictly hashed.
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
--- 1. USERS — Core Identity Vault (Replaces Supabase `auth.users`)
+-- 1. USERS — Core Identity Vault
 -- -----------------------------------------------------------------------------
--- Yahan sirf UUID, lowercase username aur PBKDF2-SHA256 password hash rehta hai.
--- Koi fake email column nahi!
+-- Stores only UUID, lowercase username, and PBKDF2-SHA256 password hash.
+-- Zero email columns!
 
 CREATE TABLE IF NOT EXISTS users (
   id            TEXT PRIMARY KEY,
@@ -47,10 +45,10 @@ CREATE INDEX IF NOT EXISTS idx_users_username ON users (username);
 
 
 -- -----------------------------------------------------------------------------
--- 2. PROFILES — Har Gothwad user ki Personal Info & Storage Quota
+-- 2. PROFILES — Personal Info & Storage Quota
 -- -----------------------------------------------------------------------------
--- Rule #2: Sirf `username` store hota hai. `recovery_email` sirf password reset
--- bhejne ke liye optional external email hai (Gothwad primary email NAHI).
+-- Rule #2: Stores only `username`. `recovery_email` is strictly an optional external
+-- recovery address for password resets (never the user's primary Gothwad email).
 
 CREATE TABLE IF NOT EXISTS profiles (
   id                  TEXT PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
@@ -78,8 +76,8 @@ CREATE INDEX IF NOT EXISTS idx_profiles_phone ON profiles (phone_number) WHERE p
 -- -----------------------------------------------------------------------------
 -- 3. USER_SESSIONS — Active Logged-In Devices (Security Tab -> Your Devices)
 -- -----------------------------------------------------------------------------
--- Dashboard se kisi bhi device ko "Sign out" karte hi row delete hoti hai, aur
--- us device ke saare access + refresh tokens TURANT invalid ho jaate hain!
+-- Signing out a device from the dashboard deletes its row immediately, revoking
+-- all associated access and refresh tokens in real time.
 
 CREATE TABLE IF NOT EXISTS user_sessions (
   id          TEXT PRIMARY KEY,
@@ -100,8 +98,8 @@ CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions (user_id, 
 -- -----------------------------------------------------------------------------
 -- 4. AUTH_REFRESH_TOKENS — Account Session Refresh Tokens (Hashed Only!)
 -- -----------------------------------------------------------------------------
--- `gothwad_rt` cookie / `X-Gothwad-Refresh` header ke SHA-256 hashes.
--- `session_id` par ON DELETE CASCADE hai = device sign-out par refresh token bhi dead!
+-- Stores SHA-256 hashes of browser slot / `X-Gothwad-Refresh` tokens.
+-- `ON DELETE CASCADE` on `session_id` revokes the refresh token on device sign-out.
 
 CREATE TABLE IF NOT EXISTS auth_refresh_tokens (
   token_hash TEXT PRIMARY KEY,                       -- SHA-256(raw_refresh_token)
@@ -119,7 +117,7 @@ CREATE INDEX IF NOT EXISTS idx_auth_refresh_session ON auth_refresh_tokens (sess
 -- -----------------------------------------------------------------------------
 -- 5. PASSWORD_RESET_TOKENS — Single-Use 15-Minute Recovery Links
 -- -----------------------------------------------------------------------------
--- Forgot password par random token banta hai, DB mein sirf SHA-256 hash rehta hai.
+-- Generates a random token on password reset request; stores only its SHA-256 hash.
 
 CREATE TABLE IF NOT EXISTS password_reset_tokens (
   token_hash TEXT PRIMARY KEY,                       -- SHA-256(raw_reset_token)
@@ -135,8 +133,8 @@ CREATE INDEX IF NOT EXISTS idx_password_reset_user ON password_reset_tokens (use
 -- -----------------------------------------------------------------------------
 -- 6. ECOSYSTEM_APPS — Registered "Sign in with Gothwad" OAuth 2.0 Clients
 -- -----------------------------------------------------------------------------
--- `redirect_uris` JSON array string hai (e.g. '["https://mail.example.com/auth/callback"]').
--- `secret_hash` NULL = Public client (PKCE S256 mandatory).
+-- `redirect_uris` is a JSON array string (e.g. '["https://mail.example.com/auth/callback"]').
+-- `secret_hash` NULL indicates a public client (PKCE S256 required).
 
 CREATE TABLE IF NOT EXISTS ecosystem_apps (
   id            TEXT PRIMARY KEY,
@@ -174,7 +172,7 @@ ON CONFLICT (id) DO UPDATE SET
 -- -----------------------------------------------------------------------------
 -- 7. APP_AUTHORIZATIONS — User Grants for Ecosystem Apps
 -- -----------------------------------------------------------------------------
--- `scopes` JSON array string hai (e.g. '["profile","email","offline_access"]').
+-- `scopes` is a JSON array string (e.g. '["profile","email","offline_access"]').
 
 CREATE TABLE IF NOT EXISTS app_authorizations (
   id           TEXT PRIMARY KEY,

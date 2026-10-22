@@ -1,7 +1,7 @@
 /**
  * Gothwad product catalog (Accounts dashboard).
- * Core = Gothwad Services: account ke saath auto-connected, revoke nahi.
- * Others = Sign in with Gothwad apps: user disconnect kar sakta hai.
+ * Core = First-party Gothwad Services: automatically enabled with the account, non-revocable.
+ * Others = Connected apps using Sign in with Gothwad: revocable at any time.
  */
 
 export const GOTHWAD_SERVICES = [

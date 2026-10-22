@@ -1,6 +1,6 @@
 /**
- * /me — sidebar navigation (sections switch karna).
- * Buttons: .me-nav-item[data-section] + [data-goto-section] kahi bhi ho.
+ * `/me` — Sidebar and cross-card section navigation.
+ * Supports `.me-nav-item[data-section]` and `[data-goto-section]` triggers.
  */
 
 const SECTIONS = ['home', 'personal', 'security', 'data', 'people', 'apps'];
@@ -15,7 +15,7 @@ export function initNav() {
 }
 
 /**
- * Section dikhao (sidebar active state + content switch + lazy loads).
+ * Switches the active dashboard section and runs lazy data loaders.
  * @param {string} name home|personal|security|data|people|apps
  */
 export function showSection(name) {
@@ -42,6 +42,6 @@ export function showSection(name) {
     import('./tabs/personal.js').then((m) => m.refreshRows());
   }
 
-  // Scroll to top (mobile par drawer ke baad)
+  // Scroll to top after switching sections
   window.scrollTo({ top: 0 });
 }

@@ -1,62 +1,57 @@
-# 🔐 GOTHWAD OAUTH 2.0 PROVIDER — Technical Guide
+# 🔐 GOTHWAD OAUTH 2.0 PROVIDER — Technical Integration Guide
 
-> **Step 2 complete** — Gothwad ab ek OAuth 2.0 provider hai.
-> Koi bhi app (GrixChat, ClashDrive, Notes, ya koi third-party) "Sign in with
- Gothwad" button laga sakta hai.
+> **Full OAuth 2.0 + S256 PKCE Provider:** First-party native apps (`Kiwi Store Android`) and external web/mobile apps (`GrixChat`, `PlusTube`, `Indogram`, etc.) integrate via standard Authorization Code + PKCE S256 flows. *(Note: First-party `.APP_DOMAIN` web apps such as `Mail` and `Kiwi Store Web` use silent `.APP_DOMAIN` `HttpOnly` cookie SSO instead of OAuth consent screens.)*
 
 ---
 
-## 🗺️ Flow (poora cycle)
+## 🗺️ End-to-End Authorization Flow
 
 ```
-[ App: GrixChat ]                    [ Gothwad Accounts ]              [ Worker API ]
+[ Client App ]                       [ Gothwad Accounts ]              [ Worker API ]
  "Sign in with Gothwad" tap
         │
         ├─ redirect ──────────────►  /oauth/authorize
-        │                                 │  login nahi hai?
+        │                                 │  not signed in?
         │                                 ├────────────────────────► /signin
-        │                                 │  login hai?
+        │                                 │  signed in?
         │                                 ├────────────────────────► Consent screen
         │                                 │  (Worker-rendered HTML: Allow / Deny)
         │  ◄── redirect + code ──────────┤
         │                                │
-        ├─ POST /oauth/token (code) ───────────────────────────────►  code verify
-        │  ◄── access_token (JWT) + refresh_token ──────────────────  (PKCE check)
+        ├─ POST /oauth/token (code) ───────────────────────────────►  verify code
+        │  ◄── access_token (JWT) + refresh_token ──────────────────  (PKCE S256 check)
         │
         ├─ GET /oauth/userinfo (Bearer token) ────────────────────►  profile JSON
         │  ◄── { name, email, ... } ───────────────────────────────
         ▼
-  App logged in! 🎉
+  App signed in! 🎉
 ```
 
-> Note: Consent screen Worker khud render karta hai (`/oauth/authorize` par).
-> Accounts site ke sirf 3 routes hain: `/signin`, `/signup`, `/me`.
+> Note: The consent screen is rendered directly by the Worker at `/oauth/authorize`.
+> The static frontend hosts `/signin`, `/signup`, `/me`, and `/widget/account-menu.js`.
 
-**Security built-in:**
-- **PKCE** (S256) — public clients ke liye mandatory at authorize, consent POST and token exchange; verifier 43–128 RFC 7636 characters, challenge 43 base64url characters
-- **One-time codes** — 5 min expiry, atomic consumption prevents parallel reuse
-- **Refresh token rotation** — atomic consumption; clients must single-flight refresh requests
-- **DB mein sirf hashes** — raw refresh tokens kabhi store nahi
-- **Exact redirect_uri match** — koi bhi random URL allowed nahi
+**Built-in Security Guarantees:**
+- **PKCE (`S256`)** — Mandatory for public clients at authorization, consent `POST`, and token exchange; verifier length `43–128` RFC 7636 chars, challenge length `43` base64url chars
+- **One-time codes** — 5-minute TTL, consumed atomically to prevent concurrent replay
+- **Refresh token rotation** — Single-winner atomic rotation; clients must single-flight refresh calls
+- **Hashed persistence only** — Raw refresh tokens and secrets are never stored in D1
+- **Exact `redirect_uri` allowlist match** — Open redirects are strictly rejected
 
 ---
 
 ## 📌 Endpoints
 
-Base URL: aapka Worker ka public URL. Recommended setup (Worker route
-`accounts.gothwadtech.com/api/*`, see docs/SETUP.md Step 2D):
-
-- **Base URL = `https://accounts.gothwadtech.com/api`**
+Base URL options:
+- **Worker Route on Accounts Host:** `https://accounts.gothwadtech.com/api`
   → endpoints: `/api/oauth/authorize`, `/api/oauth/token`, `/api/oauth/userinfo`
-- Agar custom domain `api.gothwadtech.com` use kiya ho: base = `https://api.gothwadtech.com`
-  → endpoints: `/oauth/authorize`, `/oauth/token`, ...
+- **Dedicated Worker Custom Domain:** `https://api.gothwadtech.com`
+  → endpoints: `/oauth/authorize`, `/oauth/token`, `/oauth/userinfo`
 
-⚠️ Route `/api/*` par hai, isliye `accounts.gothwadtech.com/oauth/...` (bina `/api`)
-Worker tak NAHI pahunchta — hamesha `/api` prefix wala base use karo.
+⚠️ On `accounts.gothwadtech.com`, the Worker route matches `/api/*` — never omit `/api` when calling via `accounts.gothwadtech.com/api/...`!
 
-### 1. `GET /oauth/authorize` — Authorization endpoint
+### 1. `GET /oauth/authorize` — Authorization Endpoint
 
-User ko browser mein redirect karo:
+Redirect the user's browser to:
 
 ```
 {AUTH}/oauth/authorize
@@ -69,19 +64,19 @@ User ko browser mein redirect karo:
   &code_challenge_method=S256
 ```
 
-| Param | Required | Notes |
-|-------|----------|-------|
-| `client_id` | ✅ | `ecosystem_apps` mein registered hona chahiye |
-| `redirect_uri` | ✅ | Registered list mein EXACT match |
-| `response_type` | ✅ | sirf `code` |
-| `scope` | ✅ | space-separated (neeche list) |
-| `state` | recommended | CSRF protection — app ko wapas milta hai |
-| `code_challenge` | ✅ public clients | PKCE: `base64url(sha256(verifier))` |
-| `code_challenge_method` | ✅ | sirf `S256` |
+| Parameter | Required | Notes |
+|-----------|----------|-------|
+| `client_id` | ✅ | Must exist in `ecosystem_apps` |
+| `redirect_uri` | ✅ | Exact match against registered `redirect_uris` JSON array |
+| `response_type` | ✅ | Must be `code` |
+| `scope` | ✅ | Space-separated list (see table below) |
+| `state` | Recommended | Random CSRF token echoed back unchanged |
+| `code_challenge` | ✅ Public clients | `base64url(sha256(verifier))` |
+| `code_challenge_method` | ✅ | Must be `S256` |
 
-### 2. `POST /oauth/token` — Token endpoint
+### 2. `POST /oauth/token` — Token Exchange & Rotation Endpoint
 
-**Authorization Code → Tokens:**
+**Exchange Authorization Code for Tokens:**
 
 ```bash
 curl -X POST {AUTH}/oauth/token \
@@ -91,7 +86,7 @@ curl -X POST {AUTH}/oauth/token \
     "code": "CODE-FROM-REDIRECT",
     "redirect_uri": "https://chat.example.com/auth/gothwad/callback",
     "client_id": "gothwad-chat",
-    "code_verifier": "WOOHOO-ORIGINAL-VERIFIER"
+    "code_verifier": "ORIGINAL-PKCE-VERIFIER"
   }'
 ```
 
@@ -103,26 +98,25 @@ Response:
   "token_type": "Bearer",
   "expires_in": 3600,
   "scope": "profile email offline_access",
-  "refresh_token": "a1b2c3..."       // sirf offline_access scope par (30 days)
+  "refresh_token": "a1b2c3..."       // included when offline_access scope is granted (30 days)
 }
 ```
 
-**Refresh Token → naya Access Token (rotation):**
+**Rotate Refresh Token for a Fresh Access Token:**
 
 ```json
 { "grant_type": "refresh_token", "refresh_token": "...", "client_id": "gothwad-chat" }
 ```
 
-> Form-encoding (`application/x-www-form-urlencoded`) standard hai —
-> JSON bhi accept hota hai (beginner-friendly).
+> Both standard `application/x-www-form-urlencoded` and `application/json` request bodies are supported.
 
-### 3. `GET /oauth/userinfo` — UserInfo endpoint
+### 3. `GET /oauth/userinfo` — UserInfo Endpoint
 
 ```bash
 curl {AUTH}/oauth/userinfo -H "Authorization: Bearer ACCESS_TOKEN"
 ```
 
-Response (scopes par depend karta hai):
+Response (filtered by granted scopes):
 
 ```json
 {
@@ -130,7 +124,7 @@ Response (scopes par depend karta hai):
   "name": "Pawan Gothwad",            // scope: profile
   "preferred_username": "pawan",      // scope: profile
   "picture": null,                    // scope: profile
-  "email": "pawan@gothwadtech.com",   // scope: email (derived — DB mein username only)
+  "email": "pawan@gothwadtech.com",   // scope: email (derived dynamically — username-only DB)
   "email_verified": true,
   "drive": {                          // scope: drive / drive.read
     "used_bytes": 0,
@@ -140,135 +134,78 @@ Response (scopes par depend karta hai):
 }
 ```
 
-### 4. `GET /oauth/app-info?client_id=` — Public app details
+### 4. `GET /oauth/app-info?client_id=` — Public App Metadata
 
-Consent screen ke liye (name, icon, supported scopes).
+Returns app name, icon, verification status, and metadata for consent screens.
 
 ---
 
-## 🏷️ Scopes (Scope management)
+## 🏷️ Supported Scopes
 
-| Scope | User ko consent screen par | App ko kya milta hai |
-|-------|---------------------------|----------------------|
-| `profile` | "View your basic profile" | name, username, avatar |
+| Scope | Consent Prompt Shown to User | Data Granted to Client |
+|-------|------------------------------|------------------------|
+| `profile` | "View your basic profile" | Name, username, profile avatar |
 | `email` | "View your Gothwad email" | `username@APP_DOMAIN` |
-| `drive` | "Read & write Drive files" | Drive read+write + quota |
-| `drive.read` | "View Drive files" | Drive read + quota |
-| `notes` | "Read & write Notes" | Notes access |
-| `chat` | "Access Chat messages" | Chat access |
-| `offline_access` | "Keep you signed in" | Refresh token (30 days) |
+| `drive` | "Read & write Drive files" | Drive read/write + storage quota |
+| `drive.read` | "View Drive files" | Read-only Drive access + quota |
+| `notes` | "Read & write Notes" | Notes read/write access |
+| `chat` | "Access Chat messages" | Messaging access |
+| `offline_access` | "Keep you signed in" | Rotating 30-day refresh token |
 
-Apps sirf wohi scopes maangti hain jinhe unhe chahiye (least privilege!).
+Always request only the minimal scopes your application requires (principle of least privilege).
 
 ---
 
-## 🏢 Client registration (apps ko register karo)
+## 🏢 Client Registration (Cloudflare D1 `ecosystem_apps`)
 
-**Store Android/web:** [STORE_OAUTH.md](STORE_OAUTH.md) mein exact callbacks,
-`sql/05_store_android_oauth.sql`, aur web `/api` URL fix hai. Android callback
-`gothwadstore://oauth/callback` hai — web `/auth/callback` se alag.
+**Store Android & Web:** See [STORE_OAUTH.md](STORE_OAUTH.md) and `sql/05_store_android_oauth.sql`. Native Android uses custom URI callbacks (`gothwadstore://oauth/callback`, `kiwistore://oauth/callback`).
 
-**Accounts** ke Supabase SQL Editor mein (Store/Mail ke project mein nahi;
-Supabase Authentication → URL Configuration bhi is registry ko nahi badalta):
+Run in **Cloudflare Dashboard → D1 → `accounts` → Console**:
 
 ```sql
--- Example: GrixChat ko register karo
-UPDATE public.ecosystem_apps
-SET redirect_uris = ARRAY[
+-- Register or update redirect URIs for a public OAuth client (PKCE S256 required)
+UPDATE ecosystem_apps
+SET redirect_uris = json_array(
   'https://chat.gothwadtech.com/auth/gothwad/callback',
-  'http://localhost:3000/auth/gothwad/callback'  -- dev
-]
+  'http://localhost:3000/auth/gothwad/callback'
+)
 WHERE id = 'gothwad-chat';
 ```
 
-**Confidential client** (server-side app, client_secret ke saath):
-
-```sql
--- secret ka SHA-256 hash store karo (raw secret KABHI nahi)
-UPDATE public.ecosystem_apps
-SET secret_hash = encode(sha256('YOUR-SUPER-SECRET'::bytea), 'hex')
-WHERE id = 'gothwad-drive';
-```
-
-Public clients (mobile/SPA) ke liye `secret_hash` NULL chhodo —
-PKCE unhe protect karta hai.
+**Confidential Client** (server-side backend holding a `client_secret`):
+- Store **only** the lowercase hex `SHA-256` digest in `secret_hash` — never store raw client secrets in the database.
+- Leave `secret_hash = NULL` for public mobile/SPA clients protected by PKCE S256.
 
 ---
 
-## 🥝 Kiwi Store client migration
+## 🥝 Kiwi Store Client Migration Notes
 
-Accounts keeps its own product branding, API hosts, and cookie domain. Only the
-Store OAuth client is renamed. The schema in `sql/01_core_schema.sql` defines
-`ecosystem_apps.id` as the primary key and `client_id` as the public OAuth ID;
-`app_authorizations.app_id` is the only FK to that ID. `oauth_auth_codes.client_id`
-and `oauth_refresh_tokens.client_id` are plain text (not FKs). `user_sessions`
-stores account-level sessions and has no app/client reference, so cookie SSO
-sessions are unaffected.
-
-For an existing production Accounts database, run
-`sql/04_kiwi_store_oauth_migration.sql` once in the **Gothwad Accounts Supabase
-project**. It is transactional and idempotent. It creates/normalizes
-`id=client_id='kiwi-store'`, migrates existing user grants (merging scopes),
-removes the old pre-rename app row, deletes pending authorization codes of that
-legacy client, and revokes its refresh tokens. Fresh installs get the renamed
-seed from `sql/01_core_schema.sql`.
-
-Registered redirect URIs (exact match):
+`sql/04_kiwi_store_oauth_migration.sql` registers `id = client_id = 'kiwi-store'`, preserves prior user grants, clears stale legacy authorization codes, and revokes old refresh tokens idempotently:
 
 - `https://kiwistore.gothwadtech.com/auth/callback`
 - `https://kiwiconsole.gothwadtech.com/auth/callback`
 - `https://kiwiadmin.gothwadtech.com/auth/callback`
 - `http://localhost:3000/auth/callback`
-- `gothwadstore://oauth/callback` (Android APK, current build — same `kiwi-store` client)
-- `kiwistore://oauth/callback` (Android APK, planned new scheme — both are accepted during the transition; remove `gothwadstore://` only after every APK uses `kiwistore://`)
+- `gothwadstore://oauth/callback` (Android APK)
+- `kiwistore://oauth/callback` (Android APK transition scheme)
 
-`https://kiwiapp.gothwadtech.com/auth/callback` is intentionally not registered
-yet; add it only when that app begins sign-in. `ecosystem_apps` has no app-wide
-scopes column: scope grants are user-specific in `app_authorizations.scopes`,
-and the Store requests `profile email offline_access` as before.
+---
 
-The Store endpoints do not change: browser authorize is
-`https://accounts.gothwadtech.com/api/oauth/authorize`; sign-in handoff remains
-`https://accounts.gothwadtech.com/signin?choose=1&next=...`; Worker token,
-userinfo, and cookie-session calls remain `https://api.gothwadtech.com/oauth/token`,
-`/oauth/userinfo`, and `/api/auth/me` (forward the Accounts cookies to `/api/auth/me`).
-The existing cookie is dynamically scoped to `Domain=.gothwadtech.com` for any
-host under that root, not pinned to a Store hostname. CORS likewise allows
-subdomains of `gothwadtech.com`, so the Kiwi hostnames need no per-host CORS
-configuration. `accounts.gothwadtech.com`, `api.gothwadtech.com`, and the
-Gothwad Accounts branding remain unchanged.
+## 🧩 Client Integration Example (Zero Dependencies)
 
-Android and web share the single `kiwi-store` client (public PKCE, no secret in
-the APK). The migration does not touch any other client row.
-
-**Token impact:** old refresh tokens are revoked and pending old-client codes
-are deleted. Access tokens are stateless JWTs and are not individually revocable
-here; any already-issued access JWT may work until its normal one-hour expiry.
-After this migration, new authorizations and refreshes use `kiwi-store`.
-
-Post-deploy SQL verification:
-
-```sql
-SELECT id, client_id, name, redirect_uris
-FROM public.ecosystem_apps
-WHERE id = 'kiwi-store';
-```
-
-## 🧩 App side integration (copy-paste)
-
-Apni app ke login page mein yeh button + JS copy karo (koi library nahi chahiye):
+Add this login button and PKCE launcher to your client sign-in page:
 
 ```html
 <button id="btn-signin-gothwad">🔥 Sign in with Gothwad</button>
 
 <script type="module">
-  // ⚙️ CONFIG — apni app ke hisaab se badlo
-  const GOTHWAD_AUTH_URL = 'https://accounts.gothwadtech.com/api'; // Worker base URL (route wala)
+  // ⚙️ Configuration — update for your registered OAuth client
+  const GOTHWAD_AUTH_URL = 'https://accounts.gothwadtech.com/api'; // Worker base URL
   const CLIENT_ID = 'gothwad-chat';
-  const REDIRECT_URI = location.origin + '/auth/gothwad/callback'; // registered hona chahiye
+  const REDIRECT_URI = location.origin + '/auth/gothwad/callback'; // must match ecosystem_apps.redirect_uris
   const SCOPES = 'profile email offline_access';
 
-  // PKCE generate (bina kisi library ke)
+  // Generate PKCE S256 challenge using WebCrypto
   const b64url = (bytes) => btoa(String.fromCharCode(...bytes))
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
@@ -296,7 +233,7 @@ Apni app ke login page mein yeh button + JS copy karo (koi library nahi chahiye)
 </script>
 ```
 
-Callback page (`/auth/gothwad/callback`) par:
+On your callback route (`/auth/gothwad/callback`):
 
 ```html
 <script type="module">
@@ -355,36 +292,26 @@ Callback page (`/auth/gothwad/callback`) par:
 </script>
 ```
 
-For framework apps, put callback exchange behind a shared single-flight promise
-(React StrictMode/remounts must not exchange a one-time code twice). Implement
-refresh rotation/expiry handling before using the example in a long-lived app.
-OAuth refresh tokens use `/oauth/token`, not `/api/auth/refresh` (which is for
-Accounts' own Supabase sessions). Keep OAuth tokens, authorization codes and
-PKCE verifiers out of logs.
-
-**Server-side app hai?** (Node/PHP/etc.) To token exchange apne SERVER par karo
-(client_secret ke saath) — browser mein secret mat rakho. Flow same hai.
+For SPA frameworks, guard callback exchange behind a shared single-flight promise so React StrictMode remounts never exchange a single-use authorization code twice. Server-rendered apps should perform token exchange on the backend with `client_secret` rather than exposing secrets to the browser.
 
 ---
 
-## 🔒 JWT Access Token
+## 🔒 Access Token JWT Specification
 
-- Algorithm: **HS256** (Worker ke `JWT_SECRET` se sign)
-- Claims: `iss` (accounts URL), `sub` (user id), `aud`/`client_id`,
-  `username`, `scope`, `iat`, `exp` (1 hour), `jti`
-- Apps ko token verify karne ki zaroorat nahi — bas `/oauth/userinfo`
-  par Bearer bhejo. (Advanced: apna secret share karke direct verify bhi kar sakte ho.)
+- Algorithm: **HS256** (signed with Worker `JWT_SECRET`, `token_use: "oauth_access"`)
+- Claims: `iss` (accounts origin), `sub` (user UUID), `aud` / `client_id`, `username`, `scope`, `iat`, `exp` (`1 hour`), `jti`
+- Clients can verify user profiles directly via `GET /oauth/userinfo` with `Authorization: Bearer <access_token>`.
 
 ---
 
 ## 🛠️ Troubleshooting
 
-| Error | Matlab | Fix |
-|-------|--------|-----|
-| `Unknown client_id` | App register nahi | SQL UPDATE chalao (upar) |
-| `redirect_uri is not registered` | URI match nahi | `redirect_uris` array check karo; Store: [STORE_OAUTH.md](STORE_OAUTH.md) |
-| `temporarily_unavailable` (503) | OAuth database read/write failed | Retry later; check Worker/Supabase configuration, not the callback allowlist |
-| `PKCE required` | Public client ne challenge nahi bheja | `code_challenge` add karo |
-| `PKCE verification failed` | Galat verifier | Wahi verifier bhejo jo challenge banaya tha |
-| `Code is invalid or already used` | Code reuse/expired | Naya login flow karo (code 5 min = 1 baar) |
-| `State mismatch` | CSRF / sessionStorage lost | Same tab mein flow complete karo |
+| Error | Cause | Resolution |
+|-------|-------|------------|
+| `Unknown client_id` | Unregistered client ID | Register client in D1 `ecosystem_apps` |
+| `redirect_uri is not registered` | Exact URI mismatch | Add exact URI to `ecosystem_apps.redirect_uris` ([STORE_OAUTH.md](STORE_OAUTH.md)) |
+| `temporarily_unavailable` (503) | Database read/write failure | Retry shortly and verify Worker `DB` D1 binding |
+| `PKCE required` | Missing challenge on public client | Send `code_challenge` + `code_challenge_method=S256` |
+| `PKCE verification failed` | Mismatched `code_verifier` | Send exact RFC 7636 verifier matching initial challenge |
+| `Code is invalid or already used` | Expired (> 5 min) or replayed code | Restart authorization flow with single-flight exchange |
+| `State mismatch` | CSRF or lost `sessionStorage` | Complete callback in the same browser tab |

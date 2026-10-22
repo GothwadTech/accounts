@@ -9,10 +9,10 @@ import { GOTHWAD_SERVICES, GOTHWAD_PRODUCTS } from '../../../js/gothwad-apps.js'
 
 export function initPeople() {
   const emailEl = document.getElementById('people-email');
-  if (emailEl) emailEl.textContent = '—'; // user load hone par set hota hai
+  if (emailEl) emailEl.textContent = '—'; // populated once user profile loads
 }
 
-/** User + apps data ke saath section refresh (me.js se call hota hai). */
+/** Refreshes the People & Sharing section with current user and connected app counts. */
 export async function loadPeople(user) {
   if (!user) return;
   const emailEl = document.getElementById('people-email');

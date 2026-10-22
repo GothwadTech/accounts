@@ -101,7 +101,7 @@ export function openDialog(name) {
 function dialogName() {
   modal({
     title: 'Name',
-    sub: 'Yeh naam aapki emails aur Gothwad services mein dikhta hai.',
+    sub: 'Changes to your name will be reflected across your emails and Gothwad services.',
     body:
       field('dlg-first-name', 'First name', { value: currentUser.first_name }) +
       field('dlg-last-name', 'Last name', { value: currentUser.last_name }),
@@ -126,7 +126,7 @@ function dialogName() {
 function dialogDob() {
   modal({
     title: 'Date of birth',
-    sub: 'Aapki DOB account security ke liye use hoti hai. Yeh publically nahi dikhti.',
+    sub: 'Your date of birth may be used for account security and personalisation. It is kept private.',
     body: field('dlg-dob', 'Date of birth', { type: 'date', value: currentUser.date_of_birth || '' }),
     actions: '<button type="button" class="btn btn-primary" id="dlg-save">Save</button>',
   });
@@ -183,7 +183,7 @@ function dialogGender() {
 function dialogPhone() {
   modal({
     title: 'Phone number',
-    sub: 'Phone number se bhi sign-in kar sakte ho (agar registered hai).',
+    sub: 'Add a phone number to sign in easily and help keep your account secure.',
     body: field('dlg-phone', 'Phone number', { type: 'tel', value: currentUser.phone_number || '', placeholder: '+91 98765 43210' }),
     actions:
       '<button type="button" class="btn btn-text" id="dlg-clear" style="margin-right:auto;color:var(--danger);">Remove</button>' +
@@ -212,7 +212,7 @@ function dialogPhone() {
 function dialogRecovery() {
   modal({
     title: 'Recovery email',
-    sub: 'Password reset links isi email par jaate hain. Apni regular email (Gmail waghera) use karo.',
+    sub: 'Password reset links are sent to this address. Use a personal email address you check regularly.',
     body: field('dlg-recovery', 'Recovery email', { type: 'email', value: currentUser.recovery_email || '', placeholder: 'yourname@gmail.com' }),
     actions: '<button type="button" class="btn btn-primary" id="dlg-save">Save</button>',
   });

@@ -1,20 +1,20 @@
 /**
  * =============================================================================
- * DEV SERVER — local development ke liye (never deploy!)
+ * DEV SERVER — Local development proxy server (do not deploy to production)
  * =============================================================================
- * Yeh 2 kaam karta hai:
- *   1. `web/` folder ki static files serve karta hai (pretty URLs ke saath:
- *      /signin → web/signin/index.html)
- *   2. `/api/*` aur `/oauth/*` requests ko Cloudflare Worker (wrangler dev)
- *      par proxy karta hai — same origin, koi CORS issue nahi.
+ * Responsibilities:
+ *   1. Serves static files from `web/` with clean URL resolution
+ *      (`/signin` -> `web/signin/index.html`)
+ *   2. Proxies `/api/*` and `/oauth/*` requests to the local Cloudflare Worker
+ *      (`wrangler dev`) on the same origin without CORS issues.
  *
  * Usage:
  *   node tools/dev-server.js
- *   → Website:  http://localhost:3000
+ *   -> Website:  http://localhost:3000
  *
- * Env vars (optional):
- *   PORT=3000          frontend port
- *   WORKER_URL=http://127.0.0.1:8787   worker ka address
+ * Optional environment variables:
+ *   PORT=3000                       frontend port
+ *   WORKER_URL=http://127.0.0.1:8787  local worker URL
  * =============================================================================
  */
 
@@ -42,12 +42,12 @@ const MIME = {
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
 
-  // ------------------------------- /api/* + /oauth/* → Worker proxy
-  // (Host header as-is jaata hai, taaki Worker ko sahi origin dikhe)
+  // ------------------------------- /api/* + /oauth/* -> Worker proxy
+  // Preserve Host header so the Worker resolves the exact incoming origin
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/oauth/')) {
     const target = new URL(url.pathname + url.search, WORKER_URL);
     const proxyReq = http.request(target, { method: req.method, headers: req.headers }, (proxyRes) => {
-      res.writeHead(proxyRes.statusCode, proxyRes.headers); // Set-Cookie bhi pass through
+      res.writeHead(proxyRes.statusCode, proxyRes.headers); // pass through Set-Cookie headers
       proxyRes.pipe(res);
     });
     proxyReq.on('error', (err) => {
@@ -62,11 +62,11 @@ const server = http.createServer((req, res) => {
   const rel = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
   const base = path.join(WEB_ROOT, rel);
 
-  // Pretty URLs: /signin → signin/index.html → signin.html → exact file
+  // Pretty URLs: /signin -> signin/index.html -> signin.html -> exact file
   const candidates = [base, path.join(base, 'index.html'), `${base}.html`];
   let filePath = null;
   for (const c of candidates) {
-    // Directory traversal se bachav: web/ ke bahar access na ho
+    // Prevent directory traversal outside web/
     if (!path.resolve(c).startsWith(WEB_ROOT)) continue;
     if (fs.existsSync(c) && fs.statSync(c).isFile()) { filePath = c; break; }
   }
@@ -88,6 +88,6 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`     Website:  http://localhost:3000  (/signin · /signup · /me)`);
   console.log(`     API:      ${WORKER_URL}  (proxied at /api + /oauth)`);
   console.log('');
-  console.log('  (Worker chalana mat bhoolo: cd cloudflare-worker && npx wrangler dev)');
+  console.log('  (Make sure the local Worker is running: cd cloudflare-worker && npx wrangler dev)');
   console.log('');
 });

@@ -1,10 +1,10 @@
 # 🚀 Copy-Paste Master Prompt for `GothwadTech/mail` AI Agent (100% Cloudflare D1 Migration)
 
-> **Pawan ke liye instructions:**
-> 1. Arena.ai par **nayi chat** kholo aur repository **`GothwadTech/mail`** select karo.
-> 2. Apne Cloudflare Dashboard (`Storage & Databases` ➔ `D1 SQL Database` ➔ **`mail`**) se **`mail` database ka `Database ID` (UUID)** copy kar lo.
-> 3. Neeche **`PROMPT START`** se lekar **`PROMPT END`** tak poora prompt copy karke `GothwadTech/mail` chat mein paste kar do *(aur agar `mail` D1 `Database ID` haath mein hai toh prompt ke aakhir mein wo UUID bhi चिपका dena — warna AI agent khud maang lega aur `worker/wrangler.toml` mein daal dega!)*
-> 4. ⚠️ **Koi bhi secret key (`RESEND_API_KEY`, `ACCOUNTS_INTERNAL_TOKEN`) chat mein kabhi paste mat karna!**
+> **Usage Instructions:**
+> 1. Open a new chat on Arena.ai connected to **`GothwadTech/mail`**.
+> 2. Copy the `Database ID` (UUID) of your **`mail`** Cloudflare D1 database from `Storage & Databases` ➔ `D1 SQL Database` ➔ **`mail`**.
+> 3. Paste everything between **`PROMPT START`** and **`PROMPT END`** below into the `GothwadTech/mail` session *(along with the `mail` D1 `Database ID` UUID if handy).*
+> 4. ⚠️ **Never paste secret keys (`RESEND_API_KEY`, `ACCOUNTS_INTERNAL_TOKEN`) into chat!**
 
 ---
 
@@ -22,7 +22,7 @@ Before writing any code, inspect BOTH:
    - `GothwadTech/accounts/cloudflare-worker/wrangler.toml`
    - `GothwadTech/accounts/tools/local-d1.mjs` (clean pattern using Node 22 built-in `node:sqlite` `DatabaseSync` to test real SQLite D1 locally with zero NPM packages!)
 
-Communicate with founder **Pawan** in **clear, friendly Hinglish (simple Hindi + English)**, explaining every architectural decision and *why* from basics. Update `TASK.md`, `PLAN.md`, `AGENTS.md`, `docs/MAIL.md`, and `docs/SETUP.md` thoroughly before finishing.
+Write all UI strings, code comments, documentation, and engineering explanations in **100% pure, clear English** (zero Hindi / Hinglish anywhere). Update `TASK.md`, `PLAN.md`, `AGENTS.md`, `docs/MAIL.md`, and `docs/SETUP.md` thoroughly before finishing.
 
 ---
 
@@ -138,7 +138,7 @@ Gothwad Tech follows a locked **Hybrid Cloud Free-Tier Architecture ($0 cost)**:
    - Inbound `handleInbound()` email parsing + `ACCOUNTS_INTERNAL_TOKEN` lookup + automatic `500`-email trimming + **`⭐ Starred` immunity** + **30-day `Trash` purge** + **`Store All` (`retention_limit = 0`) mode**
    - Full CRUD endpoints (`list`, `get`, `patch`, `drafts`, `send`, `delete`, `GET/PATCH /api/mail/settings`) + CSRF & CORS checks + cookie forwarding
    - Frontend build (`npm run build`), strict TypeScript (`npm run lint`), full test suite (`npm test`), and Worker dry-run (`npx wrangler deploy --config worker/wrangler.toml --dry-run`) — **ALL MUST PASS WITH 0 ERRORS!**
-2. Ask Pawan for his **`mail` D1 `Database ID`** (if not pasted below) or insert it directly into `worker/wrangler.toml`, and explain the final Cloudflare Dashboard check step-by-step in super-simple Hinglish!
+2. Request the **`mail` D1 `Database ID`** (if not pasted below) or insert it directly into `worker/wrangler.toml`, and document final Cloudflare Dashboard verification clearly step-by-step in pure English!
 
 My `mail` D1 Database ID (paste below if ready):
 `PASTE_MAIL_DATABASE_ID_HERE_OR_ASK_ME`

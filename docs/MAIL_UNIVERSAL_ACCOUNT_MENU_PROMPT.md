@@ -2,17 +2,19 @@
 
 You are an autonomous Principal Full-Stack & Frontend Architect working inside **`GothwadTech/mail`**.
 
-Communicate with founder **Pawan** in **clear, friendly Hinglish (simple Hindi + English)**.
+**STRICT LANGUAGE MANDATE (`RULE #0 — 100% PURE ENGLISH ONLY EVERYWHERE`):**
+- Every single UI label, button, modal, toast, error message, TypeScript/CSS/SQL comment, test, Markdown document, `AGENTS.md`, AND chat explanation MUST be written in **100% pure, idiomatic English ONLY**.
+- **NEVER write a single word of Hindi or Hinglish anywhere** — even if the user writes a quick message in casual Hinglish in chat! Also scan the entire `GothwadTech/mail` repository (`src/**`, `worker/**`, `sql/**`, `tests/**`, `*.md`, `docs/*.md`) and rewrite any remaining Hindi/Hinglish strings or comments into pure English, backed by an automated test check.
 
 ---
 
 ## ⚠️ 0. CRITICAL MANDATE — DO NOT BLINDLY TRUST THIS PROMPT! AUDIT & BUILD WHAT IS BEST!
 
-1. **Zero Blind Trust (`Andha Bharosa Bilkul Mat Karna`):**
+1. **Zero Blind Trust — Perform Your Own Full Live Code Audit First:**
    - Treat this document as an engineering brief — **NOT blind dogma**. Before editing a single line, **inspect EVERY relevant live file yourself** in:
      1. **`GothwadTech/mail`** (`src/components/Header.tsx`, `src/components/AccountSheet.tsx`, `src/context/MailContext.tsx`, `src/context/useAccountsSwitcher.ts`, `src/hooks/useSession.ts`, `src/services/mailApi.ts`, `src/services/authRedirect.ts`, `src/services/authuser.ts`, `worker/src/*`, `worker/test/*`, and all `.md` docs).
      2. **Live `GothwadTech/accounts` (`main` branch)** (`gh api` / `git clone --depth=1`): specifically **`web/widget/account-menu.js`**, **`web/widget/account-menu-styles.js`**, **`cloudflare-worker/src/http.ts`**, and **`cloudflare-worker/src/browser-slots.ts`** so you see the exact live `window.GothwadAccountMenu` API, options, CSS variables, and CORS headers!
-2. **Engineering Autonomy (`Khudka 100% Best Effort Lagana`):**
+2. **Full Engineering Autonomy — Give Your 100% Best Effort:**
    - Use your sharpest judgment. If you uncover any subtle edge case (offline/slow network loading of external script, mobile viewport safe areas, keyboard focus restoration, unread count reactivity, dark-mode sync, multi-tab `/u/0..5` URL preservation), **implement the cleanest, fastest, most resilient engineering solution possible**.
 3. **Hard Ecosystem Rules (Never Violate):**
    - **Zero Credit Card / Zero R2 / Zero Supabase** (keep existing native Cloudflare D1 `mail` architecture 100% intact).

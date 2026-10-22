@@ -104,7 +104,7 @@ and what needs a real device. Device acceptance: fresh browser login, existing
 Accounts login, cold/warm callback, cancel/retry, token expiry, offline recovery,
 and logout/relogin. Network/API success is not device verification.
 
-Deliver code, tests, updated docs and a short Hinglish summary. If Accounts still
+Deliver code, tests, updated docs, and a concise summary in pure English. If Accounts still
 says redirect not registered, report the non-secret client_id/redirect_uri and
 request Accounts-project registration; do not disable validation or change the
 scheme to bypass it. Do not edit other repos or claim the live Accounts DB was

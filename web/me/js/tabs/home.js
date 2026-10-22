@@ -8,7 +8,7 @@ import { gothwadEmail } from '../../../js/config.js';
 import { renderAvatar } from '../avatar.js';
 import { activityRow } from './activity.js';
 
-/** User data ko saari jagah render karo (avatars, naam, email). */
+/** Renders user profile info across hero, stats, and storage bars. */
 export function renderUserEverywhere(user) {
   if (!user) return;
 
@@ -25,7 +25,7 @@ export function renderUserEverywhere(user) {
     ? formatDate(user.created_at)
     : '—';
 
-  // Storage (home + data & privacy dono)
+  // Storage (both Home and Data & privacy sections)
   const used = Number(user.storage_used_bytes || 0);
   const limit = Number(user.storage_limit_bytes || 1);
   const pct = Math.max(1, Math.min(100, Math.round((used / limit) * 100)));
@@ -40,7 +40,7 @@ export function renderUserEverywhere(user) {
   setStorage('home-storage-fill', 'home-storage-used', 'home-storage-limit');
   setStorage('dp-storage-fill', 'dp-storage-used', 'dp-storage-limit');
 
-  // Security checkup status (recovery email set hai ya nahi)
+  // Security checkup recommendations
   const issues = [];
   if (!user.recovery_email) issues.push('Recovery email is not set');
   if (!user.date_of_birth) issues.push('Date of birth is not set');
@@ -62,7 +62,7 @@ export function renderUserEverywhere(user) {
   }
 }
 
-/** Home section ka dynamic data (recent activity snippet). */
+/** Loads recent account activity for the Home tab summary card. */
 export async function loadHome(user) {
   if (!user) return;
   renderUserEverywhere(user);

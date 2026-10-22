@@ -82,7 +82,7 @@ Update `docs/MAIL.md` "If Accounts keeps showing the chooser" with the new statu
 1. Browser (same profile as the failing user), open `https://accounts.gothwadtech.com/api/auth/me`. Check **only** the status code, that it is JSON, and `authenticated` / `user.username`. Do not share the body (it contains tokens).
 2. Reload `https://mail.gothwadtech.com`. Expected: inbox loads (200). If not, the Network tab `/api/session` status and JSON `error` code now say exactly which branch failed:
    - `accounts_user_invalid` → the Accounts profile row for that user is missing/has no username. Accounts side fix (already merged in `GothwadTech/accounts`) falls back to JWT metadata; if still failing, check the `profiles` row.
-   - `accounts_unexpected_response` → `AUTH_HUB_URL` is a host that does not reach the Accounts Worker (e.g. the Pages host `accounts.gothwadtech.com/api`, or a Route instead of a Custom Domain), or Accounts is redirecting. Fix: `AUTH_HUB_URL=https://api.gothwadtech.com` (Custom Domain, Worker-to-Worker ke liye). Pages route `accounts.gothwadtech.com/api/*` sirf browser traffic ke liye hai.
+   - `accounts_unexpected_response` → `AUTH_HUB_URL` is a host that does not reach the Accounts Worker (e.g. the Pages host `accounts.gothwadtech.com/api`, or a Route instead of a Custom Domain), or Accounts is redirecting. Fix: `AUTH_HUB_URL=https://api.gothwadtech.com` (Custom Domain dedicated to Worker-to-Worker requests). The Pages route `accounts.gothwadtech.com/api/*` is strictly for direct browser traffic.
    - `auth_unavailable` → Accounts worker down or `AUTH_HUB_URL` wrong.
 3. Never paste cookie values, JWTs, or refresh tokens into the PR, issues, or chat.
 

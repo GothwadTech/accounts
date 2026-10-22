@@ -21,7 +21,7 @@
   padding: 0 16px;
 }
 .me-menu-btn {
-  display: none; /* mobile par dikhta hai */
+  display: none; /* visible on mobile viewports */
   background: transparent;
   border: none;
   color: var(--text-muted);
@@ -164,7 +164,7 @@
 }
 .me-nav-item.active .msym { font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
 
-/* Mobile: sidebar drawer ban jaata hai (hamburger se khulta hai) */
+/* Mobile: sidebar collapses into slide-out drawer toggled via menu button */
 .me-backdrop {
   display: none;
   position: fixed;
@@ -210,7 +210,7 @@
   .me-content { padding-left: 0; }
 }
 
-/* Section (page) heading — Google: chhota gray label + bada title */
+/* Section page heading — uppercase eyebrow + large display title */
 .me-section-label {
   font-size: 13px;
   font-weight: 500;
@@ -229,7 +229,7 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* Card — Google myaccount ka border card */
+/* Outlined card surface (Google Account style) */
 .card {
   background: var(--surface);
   border: 1px solid var(--border);

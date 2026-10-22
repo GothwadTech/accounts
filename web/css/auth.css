@@ -27,7 +27,7 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* Header: logo + heading (Google jaisa — text-heavy, kam decoration) */
+/* Header: logo + heading (minimal Google-style layout) */
 .auth-header-card {
   display: flex;
   flex-direction: column;
@@ -51,7 +51,7 @@
   max-width: 380px;
 }
 
-/* Auth page ki section heading ("Sign in" bade text) */
+/* Auth card section heading ("Sign in") */
 .auth-h1 {
   font-size: 26px;
   font-weight: 400;
@@ -166,13 +166,13 @@
 }
 .auth-link:hover { text-decoration: underline; color: var(--accent-hover); }
 
-/* Secondary full-width button (forgot/reset ke back buttons) */
+/* Secondary full-width button (back buttons on forgot/reset views) */
 .btn-secondary-auth {
   width: 100%;
   margin-top: 10px;
 }
 
-/* Guest-mode style hint (Google ka "Not your computer?") */
+/* Guest-mode security hint ("Not your computer?") */
 .auth-guest-note {
   font-size: 13px;
   color: var(--text-muted);
@@ -181,7 +181,7 @@
 }
 .auth-guest-note a { font-weight: 500; }
 
-/* Switch tabs (Sign In / Sign Up) — Google nahi use karta, hum minimal rakhe hain */
+/* Minimal mode switcher tabs (Sign In / Sign Up) */
 .auth-nav-tabs {
   display: flex;
   justify-content: center;
@@ -275,7 +275,7 @@
 }
 .auth-footer-links a:hover { color: var(--accent); }
 
-/* Branded note card (terms/atmanirbhar) — signup ke last step par */
+/* Branded terms notice card on final sign-up step */
 .auth-info-card {
   margin-top: 28px;
   text-align: center;
@@ -313,7 +313,7 @@
 }
 .step-dot.active { background: var(--accent); width: 18px; border-radius: 3px; }
 
-/* Password strength bar (Google jaisa label ke saath) */
+/* Password strength bar with status label */
 .strength-wrap { margin: 8px 4px 0; }
 .strength-bar {
   height: 4px;
@@ -329,7 +329,7 @@
   transition: width 0.25s ease, background 0.25s ease;
 }
 
-/* Radio/checkbox rows (Google ka "Show password" jaisa) */
+/* Radio / checkbox rows (e.g. "Show password") */
 .check-row {
   display: flex;
   align-items: center;
