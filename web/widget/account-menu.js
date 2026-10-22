@@ -175,9 +175,12 @@ class SheetOverlayController {
         e.preventDefault();
         e.stopPropagation();
         const slotId = btn.getAttribute('data-gw-signout-slot');
+        const { appDomain } = resolveEndpoints(this.opts);
+        const accounts = (this.state.accounts || []).map((a, i) => normalizeMenuAccount(a, i, appDomain));
+        const target = accounts.find((a) => a.id === slotId) || null;
         this.close();
         if (typeof this.opts.onSignOutAccount === 'function') {
-          await this.opts.onSignOutAccount(slotId);
+          await this.opts.onSignOutAccount(slotId, target);
           return;
         }
         await callAccountsApi(this.opts, `/auth/accounts/${encodeURIComponent(slotId)}/signout`, 'POST', {});
@@ -195,12 +198,18 @@ class SheetOverlayController {
       globalThis.location?.reload?.();
     });
 
-    this.layerEl.querySelectorAll('[data-gw-extra]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const idx = Number(btn.getAttribute('data-gw-extra'));
+    this.layerEl.querySelectorAll('[data-gw-extra]').forEach((el) => {
+      el.addEventListener('click', (e) => {
+        const idx = Number(el.getAttribute('data-gw-extra'));
         const action = this.opts.extraActions?.[idx];
+        if (action?.href && typeof action.onClick !== 'function') {
+          if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
+          this.close();
+          return;
+        }
+        if (action?.href) e.preventDefault();
         this.close();
-        action?.onClick?.();
+        action?.onClick?.(e);
       });
     });
 
