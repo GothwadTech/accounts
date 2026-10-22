@@ -1,38 +1,37 @@
-# 🛠️ Cloudflare Dashboard Setup Guide — Gothwad Accounts (v2.0 Native D1)
+# 🛠️ Cloudflare Dashboard Setup Guide — Gothwad Accounts (Native D1)
 
-> **Status:** `cloudflare-worker/wrangler.toml` mein aapka **`accounts`** D1 database (`392aacf8-1b43-490a-9519-ced4daf5a40f`) pehle hi configure ho chuka hai! ✅
-> **0 Credit Card Required · 0 Supabase Keys · 100% Free Forever**
-
----
-
-## ✅ Checklist: Production 100% Live Karne Ke Exact Steps
-
-### 🔹 Step 1: Cloudflare D1 Databases (✅ Aapne Kar Liya Hai!)
-- Database 1: **`accounts`** (`392aacf8-1b43-490a-9519-ced4daf5a40f`) — bound in `cloudflare-worker/wrangler.toml` (`binding = "DB"`)
-- Database 2: **`mail`** — ready for `GothwadTech/mail` migration next!
+> **Status:** Your **`accounts`** Cloudflare D1 database (`392aacf8-1b43-490a-9519-ced4daf5a40f`) is pre-configured in `cloudflare-worker/wrangler.toml`! ✅
+> **0 Credit Card Required · 0 Supabase Keys · 100% Free Tier Native**
 
 ---
 
-### 🔹 Step 2: Pull Request Ko `main` Mein Merge Karo (Automatic Deploy!)
-1. GitHub Pull Request ko **`Merge pull request`** click karke `main` mein merge karo.
-2. Merge hote hi Cloudflare **Workers Builds** automatic Worker **`accounts`** (`api.gothwadtech.com`) aur Pages **`accounts.gothwadtech.com`** par naya v2.0 code + D1 binding deploy kar dega!
+## ✅ Production Deployment Checklist
+
+### 🔹 Step 1: Cloudflare D1 Database Binding (✅ Configured)
+- **`accounts`** (`392aacf8-1b43-490a-9519-ced4daf5a40f`) — bound in `cloudflare-worker/wrangler.toml` as `binding = "DB"`
 
 ---
 
-### 🔹 Step 3: Worker (`accounts`) Ke Secrets Check Karo
+### 🔹 Step 2: Merge Pull Request to `main` (Automatic Deploy)
+1. Click **`Merge pull request`** on GitHub to merge into `main`.
+2. Cloudflare **Workers Builds** & **Cloudflare Pages** automatically deploy both Worker **`accounts`** (`api.gothwadtech.com` + `accounts.gothwadtech.com/api/*`) and static frontend **`accounts.gothwadtech.com`** (`/signin`, `/signup`, `/me`, `/widget/account-menu.js`).
+
+---
+
+### 🔹 Step 3: Verify Worker Secrets
 **Cloudflare Dashboard ➔ Compute (Workers) ➔ Workers & Pages ➔ `accounts` ➔ Settings ➔ Variables and Secrets:**
-- 🗑️ Purane `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` hata do (ab unki 0% zaroorat hai).
-- 🔐 Ye **Secrets (`Type: Secret`)** set hone chahiye:
-  1. **`JWT_SECRET`** — 40+ char random secret string
-  2. **`MAIL_INTERNAL_TOKEN`** — Mail Worker ke `ACCOUNTS_INTERNAL_TOKEN` ke barabar same value
-  3. **`RESEND_API_KEY`** *(Optional)* — Forgot Password recovery emails ke liye
+- Remove any legacy `SUPABASE_*` variables if still present (zero longer used).
+- Ensure these **Secrets (`Type: Secret`)** are set:
+  1. **`JWT_SECRET`** — 40+ character cryptographically random secret string
+  2. **`MAIL_INTERNAL_TOKEN`** — Shared secret matching `ACCOUNTS_INTERNAL_TOKEN` in the Mail Worker
+  3. **`RESEND_API_KEY`** *(Optional)* — Resend API key for outbound password reset emails
 
 ---
 
-### 🔹 Step 4: D1 Console (`accounts`) Mein All-in-One Setup SQL Paste Karo
+### 🔹 Step 4: Optional D1 Console All-in-One Bootstrap SQL
 **Cloudflare Dashboard ➔ Storage & Databases ➔ D1 SQL Database ➔ `accounts` ➔ Console:**
 
-> 💡 Neeche wala poora SQL (`sql/00_d1_console_bootstrap.sql`) **ek hi baar Copy karke Console mein Paste + Enter** karo — yeh **saari 11 tables + indexes + saare Gothwad OAuth callbacks (`Mail`, `Kiwi Store Web + Android`, `Meet`, `Drive`, `PlusTube`, `GrixChat`, `Indogram`)** ek hi shot mein create aur register kar dega!
+> 💡 The Worker auto-initializes tables on first request, and you can also copy-paste the complete idempotent bootstrap script below (`sql/00_d1_console_bootstrap.sql`) directly into D1 Console to verify all **11 tables, indexes, and registered ecosystem OAuth apps (`Mail`, `Kiwi Store Web + Android`, `Meet`, `Drive`, `PlusTube`, `GrixChat`, `Indogram`)** in a single shot:
 
 ```sql
 CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE COLLATE NOCASE, password_hash TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')), updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')), CONSTRAINT username_length CHECK (length(username) BETWEEN 3 AND 24), CONSTRAINT username_lowercase CHECK (username = lower(username)));
@@ -62,6 +61,6 @@ SELECT id, name, redirect_uris FROM ecosystem_apps WHERE redirect_uris != '[]';
 
 ---
 
-### 🔹 Step 5: Verify Production Health & Claim Founder Account 🎉
-1. Open **`https://api.gothwadtech.com/api/health`** → `"engine": "cloudflare-d1-native"` dikhega!
-2. Open **`https://accounts.gothwadtech.com/signup`** → Apna founder username (`pawan`) create karo aur `/me` dashboard par photo lagao!
+### 🔹 Step 5: Verify Production Health
+1. Open **`https://api.gothwadtech.com/api/health`** → confirms `"engine": "cloudflare-d1-native"`.
+2. Open **`https://accounts.gothwadtech.com/signup`** and **`https://accounts.gothwadtech.com/u/0/me`** → verify sign-in, profile avatar upload, and instant multi-account switching.

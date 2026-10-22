@@ -3,12 +3,10 @@
  * LOCAL CLOUDFLARE D1 ADAPTER (Node 22+ built-in `node:sqlite`)
  * =============================================================================
  * WHY THIS EXISTS:
- *   Cloudflare Workers production mein `env.DB` (Cloudflare D1 SQLite database)
- *   provide karta hai. Local development (`node server.js`) aur unit tests
- *   (`npm test`) mein bina kisi external package ya fake plain-text mock ke
- *   ASLI SQLite engine chalane ke liye yeh lightweight adapter Node 22 ke
- *   built-in `node:sqlite` module ko exact Cloudflare `D1Database` API jaisa
- *   wrap karta hai:
+ *   Cloudflare Workers provides `env.DB` (Cloudflare D1 SQLite) in production.
+ *   For local development (`node server.js`) and automated tests (`npm test`)
+ *   with zero external packages or plain-text mocks, this adapter wraps Node 22's
+ *   built-in `node:sqlite` (`DatabaseSync`) with the exact `D1Database` API:
  *     - db.prepare(sql).bind(...values).first(colName?)
  *     - db.prepare(sql).bind(...values).all()   -> { success: true, results, meta }
  *     - db.prepare(sql).bind(...values).run()   -> { success: true, results, meta }
@@ -16,8 +14,8 @@
  *     - db.batch(statements)                    -> atomic SQLite transaction!
  *     - db.exec(sql)
  *
- *   Result: Local preview aur tests 100% ASLI SQL constraints, Foreign Keys,
- *   ON DELETE CASCADE, UNIQUE indexes aur BLOB columns execute karte hain!
+ *   Result: Local preview and tests enforce genuine SQLite constraints, Foreign Keys,
+ *   ON DELETE CASCADE, UNIQUE indexes, and binary BLOB columns!
  * =============================================================================
  */
 

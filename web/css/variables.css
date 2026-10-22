@@ -1,8 +1,8 @@
 /* =============================================================================
    GOTHWAD DESIGN SYSTEM — VARIABLES & TOKENS
-   Google Account jaisa look: LIGHT default + DARK toggle (js/theme.js)
-   NOTE: variable names purane system se same rakhe hain taaki legal.css
-   jaise purane pages bina change ke naye theme mein fit ho jayen.
+   Clean Google Account palette: LIGHT default + DARK toggle (js/theme.js)
+   NOTE: Preserves token names shared with legacy stylesheets so all pages
+   inherit light and dark mode seamlessly without duplicate variables.
    ============================================================================= */
 
 :root,
@@ -10,7 +10,7 @@
   /* Light Theme (Google style) — DEFAULT */
   --bg: #ffffff;
   --bg-panel: #f8f9fa;      /* chips, sub-panels, hover surface */
-  --bg-elevated: #ffffff;   /* cards (white page par border se alag dikhte hain) */
+  --bg-elevated: #ffffff;   /* elevated card surface bordered on light background */
   --bg-input: #ffffff;
   --bg-hover: #f1f3f4;
 
@@ -32,7 +32,7 @@
   --accent-hover: #1765cc;
   --accent-soft: rgba(26, 115, 232, 0.08);
   --accent-border: rgba(26, 115, 232, 0.35);
-  --accent-on: #ffffff;     /* blue button ke upar text color */
+  --accent-on: #ffffff;     /* foreground label color on accent primary buttons */
 
   /* Status colors */
   --success: #188038;
@@ -54,7 +54,7 @@
   --mono: 'Roboto Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 }
 
-/* Dark Theme — Google dark mode palette (js/theme.js se lagta hai) */
+/* Dark Theme — Google dark palette toggled via js/theme.js */
 [data-theme='dark'] {
   --bg: #131314;
   --bg-panel: #1e1f20;
@@ -76,7 +76,7 @@
   --accent-hover: #aecbfa;
   --accent-soft: rgba(138, 180, 248, 0.12);
   --accent-border: rgba(138, 180, 248, 0.4);
-  --accent-on: #062e6f;     /* Google dark: light-blue button par dark text */
+  --accent-on: #062e6f;     /* high-contrast dark label on light-blue primary button */
 
   --success: #81c995;
   --success-soft: rgba(129, 201, 149, 0.12);

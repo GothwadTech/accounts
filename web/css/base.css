@@ -1,6 +1,6 @@
 /* =============================================================================
    GOTHWAD DESIGN SYSTEM — BASE, LAYOUT & COMMON COMPONENTS
-   Google Account jaisa: clean, light, Material-You pill shapes.
+   Clean, light Material-You pill surfaces and typography.
    ============================================================================= */
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -25,7 +25,7 @@ img { max-width: 100%; }
 
 ::selection { background: var(--accent-soft); }
 
-/* Scrollbars (subtle, Google jaisa) */
+/* Subtle Google-style scrollbars */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px; border: 2px solid var(--bg); }
@@ -37,8 +37,8 @@ img { max-width: 100%; }
   border-radius: 4px;
 }
 
-/* Material Symbols — icon font (Google ke asli icons).
-   Use: <span class="msym">home</span> */
+/* Material Symbols Outlined icon font.
+   Usage: <span class="msym">home</span> */
 .msym {
   font-family: 'Material Symbols Outlined';
   font-weight: normal;
@@ -94,7 +94,7 @@ img { max-width: 100%; }
 }
 
 /* ------------------------------------------------------------- buttons */
-/* Google pill buttons — filled (primary), tonal, text aur danger variants */
+/* Pill buttons — filled (primary), tonal, text, and danger variants */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -130,7 +130,7 @@ img { max-width: 100%; }
 }
 .btn-tonal:hover:not(:disabled) { background: var(--accent-border); }
 
-/* Google text button — koi bg nahi, sirf blue label */
+/* Text button — transparent background with accent label */
 .btn-text {
   background: transparent;
   color: var(--accent);
@@ -171,8 +171,8 @@ img { max-width: 100%; }
 .btn-block { width: 100%; }
 
 /* ------------------------------------------------------ inputs (simple) */
-/* Note: naye auth pages Material floating-label fields use karte hain
-   (.md-field neeche). Yeh basic .input class purane pages ke liye hai. */
+/* Note: Auth pages use Material floating-label fields (.md-field below).
+   This base .input utility remains available for simple forms. */
 .input {
   width: 100%;
   padding: 13px 16px;
@@ -221,7 +221,7 @@ img { max-width: 100%; }
 }
 
 /* ------------------------------------------- Material floating-label field */
-/* Google ka classic text field — label float hota hai. Structure:
+/* Classic Google floating-label field. Structure:
    <label class="md-field"><input placeholder=" " required><span>Label</span></label> */
 .md-field {
   position: relative;
@@ -256,7 +256,7 @@ img { max-width: 100%; }
   background: transparent;
   padding: 0 4px;
 }
-/* Label ko upar float karo jab input focused/filled ho */
+/* Float label upward when input is focused or non-empty */
 .md-field input:focus + span,
 .md-field input:not(:placeholder-shown) + span,
 .md-field.md-float > span {
@@ -291,7 +291,7 @@ img { max-width: 100%; }
 .md-field.md-invalid input { border-color: var(--danger); box-shadow: inset 0 0 0 1px var(--danger); }
 .md-field.md-invalid > span { color: var(--danger); }
 
-/* Password eye button (md-field ke andar) */
+/* Password visibility toggle inside .md-field */
 .md-eye {
   position: absolute;
   right: 8px;

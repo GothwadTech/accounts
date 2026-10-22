@@ -26,7 +26,7 @@ export function initForgotPassword(showAlert, hideAlert) {
     const done = document.getElementById('done-forgot');
     done.innerHTML = `
       ✅ If an account exists for <b>${username.replace(/[<>&]/g, '')}</b>, a reset link has been
-      sent to its recovery email. Inbox + spam folder check karo.`;
+      sent to its recovery email. Please check your inbox and spam folder.`;
     done.classList.remove('hidden');
 
     if (res.data && res.data.dev_reset_link) {

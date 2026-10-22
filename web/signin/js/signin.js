@@ -49,8 +49,8 @@ export function showMode(name) {
   const sub = document.getElementById('auth-header-sub');
   if (tabs) tabs.classList.toggle('hidden', name !== 'signin');
   if (sub) {
-    if (name === 'forgot') sub.textContent = 'Reset password to access your account securely.';
-    else if (name === 'reset') sub.textContent = 'Aapka reset link verified hai. Naya password choose karo.';
+    if (name === 'forgot') sub.textContent = 'Reset your password to regain access to your account.';
+    else if (name === 'reset') sub.textContent = 'Your reset link is verified. Choose a new password below.';
     else if (new URLSearchParams(location.search).get('add') === '1') {
       sub.textContent = 'Add another Gothwad Account on this device.';
     } else {

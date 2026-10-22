@@ -136,7 +136,7 @@
           </div>
           <div class="card">
             <div class="card-title">Quick access</div>
-            <div class="card-subtitle">Aapke Gothwad Account ke common settings.</div>
+            <div class="card-subtitle">Common settings for your Gothwad Account.</div>
             <div class="quick-grid">
               <button type="button" class="quick-item" data-goto-section="personal">
                 <span class="setting-icon"><span class="msym">person</span></span>
@@ -198,7 +198,7 @@
           <h1 class="me-section-title">Personal info</h1>
           <div class="card">
             <div class="card-title">Photo</div>
-            <div class="card-subtitle">Aapki photo Gothwad services mein dikhti hai. PNG ya JPEG, 2 MB tak.</div>
+            <div class="card-subtitle">Your profile photo appears across Gothwad services. PNG, JPEG, or WebP up to 2 MB.</div>
             <div class="photo-preview-wrap" style="justify-content:flex-start;">
               <span class="avatar-photo-wrap">
                 <span class="avatar lg" id="pi-photo">?</span>
@@ -210,7 +210,7 @@
           </div>
           <div class="card">
             <div class="card-title">Basic info</div>
-            <div class="card-subtitle">Yeh details poori Gothwad ecosystem mein shared hongi.</div>
+            <div class="card-subtitle">Some info may be visible to other people using Gothwad services.</div>
             <div id="alert-personal" class="alert alert-error hidden" style="margin-bottom:10px;"></div>
             <button type="button" class="setting-row" data-dialog="name">
               <span class="setting-icon"><span class="msym">person</span></span>
@@ -239,8 +239,8 @@
           </div>
           <div class="card">
             <div class="card-title">Contact info</div>
-            <div class="card-subtitle">Aapse contact karne ke tareeke.</div>
-            <div class="setting-row" disabled title="Username change nahi ho sakta">
+            <div class="card-subtitle">Ways we can reach you to help keep your account secure.</div>
+            <div class="setting-row" disabled title="Username cannot be changed">
               <span class="setting-icon"><span class="msym">alternate_email</span></span>
               <span class="setting-main">
                 <span class="setting-label">Gothwad email</span>
@@ -273,7 +273,7 @@
           <h1 class="me-section-title">Security</h1>
           <div class="card">
             <div class="card-title"><span class="msym">key</span> How you sign in</div>
-            <div class="card-subtitle">Aapke Gothwad Account mein sign-in karne ke tareeke.</div>
+            <div class="card-subtitle">Make sure you can always access your Gothwad Account.</div>
             <div id="alert-password" class="alert alert-error hidden" style="margin-bottom:10px;"></div>
             <button type="button" class="setting-row" data-dialog="password">
               <span class="setting-icon"><span class="msym">password</span></span>
@@ -305,7 +305,7 @@
               <div class="card-title"><span class="msym">history</span> Recent security activity</div>
               <button type="button" class="btn btn-text" data-goto-section="data">See all</button>
             </div>
-            <div class="card-subtitle">Aapke account se judi recent activity.</div>
+            <div class="card-subtitle">Review recent sign-ins and security updates on your account.</div>
             <div class="activity-list" id="sec-activity">
               <div class="text-muted text-sm">Loading…</div>
             </div>
@@ -314,7 +314,7 @@
             <div class="card-header-row">
               <div>
                 <div class="card-title"><span class="msym">devices</span> Your devices</div>
-                <div class="card-subtitle">Jin devices par aap logged-in ho.</div>
+                <div class="card-subtitle">Where you are currently signed in.</div>
               </div>
               <button type="button" class="btn btn-danger-text" id="btn-revoke-others">Sign out other devices</button>
             </div>
@@ -326,7 +326,7 @@
             <div class="card-header-row">
               <div>
                 <div class="card-title"><span class="msym">apps</span> Signing in with other sites</div>
-                <div class="card-subtitle">Jo apps aapke Gothwad Account se connected hain.</div>
+                <div class="card-subtitle">Apps and services connected to your Gothwad Account.</div>
               </div>
               <button type="button" class="btn btn-tonal" data-goto-section="apps">Manage</button>
             </div>
@@ -340,7 +340,7 @@
           <h1 class="me-section-title">Data &amp; privacy</h1>
           <div class="card">
             <div class="card-title"><span class="msym">cloud</span> Your Gothwad data</div>
-            <div class="card-subtitle">Aapka storage aur activity data.</div>
+            <div class="card-subtitle">Storage usage and account activity summary.</div>
             <div class="storage-bar">
               <div class="storage-fill" id="dp-storage-fill" style="width:1%"></div>
             </div>
@@ -351,7 +351,7 @@
           </div>
           <div class="card">
             <div class="card-title"><span class="msym">history</span> Recent activity</div>
-            <div class="card-subtitle">Yeh data sirf aapke account mein hota hai (last 30 events).</div>
+            <div class="card-subtitle">Only visible to you in your account (latest 30 events).</div>
             <div class="activity-list" id="dp-activity">
               <div class="text-muted text-sm">Loading…</div>
             </div>
@@ -360,7 +360,7 @@
             <div class="card-header-row">
               <div>
                 <div class="card-title"><span class="msym">download</span> Export your data</div>
-                <div class="card-subtitle">Apna poora account data (profile, devices, apps, activity) JSON file mein download karo.</div>
+                <div class="card-subtitle">Download a copy of your account data (profile, devices, apps, and activity) as JSON.</div>
               </div>
               <button type="button" class="btn btn-tonal" id="btn-export">Download</button>
             </div>
@@ -368,8 +368,8 @@
           <div class="card card-danger">
             <div class="card-title"><span class="msym">warning</span> Delete your Gothwad Account</div>
             <div class="card-subtitle">
-              Account hamesha ke liye delete ho jayega — aapka username, email, profile aur saara data
-              remove ho jayega. Yeh action undo NAHI ho sakta.
+              Permanently delete your Gothwad Account, including your username, email address, profile,
+              and associated data. This action cannot be undone.
             </div>
             <button type="button" class="btn btn-danger" id="btn-open-delete">Delete your account</button>
           </div>
@@ -383,18 +383,18 @@
             <div class="card-header-row">
               <div>
                 <div class="card-title"><span class="msym">contacts</span> Gothwad Contacts</div>
-                <div class="card-subtitle">Aapke Gothwad Account ke contacts — sab apps mein sync.</div>
+                <div class="card-subtitle">Contacts saved to your Gothwad Account sync across devices.</div>
               </div>
               <span class="tag">Coming soon</span>
             </div>
             <div class="text-sm text-muted">
-              Gothwad Contacts abhi develop ho raha hai. Jab ready hoga, aapka contact list yahan
-              manage kar paoge — aur wahi list Mail, Drive aur Chat mein dikhega.
+              Gothwad Contacts is currently in development. Once available, you can manage your contacts here
+              and access them seamlessly across Mail, Drive, and Chat.
             </div>
           </div>
           <div class="card">
             <div class="card-title"><span class="msym">share</span> Sharing</div>
-            <div class="card-subtitle">Aap kaun-kaise share karte ho.</div>
+            <div class="card-subtitle">Your shared account identity and connected products.</div>
             <div class="info-row">
               <span class="setting-icon"><span class="msym">alternate_email</span></span>
               <span class="setting-main">
@@ -419,8 +419,8 @@
           <div class="card">
             <div class="card-title">Gothwad Services</div>
             <div class="card-subtitle">
-              Yeh aapke account ke saath automatically connected rehte hain.
-              Inhe revoke / disconnect nahi kiya ja sakta — sirf dekh sakte ho.
+              First-party services automatically enabled with your account.
+              Core services cannot be disconnected separately.
             </div>
             <div class="device-list" id="gothwad-services-list">
               <div class="text-muted text-sm">Loading…</div>
@@ -429,8 +429,8 @@
           <div class="card">
             <div class="card-title">Gothwad products (other brands)</div>
             <div class="card-subtitle">
-              Yeh bhi Gothwad Tech ke apps hain — naam alag hai (Tube / PlusTube, GrixChat, Indogram).
-              Inme Sign in with Gothwad se login hota hai; yahan se Disconnect kar sakte ho.
+              Additional apps powered by Sign in with Gothwad (such as PlusTube, GrixChat, and Indogram).
+              You can revoke their access at any time from here.
             </div>
             <div class="device-list" id="connected-list">
               <div class="text-muted text-sm">Loading…</div>
@@ -438,7 +438,7 @@
           </div>
           <div class="card">
             <div class="card-title">All products</div>
-            <div class="card-subtitle">Poora Gothwad ecosystem.</div>
+            <div class="card-subtitle">Explore all products across the Gothwad ecosystem.</div>
             <div class="apps-grid" id="apps-grid">
               <div class="text-muted text-sm">Loading…</div>
             </div>

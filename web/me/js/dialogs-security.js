@@ -18,7 +18,7 @@ export function dialogPhoto() {
     : `<span class="avatar xl">${escapeHtml(initialsFor(currentUser))}</span>`;
   modal({
     title: 'Profile photo',
-    sub: 'PNG, JPEG ya WebP — 2 MB tak. Photo browser mein 256×256 par resize ho jaati hai.',
+    sub: 'PNG, JPEG, or WebP up to 2 MB. Automatically cropped and resized to 256×256 in your browser.',
     body: `
       <div class="photo-preview-wrap" id="photo-preview">${avatarHtml}</div>
       <input type="file" id="photo-file" accept="image/png,image/jpeg,image/webp" class="photo-input-hidden" />
@@ -28,7 +28,7 @@ export function dialogPhoto() {
         </button>
         ${currentUser.avatar_url ? '<button type="button" class="btn btn-danger-text" id="btn-remove-photo">Remove photo</button>' : ''}
       </div>
-      <div class="photo-drop-note">Selected photo khud save ho jaayegi.</div>`,
+      <div class="photo-drop-note">Your selected photo saves automatically.</div>`,
     actions: '<button type="button" class="btn btn-text" data-close-modal>Done</button>',
   });
 
@@ -93,7 +93,7 @@ export function dialogPhoto() {
 export function dialogPassword() {
   modal({
     title: 'Change password',
-    sub: 'Strong password rakho — kam se kam 8 characters.',
+    sub: 'Choose a strong password with at least 8 characters.',
     body:
       field('dlg-current-pw', 'Current password', { type: 'password', autocomplete: 'current-password', eye: true }) +
       field('dlg-new-pw', 'New password (min. 8 chars)', { type: 'password', autocomplete: 'new-password', eye: true }) +
@@ -136,11 +136,11 @@ export function dialogDelete() {
   const email = gothwadEmail(currentUser.username);
   modal({
     title: 'Delete your Gothwad Account',
-    sub: 'Yeh action permanent hai aur undo NAHI ho sakta. Aapka username, email, profile aur saara data delete ho jayega.',
+    sub: 'This action is permanent and cannot be undone. Your username, email address, profile, and all account data will be permanently deleted.',
     danger: true,
     body: `
       <div class="alert alert-error" style="margin-bottom:16px;">
-        <b>${escapeHtml(email)}</b> ka account permanently delete ho jayega.
+        <b>${escapeHtml(email)}</b> will be permanently deleted.
       </div>
       ${field('dlg-delete-pw', 'Confirm your password', { type: 'password', autocomplete: 'current-password', eye: true })}`,
     actions: '<button type="button" class="btn btn-danger" id="dlg-confirm-delete">Delete my account</button>',

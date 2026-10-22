@@ -39,7 +39,7 @@
 .tag-danger { background: var(--danger-soft); color: var(--danger); }
 
 /* ------------------------------------------------------------ avatars */
-/* Google circle avatar — photo ya initials */
+/* Circular user avatar — profile photo or initials */
 .avatar {
   display: inline-flex;
   align-items: center;
@@ -60,7 +60,7 @@
 .avatar.lg { width: 80px; height: 80px; font-size: 28px; }
 .avatar.xl { width: 96px; height: 96px; font-size: 34px; }
 
-/* Photo par camera overlay (edit hint) */
+/* Camera overlay badge on editable avatars */
 .avatar-photo-wrap { position: relative; display: inline-block; }
 .avatar-photo-overlay {
   position: absolute;
@@ -120,8 +120,7 @@
 }
 
 /* --------------------------------------------------------- topbar (old) */
-/* /me jaise pages ka topbar (renderTopbar) — naya Google-style /me apna
-   header use karta hai, yeh class purani jagahon ke liye compatible hai. */
+/* Shared top bar utility — retained for standalone pages alongside /me custom header */
 .topbar {
   border-bottom: 1px solid var(--border);
   background: var(--surface);
@@ -216,7 +215,7 @@ a.acct-menu-item { text-decoration: none; }
 }
 
 /* ------------------------------------------------------------- modal */
-/* Google-style dialog — /me ke edit dialogs isse use karte hain */
+/* Google-style modal dialog — used by /me profile & security edit dialogs */
 .modal-backdrop {
   position: fixed;
   inset: 0;

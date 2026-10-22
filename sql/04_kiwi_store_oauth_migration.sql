@@ -4,12 +4,11 @@
 -- Engine: Cloudflare D1 (SQLite)
 -- Safe to run repeatedly (idempotent).
 --
--- KYA KARTA HAI?
---   1. Kiwi Store (`kiwi-store`) ke exact production + local dev + Android APK
---      callbacks register karta hai.
---   2. Agar purana `gothwad-store` client grant row ho, toh user grants `kiwi-store`
---      par migrate karta hai, purane auth codes delete karta hai aur legacy
---      refresh tokens revoke karta hai.
+-- OVERVIEW:
+--   1. Registers production web, localhost dev, and native Android APK callbacks
+--      for Kiwi Store (`kiwi-store`).
+--   2. Migrates any existing user grants from legacy `gothwad-store` rows to
+--      `kiwi-store`, deletes stale authorization codes, and revokes legacy refresh tokens.
 -- =============================================================================
 
 INSERT INTO ecosystem_apps (id, name, description, icon, redirect_uris, is_verified, client_id, is_core)

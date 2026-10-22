@@ -4,28 +4,26 @@
 -- File: sql/03_avatars_storage.sql
 -- Engine: Cloudflare D1 (SQLite)
 --
--- KYA HAI IS FILE MEIN?
---   Profile photos (avatars) ke liye Cloudflare-native storage table!
+-- OVERVIEW:
+--   Cloudflare-native profile photo storage table (`user_avatars`).
 --
---   WHY THIS DESIGN IS AWESOME:
---   1. ZERO Credit Card Required: Cloudflare D1 completely free plan par bina
---      card add kiye chalta hai. Frontend pehle se photo ko 256x256 (~12-25 KB)
---      resize karke bhejta hai. 5 GB free D1 mein 1,00,000+ avatars aaram se aate hain!
---   2. Zero Repeated DB Reads (Edge CDN Cached): Worker `/api/avatars/:userId?v=:etag`
---      ko `Cache-Control: public, max-age=31536000, immutable` aur `ETag` ke saath
---      Cloudflare Global CDN Cache se serve karta hai (< 5ms speed worldwide!).
---   3. Optional R2 Drop-In Upgrade: Agar future mein aap Cloudflare R2 bucket bind
---      karte ho (`AVATARS_BUCKET`), Worker bina kisi URL ya frontend change ke
---      automatically R2 bucket use karne lagta hai!
---   4. Automatic GDPR Clean Delete: User account delete hote hi `ON DELETE CASCADE`
---      se photo bhi turant clean ho jaati hai.
+--   DESIGN HIGHLIGHTS:
+--   1. Zero Credit Card Required: Runs on Cloudflare D1's free plan without adding
+--      a payment card. Browsers pre-resize uploads to 256x256 (~12–25 KB), comfortably
+--      fitting 100,000+ profile avatars inside free D1 storage.
+--   2. Edge CDN Cached: Served at `/api/avatars/:userId?v=:etag` with
+--      `Cache-Control: public, max-age=31536000, immutable` and `ETag` headers so
+--      Cloudflare's global edge serves repeat requests in < 5ms with zero DB reads.
+--   3. Optional R2 Drop-In Upgrade: If an `AVATARS_BUCKET` R2 binding is later added,
+--      the Worker transparently switches to R2 without changing any frontend URLs.
+--   4. Automatic Cascade Cleanup: `ON DELETE CASCADE` removes avatar blobs immediately
+--      whenever a user deletes their account.
 -- =============================================================================
 
 CREATE TABLE IF NOT EXISTS user_avatars (
-  user_id    TEXT PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
-  mime_type  TEXT NOT NULL CHECK (mime_type IN ('image/jpeg', 'image/png', 'image/webp')),
-  data       BLOB NOT NULL,
-  byte_size  INTEGER NOT NULL,
-  etag       TEXT NOT NULL,
-  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  user_id      TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  content_type TEXT NOT NULL,
+  data         BLOB NOT NULL,
+  etag         TEXT NOT NULL,
+  updated_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );

@@ -40,8 +40,8 @@ database_id = "392aacf8-1b43-490a-9519-ced4daf5a40f"
 # 3. PUBLIC CONFIGURATION VARIABLES (No secrets here!)
 # -----------------------------------------------------------------------------
 [vars]
-# Rule #1: Domain sirf yahan set hota hai — code ya DB mein kahin hardcode nahi!
-# User email automatically banta hai: username + "@" + APP_DOMAIN
+# Rule #1: Domain is configured strictly here — never hardcoded in code or DB!
+# User email is derived automatically at runtime: username + "@" + APP_DOMAIN
 APP_DOMAIN = "gothwadtech.com"
 
 # Frontend public URL (OAuth consent redirect + password reset link + avatars)
@@ -62,7 +62,7 @@ DEV_MODE = "false"
 # -----------------------------------------------------------------------------
 # 4. WORKER SECRETS (Set via Dashboard -> Variables & Secrets -> Type: Secret)
 # -----------------------------------------------------------------------------
-# Sirf 2 secrets zaroori hain (Supabase keys ab HATA diye gaye hain!):
+# Only 2 required secrets (zero Supabase keys required):
 #
 #   1. JWT_SECRET          (REQUIRED) -> 40+ char random secret (signs sessions & OAuth JWTs)
 #   2. MAIL_INTERNAL_TOKEN (REQUIRED for Mail) -> Same value as Mail Worker's ACCOUNTS_INTERNAL_TOKEN

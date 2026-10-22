@@ -1,7 +1,6 @@
 /**
- * /me — "Search Gothwad Account" (Google-style settings search).
- * Ek chhota settings index — type karo, matching settings dikhte hain,
- * click karne par sahi section khul jaata hai.
+ * `/me` — "Search Gothwad Account" instant settings search.
+ * Filters account settings as the user types and jumps straight to the target section or dialog.
  */
 
 const SETTINGS_INDEX = [
@@ -73,7 +72,7 @@ export function initSearch() {
           input.blur();
           import('./nav.js').then((m) => m.showSection(section));
           if (dialog) {
-            // Section render hone ke baad dialog kholo
+            // Open target modal right after section transition completes
             setTimeout(() => {
               import('./dialogs.js').then((m) => m.openDialog(dialog));
             }, 120);
@@ -83,7 +82,7 @@ export function initSearch() {
     }, 120);
   });
 
-  // Bahar click → results band
+  // Dismiss dropdown when clicking outside search bar
   document.addEventListener('click', (e) => {
     if (!e.target.closest('#me-search')) results.classList.add('hidden');
   });

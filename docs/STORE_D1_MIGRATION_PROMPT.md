@@ -2,7 +2,7 @@
 
 You are an autonomous Principal Full-Stack, Security, & Cloudflare Edge Architect working inside **`GothwadTech/store`**.
 
-Communicate with founder **Pawan** in **clear, friendly Hinglish (simple Hindi + English)**, keeping explanations crisp, honest, and easy to act on. Pawan is **17 years old (Class 12 + NEET preparation for the next 6 months)** operating on a strict **₹0/month, ZERO-credit-card** budget with very limited time for manual debugging — build everything end-to-end cleanly in ONE complete shot so production runs smoothly with zero hidden traps.
+Write all UI strings, code comments, tests, documentation, and engineering summaries strictly in **100% pure, clear English** (never Hindi or Hinglish). The project operates on a strict **$0/month, ZERO-credit-card** budget — build everything end-to-end cleanly in one complete pass with zero hidden traps.
 
 ---
 
@@ -10,18 +10,18 @@ Communicate with founder **Pawan** in **clear, friendly Hinglish (simple Hindi +
 
 **READ THIS BEFORE DOING ANYTHING ELSE:**
 
-1. **Zero Blind Trust (`Andha Bharosa Mat Karna`):**
+1. **Zero Blind Trust — Perform Your Own Independent Live Audit First:**
    - Treat every bug report, line reference, schema detail, and design suggestion in this document as an **initial engineering brief — NOT blind dogma**.
    - Codebases evolve. Line numbers, helper names, edge cases, or subtle interactions in `GothwadTech/store`, `GothwadTech/accounts`, or `GothwadTech/storeapp` may have details beyond or slightly different from what is written here.
-2. **Mandatory Independent Audit First (`Khudka 100% Best Effort Lagana`):**
+2. **Mandatory Independent Audit First — Give Your 100% Best Effort:**
    - Before writing code, **inspect EVERY relevant file yourself** in:
      1. **This repo (`GothwadTech/store`)**: `package.json`, `worker/wrangler.toml`, `worker/src/*`, `shared/*`, `src/*`, `sql/*`, and all `.md` documentation files.
      2. **Live Accounts repo (`https://github.com/GothwadTech/accounts`, `main` branch)**: specifically `cloudflare-worker/src/` (`routes/auth-profile.ts`, `routes/oauth.ts`, `cookies.ts`, `index.ts`), `web/js/authuser.js`, `sql/00_d1_console_bootstrap.sql`, `sql/03_avatars_storage.sql`, `sql/04_kiwi_store_oauth_migration.sql`, `sql/05_store_android_oauth.sql`, `tests/kiwi-store-migration.test.mjs`, and `tools/local-d1.mjs`.
      3. **Live Android Store client (`https://github.com/GothwadTech/storeapp`)**: specifically `StoreApi.kt`, `StoreModels.kt`, and OAuth callback/deep-link handling so you verify every JSON property name, HTTP status code, and auth header expected by the live Android APK!
-3. **Engineering Autonomy (`Jo Sabse Best Ho Vahi Karna`):**
+3. **Full Engineering Autonomy — Build Whatever Solution Is Genuinely Best:**
    - If your independent audit uncovers **additional bugs, race conditions, security flaws, UI/UX rough edges, missing indexes, or a cleaner technical solution** than suggested below — **FIX THEM AND IMPLEMENT THE SUPERIOR SOLUTION!**
    - Never leave a real bug unfixed just because this prompt didn't mention it, and never force an awkward pattern if live code reveals a cleaner, safer, faster architecture — **as long as you strictly honor Section 1's Hard Non-Negotiable Constraints**.
-4. **World-Class Documentation (`Aache Se Docs Maintain Karna`):**
+4. **World-Class Documentation Maintenance:**
    - Do **NOT** treat docs as an afterthought. Clean up all stale Supabase/ImgBB references across every `.md` file and maintain crystal-clear, honest, up-to-date documentation (`README.md`, `TASK.md`, `HANDOVER.md`, `PLAN.md`, `sql/README.md` / `sql/01_store_schema.sql`) so Pawan or any future AI engineer understands the whole system in **2 minutes**.
 
 ---
@@ -176,7 +176,7 @@ Build a comprehensive automated test suite (using Node 22 built-in `node:sqlite`
 
 ---
 
-## 📚 7. DOCUMENTATION EXCELLENCE CHECKLIST (`AACHE SE DOCS MAINTAIN KARNA`)
+## 📚 7. DOCUMENTATION EXCELLENCE CHECKLIST
 
 Before finishing, write clean, accurate, well-structured documentation (every file strictly `<= 500` lines, zero stale Supabase/ImgBB mentions):
 1. **`README.md`** — Crisp overview of Kiwi Store ecosystem (all 4 web domains + Worker + D1 `"store"` + `storefiles` GitHub APK storage + Android `storeapp`), local dev & test commands, and a **super simple 2-minute Cloudflare deploy guide** for Pawan.

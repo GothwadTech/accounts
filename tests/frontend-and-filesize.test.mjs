@@ -423,3 +423,40 @@ test('Real V8 ESM Runtime Boot: dynamically importing web/me/js/me.js links all 
     }
   }
 });
+
+test('Rule #0 Gate: 100% Pure English across all UI, code, CSS, SQL, configs, and Markdown docs (zero Hindi/Hinglish)', () => {
+  const disallowed = new RegExp(
+    '[\\u0900-\\u097F]|\\b(' +
+      'hai|hain|hota|hoti|hote|karo|karein|karke|karna|karta|karti|karte|' +
+      'sakta|sakte|sakti|sako|chahiye|nahi|mat|sirf|aur|mein|bhi|jab|toh|agar|warna|' +
+      'kyunki|isliye|taaki|jaise|jaisa|jaisi|wala|wale|wali|apna|apni|apne|' +
+      'aap|aapka|aapki|aapke|tum|tumhara|hum|hamara|yeh|woh|saara|saare|saari|' +
+      'pehle|baad|abhi|turant|hamesha|kabhi|bilkul|asli|naya|naye|nayi|purana|purane|purani|' +
+      'chhota|chhoti|alag|dikhta|dikhti|dikhte|dikhao|kholo|jaata|jaati|jaate|jayega|jaayegi|' +
+      'lagta|lagti|lagte|rakho|rakhna|banta|banti|waghera|khud|tareeke|bhasha|asaan|' +
+      'zaroori|zaroorat|bina|upar|neeche|andar|bahar|yahan|wahan|kaise|kya|kyun|kaunsa|' +
+      'poora|poori|poore|seedha|seedhe|lagao|lagana|chalao|chalana|bhejo|bhejna|badlo|dekho|padho|samjho' +
+      ')\\b',
+    'i',
+  );
+
+  const violations = [];
+  for (const absPath of walkRepoFiles(REPO_ROOT)) {
+    const relPath = relative(REPO_ROOT, absPath);
+    if (relPath === 'tests/frontend-and-filesize.test.mjs') continue;
+    if (!/\.(?:html|js|mjs|ts|css|sql|toml|md|json)$/i.test(relPath)) continue;
+
+    const lines = readFileSync(absPath, 'utf8').split('\n');
+    lines.forEach((line, idx) => {
+      const m = line.match(disallowed);
+      if (m) violations.push(`${relPath}:${idx + 1} matched "${m[0]}": ${line.trim().slice(0, 90)}`);
+    });
+  }
+
+  assert.deepEqual(
+    violations,
+    [],
+    `Found non-English / Hinglish text in repository files:\n${violations.join('\n')}`,
+  );
+});
+

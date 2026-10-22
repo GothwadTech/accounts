@@ -1,12 +1,12 @@
 /**
- * /me — avatar render helper (photo ya initials).
- * Alag module hai taaki me.js ↔ tabs circular import na ho.
+ * `/me` — Avatar renderer helper (profile photo with monogram fallback).
+ * Extracted to avoid circular imports between `me.js` and section tabs.
  */
 
 import { escapeHtml } from '../../js/common.js';
 import { initialsFor } from '../../js/accounts.js';
 
-/** Avatar element render: photo ho to photo, warna initials. */
+/** Renders either the user's profile image or uppercase initials inside `el`. */
 export function renderAvatar(el, user) {
   if (!el) return;
   if (user?.avatar_url) {

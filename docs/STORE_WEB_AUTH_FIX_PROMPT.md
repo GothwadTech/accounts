@@ -101,7 +101,7 @@ Android callback, Accounts-project ownership, and pending owner SQL/deploy steps
 Keep production demo login disabled; never use mock login as a fix. Keep secrets
 server-side and existing public API shapes compatible with Android.
 
-Deliver the source changes, tests, a short Hinglish summary, and clearly separate
+Deliver the source changes, tests, a concise summary in pure English, and clearly separate
 local verification from live deployment/device checks. Do not claim that editing
 this repo changed the Accounts database. Do not merge or deploy production unless
 the owner separately authorizes that operation.
