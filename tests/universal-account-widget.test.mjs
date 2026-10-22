@@ -150,4 +150,17 @@ test('Universal Account Widget supports zero-hardcode rebrand & cross-origin Pag
   assert.match(headersFile, /\/widget\/\*/);
   assert.match(headersFile, /Access-Control-Allow-Origin:\s*\*/);
   assert.match(headersFile, /Cross-Origin-Resource-Policy:\s*cross-origin/);
+
+  const extraActionsHtml = buildAccountSheetHtml(
+    { user: { username: 'pawan', name: 'Pawan' }, accounts: [], authuser: 0 },
+    {
+      accountsWebOrigin: 'https://accounts.gothwadtech.com',
+      extraActions: [
+        { id: 'console', label: 'Kiwi Console', href: 'https://kiwiconsole.gothwadtech.com' },
+        { id: 'settings', label: 'Settings', onClick: () => {} },
+      ],
+    },
+  );
+  assert.match(extraActionsHtml, /<a href="https:\/\/kiwiconsole\.gothwadtech\.com" class="gw-row" data-gw-extra="0">/);
+  assert.match(extraActionsHtml, /<button type="button" class="gw-row" data-gw-extra="1">/);
 });

@@ -188,9 +188,13 @@ export function buildAccountSheetHtml(state, opts = {}) {
 
   const extraHtml = extraActions.length > 0
     ? `<div class="gw-extra-group">
-        ${extraActions.map((act, idx) => `<button type="button" class="gw-row" data-gw-extra="${idx}">
-          <span class="gw-acct-meta"><span class="gw-acct-name">${esc(act.label)}</span></span>
-        </button>`).join('')}
+        ${extraActions.map((act, idx) => (act.href
+          ? `<a href="${esc(act.href)}"${act.target ? ` target="${esc(act.target)}" rel="noopener noreferrer"` : ''} class="gw-row" data-gw-extra="${idx}">
+            <span class="gw-acct-meta"><span class="gw-acct-name">${esc(act.label)}</span></span>
+          </a>`
+          : `<button type="button" class="gw-row" data-gw-extra="${idx}">
+            <span class="gw-acct-meta"><span class="gw-acct-name">${esc(act.label)}</span></span>
+          </button>`)).join('')}
       </div>`
     : '';
 
