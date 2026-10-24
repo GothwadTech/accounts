@@ -79,7 +79,7 @@ export default {
     const withCors = (res: Response, newCookies: string[] = oauthCookies): Response => {
       corsHeaders.forEach((v, k) => res.headers.set(k, v));
       for (const cookie of newCookies) res.headers.append('Set-Cookie', cookie);
-      if (route.startsWith('/oauth/')) {
+      if (route.startsWith('/auth/') || route.startsWith('/oauth/')) {
         res.headers.set('Cache-Control', 'no-store');
         res.headers.set('Pragma', 'no-cache');
       }

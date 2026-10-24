@@ -84,7 +84,7 @@ const SKIP_REFRESH_PREFIXES = [
  * Always returns `{ ok, status, data, error }`.
  */
 export async function apiCall(path, { method = 'GET', body = null, token = null } = {}) {
-  const headers = buildAuthHeaders({ 'Content-Type': 'application/json' });
+  const headers = buildAuthHeaders(body ? { 'Content-Type': 'application/json' } : {});
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
@@ -100,7 +100,7 @@ export async function apiCall(path, { method = 'GET', body = null, token = null 
     let data = await parseJson(res);
 
     const canRetryRefresh =
-      res.status === 401 && !token && !SKIP_REFRESH_PREFIXES.some((prefix) => path.startsWith(prefix));
+      res.status === 401 && path !== '/auth/me' && !token && !SKIP_REFRESH_PREFIXES.some((prefix) => path.startsWith(prefix));
 
     if (canRetryRefresh && (await refreshOnce())) {
       res = await fetch(apiUrl(path), opts);

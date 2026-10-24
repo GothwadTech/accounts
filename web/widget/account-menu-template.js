@@ -108,12 +108,8 @@ export function renderAvatarMarkup(acct, sizePx = 40) {
 
 const SVG = {
   close: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>',
-  pencil: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>',
-  chevronUp: '<svg class="gw-chevron-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg>',
   plus: '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
-  manageAccounts: '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3.5"/><path d="M3 19c0-3 2.7-5 6-5 1.1 0 2.1.2 3 .7"/><circle cx="17.5" cy="16.5" r="2.3"/><path d="M17.5 12.8v1M17.5 19.2v1M13.8 16.5h1M20.2 16.5h1M14.9 13.9l.7.7M19.4 18.4l.7.7M20.1 13.9l-.7.7M15.6 18.4l-.7.7"/></svg>',
   logout: '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>',
-  brandMark: '<svg width="21" height="21" viewBox="0 0 24 24" fill="none"><path d="M21.6 12.23c0-.7-.06-1.39-.18-2.05H12v3.88h5.38a4.6 4.6 0 0 1-2 3.02v2.5h3.24c1.9-1.75 2.98-4.33 2.98-7.35Z" fill="#4285F4"/><path d="M12 22c2.7 0 4.96-.9 6.62-2.42l-3.24-2.5c-.9.6-2.04.96-3.38.96-2.6 0-4.8-1.76-5.59-4.12H3.06v2.58A9.99 9.99 0 0 0 12 22Z" fill="#34A853"/><path d="M6.41 13.92A6.02 6.02 0 0 1 6.1 12c0-.67.11-1.32.31-1.92V7.5H3.06A9.99 9.99 0 0 0 2 12c0 1.61.39 3.14 1.06 4.5l3.35-2.58Z" fill="#FBBC05"/><path d="M12 5.96c1.47 0 2.79.5 3.83 1.5l2.87-2.87C16.95 2.98 14.7 2 12 2A9.99 9.99 0 0 0 3.06 7.5l3.35 2.58c.79-2.36 2.99-4.12 5.59-4.12Z" fill="#EA4335"/></svg>',
 };
 
 export function detectHostTheme(explicitTheme) {
@@ -138,53 +134,38 @@ export function buildAccountSheetHtml(state, opts = {}) {
   );
   if (normalized.length === 0 && activeUser.username) normalized.push(activeUser);
 
-  const others = normalized.filter(
-    (a) => a.username.toLowerCase() !== activeUser.username.toLowerCase(),
-  );
-  const collapsed = Boolean(state.collapsed);
-  const manageMode = Boolean(state.manageMode);
+  const activeIndex = normalized.findIndex((acct) =>
+    acct.id === state.activeId || (activeUser.username && acct.username === activeUser.username));
+  // Present the current account first without changing its server authuser index.
+  const accounts = activeIndex > 0
+    ? [normalized[activeIndex], ...normalized.filter((_, index) => index !== activeIndex)]
+    : normalized;
   const authuser = Number.isInteger(state.authuser) ? state.authuser : activeUser.authuser;
   const nextUrl = opts.nextUrl || globalThis.location?.href || `${accountsWebOrigin}/u/${authuser}/me`;
   const addHref = `${accountsWebOrigin}/signin?choose=1&add=1&next=${encodeURIComponent(nextUrl)}`;
   const manageHref = opts.manageAccountHref || `${accountsWebOrigin}/u/${authuser}/me`;
-  const editAvatarHref = `${accountsWebOrigin}/u/${authuser}/me#personal`;
   const badges = opts.badges || {};
   const extraActions = Array.isArray(opts.extraActions) ? opts.extraActions : [];
 
-  const otherRowsHtml = others
-    .map((acct) => {
-      const unread = Number(badges[acct.username] || 0);
-      const href = typeof opts.accountHref === 'function' ? opts.accountHref(acct) : '#';
-      return `<a href="${esc(href)}" class="gw-row" data-gw-switch="${esc(acct.id)}" data-gw-authuser="${acct.authuser}">
+  const accountRowsHtml = accounts.map((acct, index) => {
+    const current = activeIndex >= 0 ? acct === normalized[activeIndex] : index === 0;
+    const unread = Number(badges[acct.username] || 0);
+    const href = typeof opts.accountHref === 'function'
+      ? opts.accountHref(acct)
+      : `${accountsWebOrigin}/u/${acct.authuser}/me`;
+    return `<div class="gw-account-row">
+      <a href="${esc(href)}" class="gw-row gw-account-link" data-gw-switch="${esc(acct.id)}" data-gw-authuser="${acct.authuser}"${current ? ' aria-current="true"' : ''}>
         ${renderAvatarMarkup(acct, 40)}
         <span class="gw-acct-meta">
           <span class="gw-acct-name">${esc(acct.name)}</span>
           <span class="gw-acct-email">${esc(acct.email)}</span>
         </span>
         ${unread > 0 ? `<span class="gw-badge">${unread > 99 ? '99+' : unread}</span>` : ''}
-        ${manageMode ? `<button type="button" class="gw-mini-signout" data-gw-signout-slot="${esc(acct.id)}">Sign out</button>` : ''}
-      </a>`;
-    })
-    .join('');
-
-  const managePanelHtml = manageMode
-    ? `<button type="button" class="gw-row" data-gw-signout-slot="${esc(activeUser.id)}">
-        <span class="gw-icon-slot">${SVG.logout}</span>
-        <span>Sign out of ${esc(activeUser.email || activeUser.username)}</span>
-      </button>
-      ${normalized.length > 1
-        ? `<button type="button" class="gw-row is-last" data-gw-action="signout-all" style="color:var(--gw-danger);">
-            <span class="gw-icon-slot">${SVG.logout}</span>
-            <span>Sign out of all accounts</span>
-          </button>`
-        : `<button type="button" class="gw-row is-last" data-gw-action="toggle-manage">
-            <span class="gw-icon-slot">${SVG.manageAccounts}</span>
-            <span>Done managing accounts</span>
-          </button>`}`
-    : `<button type="button" class="gw-row is-last" data-gw-action="toggle-manage">
-        <span class="gw-icon-slot">${SVG.manageAccounts}</span>
-        <span>Manage accounts</span>
-      </button>`;
+        ${current ? '<span class="gw-current-dot" role="img" aria-label="Current account"></span>' : ''}
+      </a>
+      <button type="button" class="gw-slot-signout" data-gw-signout-slot="${esc(acct.id)}" aria-label="Sign out of ${esc(acct.email || acct.username)}" title="Sign out of ${esc(acct.email || acct.username)}">${SVG.logout}</button>
+    </div>`;
+  }).join('');
 
   const extraHtml = extraActions.length > 0
     ? `<div class="gw-extra-group">
@@ -201,34 +182,24 @@ export function buildAccountSheetHtml(state, opts = {}) {
   return `<div class="gw-backdrop" data-gw-action="close"></div>
   <div class="gw-sheet" role="dialog" aria-modal="true" aria-label="${esc(ecosystemName)} Account menu">
     <div class="gw-topbar">
+      <h2 class="gw-heading">${esc(ecosystemName)} Accounts</h2>
       <button type="button" class="gw-close" data-gw-action="close" aria-label="Close account menu">${SVG.close}</button>
     </div>
-    <div class="gw-stack">
-      <div class="gw-hero ${collapsed ? 'is-collapsed' : ''}">
-        <div class="gw-hero-avatar-wrap">
-          ${renderAvatarMarkup(activeUser, 68)}
-          <a href="${esc(editAvatarHref)}" class="gw-edit-badge" data-gw-action="edit-avatar" aria-label="Change profile picture" title="Change profile picture">${SVG.pencil}</a>
-        </div>
-        <div class="gw-hero-meta">
-          <div class="gw-hero-name">${esc(activeUser.name)}</div>
-          <div class="gw-hero-email">${esc(activeUser.email)}</div>
-        </div>
-        <button type="button" class="gw-chevron-btn" data-gw-action="toggle-collapse" aria-expanded="${!collapsed}" aria-label="${collapsed ? 'Show more accounts' : 'Hide accounts'}">
-          ${SVG.chevronUp.replace('class="gw-chevron-icon"', `class="gw-chevron-icon ${collapsed ? 'is-collapsed' : ''}"`)}
-        </button>
-      </div>
-      ${collapsed ? '' : `${otherRowsHtml}
-      <a href="${esc(addHref)}" class="gw-row" data-gw-action="add-account">
-        <span class="gw-icon-slot"><span class="gw-plus-circle">${SVG.plus}</span></span>
+    <div class="gw-stack" aria-label="Signed-in accounts">
+      ${accountRowsHtml}
+    </div>
+    <div class="gw-primary-actions">
+      <a href="${esc(manageHref)}" class="gw-manage-pill" data-gw-action="manage-account">
+        <img class="gw-brand-logo" src="${esc(accountsWebOrigin)}/icon-192.png" width="24" height="24" alt="" />
+        <span>Manage your ${esc(ecosystemName)} Account</span>
+      </a>
+      <a href="${esc(addHref)}" class="gw-manage-pill" data-gw-action="add-account">
+        <span class="gw-action-icon">${SVG.plus}</span>
         <span>Add another account</span>
       </a>
-      ${managePanelHtml}`}
     </div>
-    <a href="${esc(manageHref)}" class="gw-manage-pill" data-gw-action="manage-account">
-      ${SVG.brandMark}
-      <span>Manage your ${esc(ecosystemName)} Account</span>
-    </a>
     ${extraHtml}
+    ${accounts.length > 1 ? `<button type="button" class="gw-signout-all" data-gw-action="signout-all">Sign out of all accounts</button>` : ''}
     <footer class="gw-footer">
       <a href="${esc(accountsWebOrigin)}/privacy" target="_blank" rel="noopener">Privacy policy</a>
       <span aria-hidden="true">&bull;</span>

@@ -62,16 +62,18 @@ export async function inspectBrowserAccounts(
   let droppedAnySlot = false;
   const nowIso = new Date().toISOString();
 
-  for (const slot of orderedCandidates) {
-    if (opts.excludeSlot === slot) continue;
+  // Validate independent slots concurrently, but collect results in cookie order.
+  // Completion order must never change the public authuser indices.
+  const results = await Promise.all(orderedCandidates.map(async (slot) => {
+    const cookies: string[] = [];
+    if (opts.excludeSlot === slot) return { cookies, dropped: false };
     const rawSlotCookie = getCookie(request, slotCookieName(slot));
     const slotCreds = decodeSlotCredentials(rawSlotCookie);
     if (!slotCreds) {
-      droppedAnySlot = true;
       if (rawSlotCookie !== null) {
-        cookiesToSet.push(makeCookie(request, env, slotCookieName(slot), '', 0));
+        cookies.push(makeCookie(request, env, slotCookieName(slot), '', 0));
       }
-      continue;
+      return { cookies, dropped: true };
     }
 
     const check = await validateCredentialsAgainstDb(db, env, {
@@ -79,9 +81,8 @@ export async function inspectBrowserAccounts(
       cookieSlot: true,
     });
     if (!check.ok || !check.authUser) {
-      droppedAnySlot = true;
-      cookiesToSet.push(makeCookie(request, env, slotCookieName(slot), '', 0));
-      continue;
+      cookies.push(makeCookie(request, env, slotCookieName(slot), '', 0));
+      return { cookies, dropped: true };
     }
 
     const profile = await authQuery(() => fetchProfile(db, check.authUser!.id));
@@ -101,10 +102,10 @@ export async function inspectBrowserAccounts(
         };
 
     if (check.rotated) {
-      cookiesToSet.push(makeSlotSessionCookie(request, env, slot, updatedCreds));
+      cookies.push(makeSlotSessionCookie(request, env, slot, updatedCreds));
     }
 
-    validSlots.push({
+    const validSlot: VerifiedBrowserSlot = {
       slot,
       userId: check.authUser.id,
       username: String(profile?.username || check.authUser.username),
@@ -115,7 +116,13 @@ export async function inspectBrowserAccounts(
       lastUsedAt: prevMeta?.lastUsedAt || nowIso,
       creds: updatedCreds,
       rotated: !!check.rotated,
-    });
+    };
+    return { cookies, dropped: false, validSlot };
+  }));
+  for (const result of results) {
+    cookiesToSet.push(...result.cookies);
+    droppedAnySlot ||= result.dropped;
+    if (result.validSlot) validSlots.push(result.validSlot);
   }
 
   if (validSlots.length === 0 && opts.excludeSlot !== 'a') {

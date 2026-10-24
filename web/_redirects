@@ -8,3 +8,6 @@
 /u/:authuser/me/    /me/index.html   200
 /u/:authuser        /me/index.html   200
 /u/:authuser/       /me/index.html   200
+
+# Open the dashboard shell directly; only a confirmed 401 opens Sign in.
+/                  /me/index.html   200

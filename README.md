@@ -53,3 +53,39 @@ npx wrangler deploy --dry-run
 4. **Modular File Size Ceiling (`Rule #8`):** Every file stays strictly **`<= 500` lines**, verified automatically by `npm test`.
 
 © 2026 Gothwad Tech
+
+## Session startup performance
+
+The homepage opens the dashboard shell directly; only a confirmed anonymous
+session redirects to Sign in. Identity discovery starts independently of the
+larger dashboard module tree, and `/api/auth/me` validates browser accounts once
+per request with concurrent slot checks and live D1 revocation checks.
+
+See [Session startup performance](docs/SESSION_STARTUP_PERFORMANCE.md) for the
+root cause, regression coverage, deployment requirements, and remaining Mail /
+Store loading gates. These changes require both Pages and Worker deployment.
+
+
+Standalone follow-up implementation prompts:
+[Mail startup](docs/MAIL_STARTUP_PERFORMANCE_PROMPT.md),
+[Store / Console startup](docs/STORE_STARTUP_PERFORMANCE_PROMPT.md), and
+[Drive repair](docs/DRIVE_STARTUP_REPAIR_PROMPT.md).
+The [Drive audit](docs/DRIVE_STARTUP_AUDIT.md) distinguishes reproduced local
+failures from production checks that remain unverified.
+
+
+## Universal Account Menu
+
+Use **Universal Account Menu** (or **Account Switcher**) to refer to the shared
+profile popup shown across apps. Its source is `web/widget/`.
+
+To review its design without signing in or touching real accounts:
+
+```sh
+npm run preview:menu
+```
+
+Open the live preview on port 3010. It uses the actual widget with synthetic
+accounts, light/dark appearance, and 1/3/6-account controls. Close the menu to
+change preview controls. Preview files live in `tools/widget-preview/`, outside
+the production `web/` deployment. Review and approve before deploying changes.

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Universal Account Menu — Design Preview</title>
+  <link rel="icon" href="/favicon.ico" />
+  <link rel="stylesheet" href="/preview.css" />
+  <script type="module" src="/preview.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/" aria-label="Gothwad preview home"><img src="/icon-192.png" width="32" height="32" alt="" /><span>Gothwad<span class="wordmark-suffix"> / Accounts</span></span></a>
+    <div class="header-end"><span class="preview-tag">DESIGN PREVIEW</span><button id="avatar-trigger" aria-label="Open Universal Account Menu">AS</button></div>
+  </header>
+  <main>
+    <section class="intro">
+      <span class="eyebrow"><span class="live-dot"></span> THE SHARED ACCOUNT EXPERIENCE</span>
+      <h1>One menu.<br /><span>Every app.</span></h1>
+      <p class="description">A quieter home for all your accounts. Equal rows, everything visible, and your Gothwad identity at the center.</p>
+      <div class="controls">
+        <div class="control-label">APPEARANCE</div>
+        <div class="segmented" aria-label="Preview appearance"><button data-theme="dark" aria-pressed="true">Dark</button><button data-theme="light" aria-pressed="false">Light</button></div>
+        <div class="control-label">SIGNED-IN ACCOUNTS</div>
+        <div class="segmented" aria-label="Number of sample accounts"><button data-count="1" aria-pressed="false">1 account</button><button data-count="3" aria-pressed="true">3 accounts</button><button data-count="6" aria-pressed="false">6 accounts</button></div>
+        <label class="control-label" for="host-app">HOST APPLICATION</label>
+        <select id="host-app"><option value="accounts">Accounts</option><option value="mail">Mail</option><option value="store">Kiwi Store</option><option value="drive">Drive</option></select>
+      </div>
+      <button class="open-button" id="open-menu">Open account menu <span aria-hidden="true">↗</span></button>
+      <p class="preview-note">Close the menu to change the preview controls. Sample data only; no real account is modified.</p>
+    </section>
+    <aside class="design-note"><span>01 / UNIVERSAL ACCOUNT MENU</span><p>The real shared widget,<br />not a separate mockup.</p></aside>
+  </main>
+  <div class="preview-status" role="status" id="status">Select an account to preview switching.</div>
+</body>
+</html>

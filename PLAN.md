@@ -25,3 +25,12 @@
 | **Step 3** | Connect `gothwad-accounts-db` on Cloudflare Dashboard (`docs/SETUP.md`) | 🔜 Owner Action |
 | **Step 4** | **`Gothwad Mail` (`GothwadTech/mail`) 100% Cloudflare D1 Migration + `500`-Email Smart Retention & User Settings Toggle** | 🔜 Next Repo Session |
 | **Step 5** | Connect `PlusTube`, `Indogram`, `GrixChat` (on Supabase) seamlessly with `"Sign in with Gothwad"` SSO | 📋 Planned |
+
+
+## Session startup follow-up — 2026-10-24
+
+Accounts startup now has a prepared root-routing and request-waterfall fix.
+Review and deploy both Pages and Worker, then measure production startup rather
+than promising a fixed latency. Mail optional metadata and Store account-content
+hydration must be decoupled from identity readiness in their own repositories.
+See [the performance audit](docs/SESSION_STARTUP_PERFORMANCE.md).

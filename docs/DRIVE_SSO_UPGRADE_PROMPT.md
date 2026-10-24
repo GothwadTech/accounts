@@ -1,5 +1,11 @@
 # 🚀 Master Prompt for `GothwadTech/drive` — Gothwad Drive v4.0 (Silent `.gothwadtech.com` SSO + Universal Google Account Switcher + AES-256-GCM Encrypted Cloudflare D1 Cross-Device Vault + `<= 500` Line Modular Upgrade)
 
+> **2026-10-24 follow-up:** This original upgrade brief is historical. For current
+> startup, vault-recovery, and account-isolation repairs, use
+> [`DRIVE_STARTUP_REPAIR_PROMPT.md`](DRIVE_STARTUP_REPAIR_PROMPT.md) and review
+> [`DRIVE_STARTUP_AUDIT.md`](DRIVE_STARTUP_AUDIT.md). Do not rerun the original
+> migration or replace encryption keys blindly.
+
 You are an autonomous Principal Distributed-Systems, Security & Full-Stack Architect working inside **`GothwadTech/drive`**.
 
 ---
