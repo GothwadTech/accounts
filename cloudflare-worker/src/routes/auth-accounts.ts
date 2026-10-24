@@ -25,7 +25,8 @@ export async function handleAuthAccountsRoute(
 ): Promise<Response | null> {
   // ----------------------------------------------------------------- /auth/me
   if (route === '/auth/me' && request.method === 'GET') {
-    const session = await resolveSession(request, db, env);
+    const inspected = await inspectBrowserAccounts(request, db, env);
+    const session = await resolveSession(request, db, env, inspected);
     if (!session.ok || !session.authUser) {
       return withCors(
         json(
@@ -48,7 +49,6 @@ export async function handleAuthAccountsRoute(
 
     // Bundle live multi-account switcher metadata right inside `/auth/me` so `/u/<n>/me`
     // boots with 1 single request instead of 2 sequential D1 calls!
-    const inspected = await inspectBrowserAccounts(request, db, env);
     for (const c of inspected.cookiesToSet) cookieSet.add(c);
 
     const resolvedSlot =

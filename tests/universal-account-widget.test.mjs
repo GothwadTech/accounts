@@ -87,7 +87,7 @@ test('Multi-account D1 summaries return real avatarUrl + avatar_url + name for A
   assert.equal(swData.accounts[2].name, 'Gothwad Tech');
   assert.equal(swData.accounts[2].avatarUrl, 'https://accounts.gothwadtech.com/api/avatars/u3.webp');
 
-  // Verify Universal Sheet HTML renders exact Google screenshot structure across all 3 states
+  // Verify Universal Account Menu renders uniform, always-visible account rows
   const expandedHtml = buildAccountSheetHtml(
     {
       user: swData.user,
@@ -104,12 +104,12 @@ test('Multi-account D1 summaries return real avatarUrl + avatar_url + name for A
     },
   );
 
-  assert.match(expandedHtml, /data-gw-action="edit-avatar"/, 'Active avatar must include edit pencil badge');
+  assert.doesNotMatch(expandedHtml, /data-gw-action="edit-avatar"/, 'Avatar editing is not shown in the shared menu');
   assert.match(expandedHtml, /https:\/\/accounts\.gothwadtech\.com\/api\/avatars\/u3\.webp/, 'Secondary account must display real avatarUrl photo');
   assert.match(expandedHtml, />PG<\/span>/, 'Avatarless secondary account must render crisp monogram circle');
   assert.match(expandedHtml, /<span class="gw-badge">5<\/span>/, 'Unread badge pill must render cleanly');
   assert.match(expandedHtml, /Add another account/);
-  assert.match(expandedHtml, /Manage accounts/);
+  assert.doesNotMatch(expandedHtml, /Manage accounts/);
   assert.match(expandedHtml, /Manage your Gothwad Account/);
   assert.match(expandedHtml, /Privacy policy/);
   assert.match(expandedHtml, /Terms of Service/);
@@ -118,8 +118,8 @@ test('Multi-account D1 summaries return real avatarUrl + avatar_url + name for A
     { user: swData.user, accounts: swData.accounts, activeId: swData.activeId, authuser: 0, collapsed: true },
     { accountsWebOrigin: 'https://accounts.gothwadtech.com' },
   );
-  assert.match(collapsedHtml, /gw-hero is-collapsed/);
-  assert.doesNotMatch(collapsedHtml, /Add another account/, 'Collapsed hero hides account list cleanly');
+  assert.doesNotMatch(collapsedHtml, /gw-hero|toggle-collapse/);
+  assert.match(collapsedHtml, /Add another account/, 'Legacy collapsed state cannot hide the account list');
 
   const manageHtml = buildAccountSheetHtml(
     { user: swData.user, accounts: swData.accounts, activeId: swData.activeId, authuser: 0, manageMode: true },

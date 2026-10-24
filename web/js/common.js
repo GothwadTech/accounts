@@ -4,10 +4,9 @@
  * =============================================================================
  */
 
-import { api, clearTokens } from './api.js';
+import { clearTokens } from './api.js';
 import {
   fetchAccounts,
-  normalizeAccount,
   switchToAccount,
   signOutAccount,
   signOutAllAccounts,
@@ -16,6 +15,8 @@ import {
   safeNextUrl,
   addAccountHref,
 } from './accounts.js';
+import { getSession } from './session.js';
+export { getSession } from './session.js';
 import { isInternalAccountHubPath, mePathForAuthuser } from './authuser.js';
 
 export function toast(message, type = 'success') {
@@ -73,23 +74,6 @@ export function setBusy(btn, busy, busyText = 'Please wait...') {
   }
 }
 
-export async function getSession() {
-  const res = await api.get('/auth/me');
-  if (res.ok && res.data && res.data.authenticated) {
-    const accounts = Array.isArray(res.data.accounts)
-      ? res.data.accounts.map((a, idx) => normalizeAccount(a, idx))
-      : [];
-    return {
-      authenticated: true,
-      user: res.data.user,
-      activeId: res.data.activeId || null,
-      authuser: Number.isInteger(res.data.authuser) ? res.data.authuser : 0,
-      accounts,
-    };
-  }
-  return { authenticated: false, user: null, activeId: null, authuser: 0, accounts: [] };
-}
-
 export async function requireAuth() {
   const session = await getSession();
   if (!session.authenticated) {
@@ -134,7 +118,7 @@ export async function redirectIfAuthed() {
     return { authenticated: false, user: null, showChooser: false };
   }
 
-  const session = await getSession();
+  const session = await getSession().catch(() => ({ authenticated: false, unavailable: true }));
   if (session.authenticated) {
     const fallback = mePathForAuthuser(session.authuser);
     location.href = isInternalAccountHubPath(next) || !next ? fallback : safeNextUrl(next, fallback);

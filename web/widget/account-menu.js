@@ -1,6 +1,6 @@
 /**
  * =============================================================================
- * UNIVERSAL GOOGLE-STYLE ACCOUNT WIDGET & SILENT SSO SDK
+ * UNIVERSAL ACCOUNT MENU & SILENT SSO SDK
  * Hosted once at `https://accounts.<domain>/widget/account-menu.js`
  * Used across Accounts (`/me`), Mail, Kiwi Store, Console, Admin, Notes & Drive.
  * =============================================================================
@@ -53,7 +53,7 @@ class SheetOverlayController {
     this.hostEl = null;
     this.shadow = null;
     this.layerEl = null;
-    this.state = { user: null, accounts: [], activeId: null, authuser: 0, collapsed: false, manageMode: false };
+    this.state = { user: null, accounts: [], activeId: null, authuser: 0 };
     this.opts = {};
     this._onKeyDown = (e) => { if (e.key === 'Escape') this.close(); };
   }
@@ -82,7 +82,7 @@ class SheetOverlayController {
   }
 
   open(nextState = {}, nextOpts = {}) {
-    this.state = { ...this.state, ...nextState, collapsed: false, manageMode: false };
+    this.state = { ...this.state, ...nextState };
     this.opts = { ...nextOpts };
     this.ensureMounted();
     this.render();
@@ -133,25 +133,6 @@ class SheetOverlayController {
         e.stopPropagation();
         this.close();
       });
-    });
-
-    this.layerEl.querySelector('[data-gw-action="toggle-collapse"]')?.addEventListener('click', () => {
-      this.state.collapsed = !this.state.collapsed;
-      if (this.state.collapsed) this.state.manageMode = false;
-      this.render();
-    });
-
-    this.layerEl.querySelector('[data-gw-action="toggle-manage"]')?.addEventListener('click', () => {
-      this.state.manageMode = !this.state.manageMode;
-      this.render();
-    });
-
-    this.layerEl.querySelector('[data-gw-action="edit-avatar"]')?.addEventListener('click', (e) => {
-      if (typeof this.opts.onEditAvatar === 'function') {
-        e.preventDefault();
-        this.close();
-        this.opts.onEditAvatar();
-      }
     });
 
     this.layerEl.querySelector('[data-gw-action="manage-account"]')?.addEventListener('click', (e) => {

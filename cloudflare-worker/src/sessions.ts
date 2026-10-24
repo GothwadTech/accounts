@@ -147,18 +147,15 @@ export async function validateCredentialsAgainstDb(
       const userId = String(payload.sub);
       const tokenSid = payload.sid ? String(payload.sid) : null;
       const verified = await authQuery(async () => {
-        const userRow = await db
-          .prepare('SELECT id, username FROM users WHERE id = ? LIMIT 1')
-          .bind(userId)
-          .first();
+        // One live DB read still checks both user existence and session revocation.
+        const userRow = tokenSid
+          ? await db.prepare(
+              `SELECT u.id, u.username FROM users u
+               JOIN user_sessions s ON s.user_id = u.id
+               WHERE u.id = ? AND s.id = ? LIMIT 1`,
+            ).bind(userId, tokenSid).first()
+          : await db.prepare('SELECT id, username FROM users WHERE id = ? LIMIT 1').bind(userId).first();
         if (!userRow?.username) return null;
-        if (tokenSid) {
-          const sessRow = await db
-            .prepare('SELECT id FROM user_sessions WHERE id = ? AND user_id = ? LIMIT 1')
-            .bind(tokenSid, userId)
-            .first();
-          if (!sessRow) return null;
-        }
         return {
           id: userId,
           username: String(userRow.username),
@@ -243,6 +240,7 @@ export async function resolveSession(
   request: Request,
   db: D1Database,
   env: Env,
+  browserState?: Awaited<ReturnType<typeof inspectBrowserAccounts>>,
 ): Promise<{
   ok: boolean;
   accessToken?: string;
@@ -255,6 +253,40 @@ export async function resolveSession(
   const authHeader = request.headers.get('Authorization') || '';
   const headerAccess = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
   const headerRefresh = (request.headers.get('X-Gothwad-Refresh') || '').trim();
+
+  if (!headerAccess && !headerRefresh && browserState) {
+    // /auth/me already inspected every slot. Reuse that request-local result;
+    // never validate or rotate the same credentials twice during bootstrap.
+    const slots = browserState.validSlots;
+    if (slots.length === 0) return { ok: false };
+    const selector = extractRequestedAuthuser(request);
+    const active = getCookie(request, ACTIVE_COOKIE_NAME);
+    const chosen = selector !== null
+      ? selectSlotBySelector(slots, selector, env) || slots[0]
+      : slots.find((s) => s.slot === active) || pickMostRecentSlot(slots);
+    const cookies = [...browserState.cookiesToSet];
+    const healed = selector === null && chosen.slot !== active;
+    if (healed) cookies.push(makeActiveCookie(request, env, chosen.slot));
+    if (selector === null && (chosen.rotated || healed)) {
+      cookies.push(...sessionCookies(request, env, {
+        access_token: chosen.creds.accessToken,
+        refresh_token: chosen.creds.refreshToken,
+        session_id: chosen.creds.sessionId,
+        remember: chosen.creds.remember,
+      }));
+    }
+    return {
+      ok: true,
+      slot: chosen.slot,
+      authuser: slots.indexOf(chosen),
+      accessToken: chosen.creds.accessToken,
+      authUser: { id: chosen.userId, username: chosen.username, sessionId: chosen.creds.sessionId || null },
+      newCookies: cookies,
+      ...(selector === null && chosen.rotated ? { newTokens: {
+        access_token: chosen.creds.accessToken, refresh_token: chosen.creds.refreshToken,
+      } } : {}),
+    };
+  }
 
   if (!headerAccess && !headerRefresh) {
     const requestedSelector = extractRequestedAuthuser(request);

@@ -1,7 +1,7 @@
 /**
  * =============================================================================
  * UNIVERSAL ACCOUNT WIDGET STYLES (`Shadow DOM` Encapsulated — Light & Dark)
- * Material 3 Expressive Segmented Stack + Responsive Sheet/Popover
+ * Uniform Account Rows + Responsive Sheet/Popover
  * =============================================================================
  */
 
@@ -83,8 +83,6 @@ export const ACCOUNT_MENU_CSS = `
   --gw-card-hover: #f5f8fc;
   --gw-text: #1f1f1f;
   --gw-subtext: #444746;
-  --gw-chevron-bg: #e6edf5;
-  --gw-plus-bg: #e8f0fe;
   --gw-accent: #0b57d0;
   --gw-danger: #b3261e;
   --gw-danger-bg: #fceeee;
@@ -98,13 +96,11 @@ export const ACCOUNT_MENU_CSS = `
 }
 
 .gw-layer[data-theme="dark"] {
-  --gw-surface: #1b1f26;
-  --gw-card: #282c34;
-  --gw-card-hover: #323741;
+  --gw-surface: #212121;
+  --gw-card: #2c2c2c;
+  --gw-card-hover: #363636;
   --gw-text: #e3e3e3;
   --gw-subtext: #c4c7c5;
-  --gw-chevron-bg: #363c48;
-  --gw-plus-bg: #243856;
   --gw-accent: #8ab4f8;
   --gw-danger: #f28b82;
   --gw-danger-bg: #3c2525;
@@ -140,7 +136,7 @@ export const ACCOUNT_MENU_CSS = `
     width: 396px;
     max-width: calc(100vw - 24px);
     max-height: calc(100dvh - 74px);
-    min-height: 420px;
+    min-height: 0;
     border-radius: 28px;
     border: 1px solid var(--gw-border);
     box-shadow: var(--gw-shadow);
@@ -155,9 +151,10 @@ export const ACCOUNT_MENU_CSS = `
 .gw-topbar {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
+  gap: 12px;
   min-height: 40px;
-  margin-bottom: 4px;
+  margin-bottom: 10px;
 }
 
 .gw-close {
@@ -175,92 +172,61 @@ export const ACCOUNT_MENU_CSS = `
 .gw-close:hover { background: rgba(127, 127, 127, 0.14); }
 .gw-close:focus-visible { outline: 2px solid var(--gw-accent); }
 
-/* Material 3 Expressive Segmented Stack (24px outer, 4px inner, 2px gap) */
+/* Equal account rows; only the outermost corners form the rounded group. */
+.gw-heading {
+  margin: 0;
+  padding-left: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0.1px;
+}
 .gw-stack {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  flex-shrink: 0;
 }
-
-.gw-hero {
+.gw-account-row {
   display: flex;
   align-items: center;
-  gap: 16px;
   background: var(--gw-card);
-  padding: 18px 16px 18px 20px;
-  border-radius: 24px 24px 4px 4px;
-  transition: border-radius 0.16s ease;
+  border-radius: 4px;
+  overflow: hidden;
 }
-.gw-hero.is-collapsed {
-  border-radius: 24px;
-}
-
-.gw-hero-avatar-wrap {
-  position: relative;
-  width: 68px;
-  height: 68px;
-  flex-shrink: 0;
-}
-
-.gw-edit-badge {
-  position: absolute;
-  right: -2px;
-  bottom: -2px;
-  width: 26px;
-  height: 26px;
-  display: grid;
-  place-items: center;
-  border-radius: 999px;
-  border: 1px solid var(--gw-border);
-  background: var(--gw-card);
-  color: var(--gw-text);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
-  cursor: pointer;
-  padding: 0;
-  text-decoration: none;
-  transition: transform 0.14s ease, background 0.14s ease;
-}
-.gw-edit-badge:hover { background: var(--gw-card-hover); transform: scale(1.06); }
-
-.gw-hero-meta {
+.gw-account-row:first-child { border-radius: 24px 24px 4px 4px; }
+.gw-account-row:last-child { border-radius: 4px 4px 24px 24px; }
+.gw-account-row:only-child { border-radius: 24px; }
+.gw-account-row .gw-account-link {
   flex: 1;
   min-width: 0;
+  min-height: 68px;
+  padding: 12px 8px 12px 18px;
+  gap: 12px;
+  background: transparent;
 }
-.gw-hero-name {
-  font-size: 20px;
-  font-weight: 500;
-  line-height: 1.25;
-  color: var(--gw-text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.gw-account-link:hover { background: var(--gw-card-hover); }
+.gw-current-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--gw-subtext);
+  flex-shrink: 0;
 }
-.gw-hero-email {
-  margin-top: 2px;
-  font-size: 13.5px;
-  color: var(--gw-subtext);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.gw-chevron-btn {
-  display: inline-grid;
+.gw-slot-signout {
+  display: grid;
   place-items: center;
-  width: 30px;
-  height: 44px;
+  width: 36px;
+  height: 40px;
+  margin-right: 8px;
   padding: 0;
   border: none;
-  border-radius: 999px;
-  background: var(--gw-chevron-bg);
-  color: var(--gw-text);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--gw-subtext);
   cursor: pointer;
   flex-shrink: 0;
-  transition: background 0.15s ease;
 }
-.gw-chevron-btn:hover { filter: brightness(0.96); }
-.gw-chevron-icon { transition: transform 0.18s ease; }
-.gw-chevron-icon.is-collapsed { transform: rotate(180deg); }
+.gw-slot-signout:hover { background: var(--gw-danger-bg); color: var(--gw-danger); }
 
 .gw-row {
   display: flex;
@@ -284,23 +250,6 @@ export const ACCOUNT_MENU_CSS = `
 .gw-row:hover { background: var(--gw-card-hover); }
 .gw-row:focus-visible { outline: 2px solid var(--gw-accent); outline-offset: -2px; }
 .gw-row.is-last { border-radius: 4px 4px 24px 24px; }
-
-.gw-icon-slot {
-  width: 40px;
-  height: 40px;
-  display: inline-grid;
-  place-items: center;
-  flex-shrink: 0;
-}
-.gw-plus-circle {
-  width: 36px;
-  height: 36px;
-  border-radius: 999px;
-  background: var(--gw-plus-bg);
-  color: var(--gw-accent);
-  display: grid;
-  place-items: center;
-}
 
 .gw-acct-meta {
   flex: 1;
@@ -335,19 +284,21 @@ export const ACCOUNT_MENU_CSS = `
   flex-shrink: 0;
 }
 
-.gw-mini-signout {
-  padding: 6px 12px;
-  border-radius: 999px;
-  border: 1px solid var(--gw-border);
-  background: var(--gw-danger-bg);
-  color: var(--gw-danger);
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
+.gw-primary-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
   flex-shrink: 0;
 }
-.gw-mini-signout:hover { filter: brightness(0.95); }
+.gw-action-icon {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.gw-brand-logo { display: block; flex-shrink: 0; border-radius: 50%; }
 
 .gw-manage-pill {
   display: flex;
@@ -355,9 +306,9 @@ export const ACCOUNT_MENU_CSS = `
   gap: 16px;
   width: 100%;
   min-height: 56px;
-  margin-top: 14px;
-  padding: 0 22px;
-  border: none;
+  margin: 0;
+  padding: 12px 22px;
+  border: 1px solid var(--gw-border);
   border-radius: 999px;
   background: var(--gw-card);
   color: var(--gw-text);
@@ -368,6 +319,23 @@ export const ACCOUNT_MENU_CSS = `
   transition: background 0.14s ease;
 }
 .gw-manage-pill:hover { background: var(--gw-card-hover); }
+.gw-signout-all {
+  align-self: center;
+  margin: 14px 0 0;
+  padding: 9px 14px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--gw-subtext);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.gw-signout-all:hover { background: var(--gw-danger-bg); color: var(--gw-danger); }
+.gw-slot-signout:focus-visible, .gw-manage-pill:focus-visible, .gw-signout-all:focus-visible {
+  outline: 2px solid var(--gw-accent);
+  outline-offset: -3px;
+}
 
 .gw-extra-group {
   display: flex;
@@ -381,7 +349,7 @@ export const ACCOUNT_MENU_CSS = `
 
 .gw-footer {
   margin-top: auto;
-  padding-top: 26px;
+  padding-top: 16px;
   display: flex;
   align-items: center;
   justify-content: center;

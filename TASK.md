@@ -7,7 +7,7 @@
 >
 > Engineering guide: [`AGENTS.md`](AGENTS.md) · Architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · Session archive (`1–30`): [`docs/TASK_HISTORY.md`](docs/TASK_HISTORY.md)
 
-**Last updated:** 2026-10-22 (Session 35 — Universal Google-Style Shadow-DOM Account Widget `web/widget/account-menu.js` + `X-Gothwad-Authuser` CORS fix + 100% Pure-English Repository Overhaul & Automated Hygiene Gate — **82/82 tests green**)
+**Last updated:** 2026-10-24 (Session 39 — Pull request preparation)
 
 ---
 
@@ -23,11 +23,49 @@
 | 2.8 | **Universal Google-Style Shadow-DOM Account Menu (`v2.4`) + 100% Pure-English Codebase & Hygiene Gate** | ✅ **DONE (2026-10-22)** |
 | 3 | Roll out central `account-menu.js` + automatic silent SSO in `GothwadTech/store` & `GothwadTech/mail` | 🔜 NEXT |
 
-**Current state in one line:** **v2.4 — Universal Shadow-DOM Google Account Switcher (`web/widget/account-menu.js`), Cross-Subdomain `X-Gothwad-Authuser` Silent SSO CORS, 100% Pure-English UI/Code/Docs, `100%` of files `<= 500` lines, and `82/82` automated tests passing.**
+**Current state in one line:** Startup fixes and the Universal Account Menu redesign are prepared on this branch, not deployed. **105/105 tests pass.** An interactive, synthetic-data preview runs via `npm run preview:menu` for design approval.
 
 ---
 
-## ✅ DONE (Newest First — Sessions 31 to 35)
+## ✅ DONE (Newest First — Sessions 31 to 39)
+
+### Session 39 — 2026-10-24 — Pull Request Preparation
+- User requested a pull request for all changes on `arena/d34d0d2c-accounts`.
+- Reverified `npm run build`, **105/105 tests**, and `git diff --check` before committing and pushing this branch.
+- PR scope includes startup fixes, Universal Account Menu redesign and local preview, regression tests, and Mail / Store / Drive audit and implementation prompts.
+- This operation opens the changes for review only; no merge or production deployment is requested.
+
+
+### Session 38 — 2026-10-24 — Universal Account Menu Redesign and Live Preview
+- Established the shared component name: **Universal Account Menu** (also Account Switcher), source `web/widget/`.
+- Changed dark surface to `#212121` and neutral account cards; every account uses the same row/avatar size with rounded first/last corners and no collapse or avatar-edit controls.
+- Added the aligned Gothwad Accounts heading; replaced the Google mark with the existing Gothwad logo.
+- Removed Manage accounts; moved Add another account into a standalone pill matching Manage your Gothwad Account.
+- Kept per-slot sign-out as sibling icon buttons (no nested interactive elements), all-account sign-out, badges, extra actions, and existing callback contracts.
+- Added a local-only interactive preview using the real widget, synthetic 1/3/6-account fixtures, themes, and host-app controls. Start with `npm run preview:menu` (port 3010).
+- Verified `npm run build`, **105/105 tests**, and real Chromium interaction/layout checks: equal 68px rows, switching, sign-out, add account, themes, Escape, and 390px mobile viewport without horizontal overflow.
+- No production deployment or merge: await the user's design review.
+
+
+### Session 37 — 2026-10-24 — App Startup Prompts and Drive Audit
+- Created independent ready-to-copy prompts for Mail, Store / Console / Admin, and Drive, with fresh-code audit, security, account isolation, failure-path tests, and deployment requirements.
+- Rechecked main commits: Mail `84aeab0`, Store `a0ed0ba`, Drive `1e8c397`. These repositories were audited read-only; no remote app source changes or deployments were made.
+- Drive locally passes 9 tests and a build; lint exits 0 with 33 warnings. Build warns about browser-externalized crypto and a large main bundle.
+- Reproduced Drive frontend misclassification: identity 503 becomes signed-out; vault 503 or HTML becomes missing vault. Documented sequential boot, unbounded operations, migration/save, sign-out deletion, and identity-scoping concerns.
+- Corrected earlier operational advice: current Drive source reads `DRIVE_ENCRYPTION_KEY`, not `VAULT_MASTER_KEY`. Missing Worker GitHub checks do not prove an absent Worker; production signed-in checks remain unverified.
+- Audit: [`docs/DRIVE_STARTUP_AUDIT.md`](docs/DRIVE_STARTUP_AUDIT.md). Prompts: [`Mail`](docs/MAIL_STARTUP_PERFORMANCE_PROMPT.md), [`Store`](docs/STORE_STARTUP_PERFORMANCE_PROMPT.md), [`Drive`](docs/DRIVE_STARTUP_REPAIR_PROMPT.md).
+
+
+### Session 36 — 2026-10-24 — Session Startup and False Sign-in Redirect Fix
+- Removed the root 1.2-second false-anonymous timer; Pages and local dev open the dashboard shell directly.
+- Added early memory-only session discovery with single-flight sharing and selector isolation.
+- Reused one browser inspection in `/auth/me`, validated slots concurrently in stable order, and joined live user/session validation reads.
+- Removed redundant browser refresh after `/auth/me` 401; network/server failures preserve the dashboard retry state.
+- Marked auth responses `no-store`; added client and real-SQLite startup regression tests.
+- Read-only Mail / Store audit found additional application-specific loading gates; see [`docs/SESSION_STARTUP_PERFORMANCE.md`](docs/SESSION_STARTUP_PERFORMANCE.md) and [`HANDOVER.md`](HANDOVER.md).
+- Verified: `npm run build`, `npm test` (**98/98 passing**), strict Worker TypeScript checks, Wrangler deployment dry-run, and `git diff --check`.
+- Deployment remains pending: both Pages and Worker must deploy. Production latency has not been measured.
+
 
 ### Session 35 — 2026-10-22 — 100% Pure-English Repository Overhaul + Permanent Automated Language Gate
 - Audited every single `.html`, `.js`, `.mjs`, `.ts`, `.css`, `.sql`, `.toml`, and `.md` file across the repository and converted **all 39 previously mixed Hinglish files** (`web/me/index.html`, `web/me/js/dialogs.js`, `web/me/js/dialogs-security.js`, `web/signin/js/signin.js`, `web/signin/js/modules/forgot-password.js`, all `web/css/*.css` & `web/**` comments, `sql/*`, `tools/*`, `cloudflare-worker/wrangler.toml`, `AGENTS.md`, `README.md`, `ROADMAP.md`, `TASK.md`, and `docs/*.md`) into crisp, idiomatic Google-grade English.
@@ -52,7 +90,8 @@
 
 ## 🔜 NEXT UP
 
-1. **Merge & Deploy `GothwadTech/accounts` (`v2.4`) to `main`** → Publishes `/widget/account-menu.js`, `X-Gothwad-Authuser` CORS, secondary account `avatarUrl` summaries, and 100% pure-English `/signin`, `/signup`, & `/me` UI live at `accounts.gothwadtech.com` & `api.gothwadtech.com`.
-2. **Apply Standalone Prompts in `GothwadTech/store` & `GothwadTech/mail`:**
-   - **Store:** [`docs/STORE_UNIVERSAL_ACCOUNT_MENU_PROMPT.md`](docs/STORE_UNIVERSAL_ACCOUNT_MENU_PROMPT.md) (enables active `wrangler.toml` `routes`, instant automatic silent SSO with zero `"Sign in with..."` web prompts, universal Google-style account drawer, and 100% pure-English cleanup).
-   - **Mail:** [`docs/MAIL_UNIVERSAL_ACCOUNT_MENU_PROMPT.md`](docs/MAIL_UNIVERSAL_ACCOUNT_MENU_PROMPT.md) (wires the exact same central Google-style `account-menu.js` sheet + 100% pure-English cleanup).
+0. Review the live Universal Account Menu preview and wait for design approval before deploying the redesign.
+1. Review and deploy the session-startup fix to Accounts Pages and Worker.
+2. Verify existing login, signed-out, expired-token, revoked-session, multi-tab, and throttled-network flows in production; compare browser Network timings before making speed claims.
+3. Address Mail's optional quota/unread bootstrap work and Store's catalog/library/developer/admin loading gates in their own repositories. The central widget cannot change those app-specific gates.
+4. Existing migration and widget-integration prompts remain in `docs/` for reference; audit live code before applying them again.

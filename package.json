@@ -7,7 +7,8 @@
     "dev": "node --experimental-strip-types server.js",
     "build": "node tools/bundle-css.js",
     "test": "node --experimental-strip-types --test tests/*.test.mjs tools/test-oauth-*.mjs",
-    "start": "node --experimental-strip-types server.js"
+    "start": "node --experimental-strip-types server.js",
+    "preview:menu": "node tools/widget-preview/server.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

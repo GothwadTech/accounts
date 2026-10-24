@@ -79,7 +79,7 @@ const server = http.createServer(async (req, res) => {
 
   // ---------------- static files from web/ (+ Google-style `/u/<n>/me` rewrites)
   const uMatch = url.pathname.match(/^\/u\/\d+(?:\/me)?\/?$/);
-  const rel = uMatch ? 'me/index.html' : url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
+  const rel = uMatch || url.pathname === '/' ? 'me/index.html' : url.pathname.slice(1);
   const base = path.join(WEB_ROOT, rel);
 
   const candidates = [base, path.join(base, 'index.html'), `${base}.html`];

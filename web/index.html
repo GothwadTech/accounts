@@ -15,25 +15,15 @@
 </head>
 <body>
   <main class="root-splash" aria-live="polite">
-    <a class="root-splash-brand" href="/signin" aria-label="Open Gothwad Accounts sign in">
+    <a class="root-splash-brand" href="/me" aria-label="Open Gothwad Accounts">
       <img class="root-splash-logo" src="/icon-192.png" alt="" />
       <span class="sr-only">Opening Gothwad Accounts</span>
     </a>
   </main>
 
   <script type="module">
-    import { getSession } from '/js/common.js';
-
-    // Root only gives visitors a short branded hand-off. A temporary API issue
-    // must never leave them on a loading page, so it falls back to /signin.
-    const session = await Promise.race([
-      getSession().catch(() => ({ authenticated: false })),
-      new Promise((resolve) => setTimeout(() => resolve({ authenticated: false }), 1200)),
-    ]);
-
-    window.location.replace(
-      session.authenticated ? `/u/${session.authuser || 0}/me` : '/signin',
-    );
+    // Fallback for static hosts without Pages rewrites. Do not guess auth state.
+    window.location.replace('/me' + window.location.search + window.location.hash);
   </script>
 </body>
 </html>
