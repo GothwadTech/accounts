@@ -2,7 +2,10 @@
 
 ## Current change: remaining security phases, 2026-10-29
 
-Branch `arena/b5820242-accounts`; a draft security PR is being prepared at the owner's request on 2026-10-30. Production remains undeployed by this session.
+Branch `arena/b5820242-accounts`; implementation commit `120f918` is pushed and
+draft [PR #24](https://github.com/GothwadTech/accounts/pull/24) is open at the owner's
+request on 2026-10-30. No merge or deployment command was executed; external
+Cloudflare integration outcomes still require verification.
 All remaining coding phases are complete: required-UV passkeys, exact origin/proxy
 trust, cookie-only browser responses, durable OAuth revocation, and release/
 restore/incident tooling/docs. No configuration questions interrupted the work.
