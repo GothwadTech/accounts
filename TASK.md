@@ -7,7 +7,7 @@
 >
 > Engineering guide: [`AGENTS.md`](AGENTS.md) · Architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · Session archive (`1–30`): [`docs/TASK_HISTORY.md`](docs/TASK_HISTORY.md)
 
-**Last updated:** 2026-10-30 (Session 45 — Security pull request preparation and owner release gates)
+**Last updated:** 2026-10-30 (Session 49 — Requested sender merge and deployment guidance)
 
 ---
 
@@ -27,7 +27,27 @@
 
 ---
 
-## ✅ DONE (Newest First — Sessions 31 to 45)
+## ✅ DONE (Newest First — Sessions 31 to 49)
+
+### Session 49 — 2026-10-30 — Requested Sender Merge and Worker Build Guidance
+- Owner explicitly requests merging the pending configuration update. Preparing its PR from `arena/bfd51291-accounts`; no other branch is used.
+- Added a phone-dashboard Worker troubleshooting guide and corrected SETUP.md's unsupported implication that a merge necessarily deploys both Pages and Worker. Documented the compatible `cloudflare-worker` root / `main` production branch / Wrangler deploy layout without claiming these are the live settings or the failure cause.
+- The pending RESEND_FROM sender and its regression remain in scope. No API deployment fix is asserted: the latest failed Worker log and live build/routing settings remain unverified.
+- Verification: full local release gate passes with **195/195 tests**, build, strict Worker types, dry-run (951.25 KiB / 185.16 KiB gzip), both production dependency audits reporting zero known vulnerabilities, and whitespace checks.
+- **NEXT UP:** create/merge the requested PR, then inspect its independent Pages/Worker results and obtain the redacted Worker build settings/log. No live secret, DNS, or dashboard changes are authorized by this repository merge.
+
+### Session 48 — 2026-10-30 — Investigate Live MFA/Passkey Endpoint Errors
+- Owner reports Endpoint not found while opening passkey and authenticator setup on the account site. Source routes and UI paths exist for both features; missing MFA encryption configuration does not explain both routes returning 404.
+- Read-only GitHub checks confirm PR #24 is merged and the main merge revision has a successful Pages deployment. PR #24 has a failed Workers build (`23da081c-d162-439f-bd78-3ddfa8f8ebfd`); a successful post-merge Worker deployment is not confirmed from the available checks.
+- Leading hypothesis is a frontend/backend deployment mismatch or an API route targeting an older Worker. The live Worker revision, current route mapping, and exact build failure remain unverified. No direct production probing, live configuration change, redeployment, or secret rotation was performed.
+- **NEXT UP:** obtain the latest failed Accounts Worker build's redacted error log and commit/branch information from the phone dashboard, then apply the evidence-based deployment fix. Preserve the pending sender configuration changes; do not ask the owner to regenerate keys, run destructive SQL, or recreate accounts for this symptom.
+
+### Session 47 — 2026-10-30 — Persist the Owner-Selected Recovery Sender
+- Owner selected `noreply.gothwadtech.com` and requested maintaining RESEND_FROM in the repository rather than relying on a dashboard-only edit.
+- Updated Wrangler's public RESEND_FROM to `Gothwad Accounts <security@noreply.gothwadtech.com>` and added a configuration regression check derived from APP_DOMAIN. Updated the owner checklist and project handoff notes.
+- This change stays on `arena/bfd51291-accounts`. PR #24 was merged previously; older draft instructions below are historical. No new merge, deployment, DNS/provider setup, or secret change is performed in this follow-up.
+- Verification: **195/195 tests**, frontend build, strict Worker types, dry-run with the selected sender, both production dependency audits (zero known vulnerabilities), and whitespace checks pass.
+- **NEXT UP:** verify the selected sending domain in Resend, store RESEND_API_KEY privately in Cloudflare, review/release this configuration update, and prove actual recovery-email delivery. No production configuration was changed.
 
 ### Session 45 — 2026-10-30 — Draft Security PR #24 Created
 - Owner requested a pull request and a clear explanation of remaining owner actions; this does not authorize a merge or deployment.

@@ -116,3 +116,15 @@ After installing Worker dependencies, start a configured **local-only** Worker o
 port 3012 and run `npm run test:mfa:worker`. It creates synthetic local accounts
 and refuses remote targets. See the MFA document for test scope and limitations.
 Production configuration requires the final combined owner checklist and separate approval.
+
+### Recovery sender configuration
+
+The owner-selected sender is `Gothwad Accounts <security@noreply.gothwadtech.com>`,
+maintained in `cloudflare-worker/wrangler.toml` so future deployments retain it.
+Verify the sending subdomain in Resend and add RESEND_API_KEY as a private Worker
+secret before delivery tests. This repository update alone does not configure or
+verify production email.
+
+For a successful Pages deploy but missing API endpoints, see
+[Worker build troubleshooting](docs/WORKER_BUILD_TROUBLESHOOTING.md). The two Git
+deployment integrations must be verified independently.

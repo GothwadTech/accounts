@@ -1,5 +1,26 @@
 # Accounts Handover
 
+## Deployment investigation and requested merge — 2026-10-30
+
+The owner requests merging the pending sender change. A separate PR from
+`arena/bfd51291-accounts` will include that setting, its regression, and corrected
+deployment guidance. Pages and Workers Builds are independent; the old setup guide
+incorrectly implied that merging necessarily deploys both. That claim is corrected.
+[Worker troubleshooting](docs/WORKER_BUILD_TROUBLESHOOTING.md) documents compatible
+root/branch/commands and the redacted log needed to determine the real cause.
+No live dashboard setting, route, secret, or deployment command is changed here.
+The reported security endpoint 404 remains unresolved pending Worker evidence.
+
+## Current follow-up: source-controlled recovery sender, 2026-10-30
+
+On `arena/bfd51291-accounts`, Wrangler now retains the owner-selected public sender
+`Gothwad Accounts <security@noreply.gothwadtech.com>`. A configuration regression
+checks the sender against APP_DOMAIN. This prevents future reviewed deployments
+from reverting it to the old Resend test sender. No deployment or provider/DNS
+verification was performed; RESEND_API_KEY remains a private Cloudflare secret.
+PR #24 was merged previously; the older draft-state handoff below is historical.
+
+
 ## Current change: remaining security phases, 2026-10-29
 
 Branch `arena/b5820242-accounts`; implementation commit `120f918` is pushed and

@@ -1,6 +1,6 @@
 # Final Security Hardening: Owner Checklist
 
-Updated: 2026-10-29. **Coding is complete locally; nothing has been deployed or
+Updated: 2026-10-30. **Coding is complete locally; nothing has been deployed or
 configured in production.** This is the single consolidated checklist requested
 after implementation. These actions still require owner review/approval.
 
@@ -69,15 +69,17 @@ Existing code uses Resend; no provider account or paid plan was activated. Confi
 an actually available free, card-free plan. If payment/card entry is required, stop
 and reassess transport rather than enabling billing or weakening verification.
 
-1. Choose a sending subdomain such as `notify.<APP_DOMAIN>` that will not conflict
-   with Gothwad Mail inbound DNS. Add it in the provider dashboard.
+1. The owner selected `noreply.gothwadtech.com` as the sending subdomain. Add it
+   in the provider dashboard without http/https. Do not alter Gothwad Mail inbound DNS.
 2. Copy **only** the record names/types/values supplied there into Cloudflare DNS.
    Do not invent SPF/DKIM values or overwrite root MX/TXT records blindly.
 3. After verification, choose a real sender on that domain, for example
-   `Gothwad Accounts <security@notify.<APP_DOMAIN>>`.
+   `Gothwad Accounts <security@noreply.gothwadtech.com>`.
 4. Create a least-privilege sending key; set Worker secret `RESEND_API_KEY` directly
-   in Cloudflare. Set non-secret `RESEND_FROM` to the verified sender. The repository
-   default `onboarding@resend.dev` is not verified production-delivery evidence.
+   in Cloudflare. The non-secret `RESEND_FROM` is now maintained in
+   `cloudflare-worker/wrangler.toml` as the sender above; no duplicate manual value
+   is needed for the next reviewed deployment. This source change does not verify
+   the domain, configure an API key, or prove production delivery.
 5. Coordinate the setup with the approved release. From a controlled mailbox,
    request a reset and recovery-address replacement; prove actual receipt, explicit
    confirmation, expiry, replay rejection, correct recipient, and prior-address notice.
