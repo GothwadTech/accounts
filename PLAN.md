@@ -55,3 +55,13 @@ See [A–F findings](docs/ACCOUNTS_SECURITY_HARDENING.md),
 [release/incident readiness](docs/SECURITY_RELEASE_READINESS.md), and the single
 [final owner checklist](docs/SECURITY_OWNER_CHECKLIST.md). No paid infrastructure,
 Supabase application edits, or automatic release are authorized.
+
+### Sending-domain follow-up — 2026-10-30
+
+The owner selected `noreply.gothwadtech.com`. RESEND_FROM is now maintained in
+Wrangler configuration as `Gothwad Accounts <security@noreply.gothwadtech.com>`.
+Provider DNS verification, the private sending API key, reviewed deployment, and
+actual delivery verification remain pending; no dashboard-only sender edit is needed.
+
+Worker deployment follow-up: verify production branch/root/commands and the actual
+failed build log independently of Pages. See [the troubleshooting guide](docs/WORKER_BUILD_TROUBLESHOOTING.md); merging alone does not confirm API rollout.

@@ -50,8 +50,9 @@ AUTH_HUB_URL = "https://accounts.gothwadtech.com"
 # Server-to-server Worker Custom Domain (Mail Worker & Kiwi Store Worker calls)
 API_DOMAIN = "api.gothwadtech.com"
 
-# Outbound password recovery email sender (Resend free tier: 3,000/month)
-RESEND_FROM = "Gothwad Accounts <onboarding@resend.dev>"
+# Owner-selected outbound sender; verify noreply.<APP_DOMAIN> in Resend before use.
+# Keep this public value in source control so deployments retain the chosen sender.
+RESEND_FROM = "Gothwad Accounts <security@noreply.gothwadtech.com>"
 
 # ⚠️ MUST stay "false" in production! ("true" only in local `.dev.vars`)
 DEV_MODE = "false"

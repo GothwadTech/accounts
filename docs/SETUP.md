@@ -12,9 +12,11 @@
 
 ---
 
-### 🔹 Step 2: Merge Pull Request to `main` (Automatic Deploy)
-1. Click **`Merge pull request`** on GitHub to merge into `main`.
-2. Cloudflare **Workers Builds** & **Cloudflare Pages** automatically deploy both Worker **`accounts`** (`api.gothwadtech.com` + `accounts.gothwadtech.com/api/*`) and static frontend **`accounts.gothwadtech.com`** (`/signin`, `/signup`, `/me`, `/widget/account-menu.js`).
+### 🔹 Step 2: Merge and verify both deployment pipelines
+1. Merge the reviewed pull request into `main` only after its release prerequisites are reviewed.
+2. Pages and Workers Builds are **separate** Git integrations. Each deploys automatically only when its own repository, production branch, commands, and change filters are configured correctly. A successful Pages deployment is not proof of a Worker deployment.
+3. Verify the latest main revision in both deployment histories. The Worker serves the API; Pages serves `web/`. If the new UI reports missing MFA/passkey endpoints, inspect the Worker deployment and API routing.
+4. Follow [Worker build troubleshooting](WORKER_BUILD_TROUBLESHOOTING.md) for phone-dashboard inspection and the expected Worker subdirectory/commands. Do not diagnose a failed build without its error log.
 
 ---
 
