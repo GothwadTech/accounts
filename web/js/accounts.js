@@ -1,3 +1,4 @@
+import { trustedRedirectOrigin } from './trusted-origins.js';
 /**
  * =============================================================================
  * MULTI-ACCOUNT SESSIONS — Server-Side `HttpOnly` Slots (`a`..`f` / `u/0..5`)
@@ -124,19 +125,12 @@ export async function signOutAllAccounts() {
 }
 
 export function safeNextUrl(raw, fallback = '/u/0/me') {
-  if (typeof raw !== 'string' || !raw) return fallback;
+  if (typeof raw !== 'string' || !raw || /[\\\x00-\x20\x7f]/.test(raw)) return fallback;
   if (raw.startsWith('/') && !raw.startsWith('//')) return raw;
   try {
-    const u = new URL(raw);
-    const domain = GOTHWAD_CONFIG.APP_DOMAIN;
-    if (
-      u.origin === location.origin ||
-      u.hostname === domain ||
-      u.hostname.endsWith(`.${domain}`)
-    ) {
-      return raw;
-    }
-  } catch { /* invalid URL -> use fallback */ }
+    const url = new URL(raw);
+    if (trustedRedirectOrigin(url)) return url.toString();
+  } catch { /* Invalid URL: use the account dashboard. */ }
   return fallback;
 }
 

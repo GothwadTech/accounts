@@ -9,14 +9,7 @@
   <link rel="icon" href="/favicon.ico" sizes="any" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="manifest" href="/manifest.json" />
-  <script>
-    (function () {
-      try {
-        var t = localStorage.getItem('gothwad-theme');
-        document.documentElement.setAttribute('data-theme', t === 'dark' ? 'dark' : 'light');
-      } catch (e) { /* light default */ }
-    })();
-  </script>
+  <script src="/js/theme-init.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -284,14 +277,19 @@
               </span>
               <span class="msym setting-chevron">chevron_right</span>
             </button>
-            <div class="setting-row twofa-row" disabled>
+            <button type="button" class="setting-row twofa-row" id="btn-mfa-settings">
               <span class="setting-icon"><span class="msym">phonelink_lock</span></span>
               <span class="setting-main">
                 <span class="setting-label">2-Step Verification</span>
-                <span class="setting-value">Coming soon to Gothwad Accounts</span>
+                <span class="setting-value" id="sec-mfa-status">Authenticator verification</span>
               </span>
-              <span class="tag">Off</span>
-            </div>
+              <span class="tag" id="sec-mfa-badge">Off</span>
+            </button>
+            <button type="button" class="setting-row" id="btn-passkey-settings">
+              <span class="msym">key</span>
+              <div class="setting-info"><span class="setting-label">Passkeys</span><span class="setting-value">Device verification and security keys</span></div>
+              <span class="msym">chevron_right</span>
+            </button>
             <button type="button" class="setting-row" data-dialog="recovery">
               <span class="setting-icon"><span class="msym">mark_email_read</span></span>
               <span class="setting-main">
@@ -462,20 +460,7 @@
     </footer>
   </div>
   <div id="dialog-root"></div>
-  <script>
-    window.__gothwadModuleError = function () {
-      var box = document.getElementById('auth-loading');
-      if (!box || !document.getElementById('dash-root').classList.contains('hidden')) return;
-      box.innerHTML =
-        '<p style="font-weight:500;color:var(--text);">Could not finish loading your Gothwad Account.</p>' +
-        '<div style="display:flex;gap:10px;margin-top:8px;">' +
-        '<button type="button" class="btn btn-tonal" onclick="location.reload()">Reload</button>' +
-        '<a class="btn btn-primary" href="/signin?next=%2Fme">Sign in</a></div>';
-    };
-    setTimeout(function () {
-      if (!window.__GOTHWAD_ME_BOOTED) window.__gothwadModuleError();
-    }, 8000);
-  </script>
-  <script type="module" src="/me/js/me.js" onerror="window.__gothwadModuleError()"></script>
+  <script src="/js/dashboard-fallback.js"></script>
+  <script type="module" src="/me/js/me.js" id="gothwad-dashboard-module"></script>
 </body>
 </html>

@@ -1,3 +1,4 @@
+import { sessionResponse } from '../sso-policy.ts';
 /**
  * =============================================================================
  * AUTH DISCOVERY & REGISTRATION ROUTES — `/auth/check-*` & `/auth/signup`
@@ -248,7 +249,7 @@ export async function handleAuthEntryRoute(
 
     return withCors(
       json(
-        {
+        sessionResponse(request, env, {
           ok: true,
           activeId: slotResult.ok ? slotResult.slot : 'a',
           authuser: slotResult.ok ? slotResult.authuser : 0,
@@ -256,7 +257,7 @@ export async function handleAuthEntryRoute(
           access_token: accessToken,
           refresh_token: rawRefresh,
           session_id: sessionId,
-        },
+        }),
         201,
         cookies.map((c) => ['Set-Cookie', c] as [string, string]),
       ),

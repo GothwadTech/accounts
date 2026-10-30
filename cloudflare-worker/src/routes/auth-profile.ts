@@ -11,8 +11,8 @@ import {
   type Env,
   type ResponseWrapper,
 } from '../types.ts';
-import { apiError, GENDER_VALUES, isValidEmail, json, parseJsonStringArray, readJson } from '../http.ts';
-import { hashPassword, sha256Hex, verifyPassword } from '../crypto.ts';
+import { apiError, GENDER_VALUES, json, parseJsonStringArray, readJson } from '../http.ts';
+import { sha256Hex, verifyPassword } from '../crypto.ts';
 import {
   clearAllAuthCookies,
   getCookie,
@@ -26,6 +26,8 @@ import {
 } from '../cookies.ts';
 import { fetchProfile, logActivity, presentUser } from '../users.ts';
 import { resolveSession } from '../sessions.ts';
+import { authorizeActionMfa, type ActionGate } from '../mfa-proofs.ts';
+import { handlePasswordChangeRoute } from './auth-password-change.ts';
 import { inspectBrowserAccounts, pickMostRecentSlot } from '../browser-slots.ts';
 
 export async function handleAuthProfileRoute(
@@ -35,42 +37,8 @@ export async function handleAuthProfileRoute(
   route: string,
   withCors: ResponseWrapper,
 ): Promise<Response | null> {
-  // ---------------------------------------------------- /auth/change-password
-  if (route === '/auth/change-password' && request.method === 'POST') {
-    const session = await resolveSession(request, db, env);
-    if (!session.ok || !session.authUser) return withCors(apiError('Please sign in first', 401));
-
-    const body = await readJson(request);
-    const currentPassword = String(body.current_password || '');
-    const newPassword = String(body.new_password || '');
-    if (newPassword.length < 8) return withCors(apiError('New password must be at least 8 characters'));
-    if (newPassword.length > 128) return withCors(apiError('New password must be at most 128 characters'));
-
-    const userRow = await db
-      .prepare('SELECT password_hash FROM users WHERE id = ? LIMIT 1')
-      .bind(session.authUser.id)
-      .first();
-    if (!userRow || !(await verifyPassword(currentPassword, String(userRow.password_hash)))) {
-      return withCors(apiError('Current password is incorrect', 400));
-    }
-
-    const newHash = await hashPassword(newPassword);
-    await db
-      .prepare('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?')
-      .bind(newHash, new Date().toISOString(), session.authUser.id)
-      .run();
-
-    await logActivity(
-      db,
-      session.authUser.id,
-      'password_change',
-      'Password changed',
-      'Your account password was updated',
-      request,
-    );
-
-    return withCors(json({ ok: true, message: 'Password changed successfully' }));
-  }
+  const passwordChange = await handlePasswordChangeRoute(request, db, env, route, withCors);
+  if (passwordChange) return passwordChange;
 
   // ----------------------------------------------------- /auth/update-profile
   if (route === '/auth/update-profile' && request.method === 'POST') {
@@ -80,6 +48,7 @@ export async function handleAuthProfileRoute(
     const body = await readJson(request);
     const sets: string[] = [];
     const values: unknown[] = [];
+    let actionGate: ActionGate = { sql: '1', bindings: [] };
 
     if (typeof body.first_name === 'string') {
       sets.push('first_name = ?');
@@ -90,12 +59,23 @@ export async function handleAuthProfileRoute(
       values.push(body.last_name.trim());
     }
     if (typeof body.recovery_email === 'string') {
-      const rec = body.recovery_email.trim().toLowerCase();
-      if (rec && !isValidEmail(rec)) return withCors(apiError('Invalid recovery email'));
-      sets.push('recovery_email = ?');
-      values.push(rec || null);
+      return withCors(json({ error: 'verification_required', message: 'Use the verified recovery-email change flow. Your current recovery email has not changed.' }, 400));
     }
     if (typeof body.phone_number === 'string') {
+      if (!session.authUser.sessionId) return withCors(apiError('Please sign in again', 401));
+      const password = String(body.current_password || '');
+      const account = await db.prepare('SELECT password_hash FROM users WHERE id = ?')
+        .bind(session.authUser.id).first();
+      if (!password || password.length > 128 || !account || !(await verifyPassword(password, account.password_hash))) {
+        return withCors(apiError('Confirm your current password to change your phone number', 400));
+      }
+      const proofGate = await authorizeActionMfa(db, env, session.authUser.id, String(body.mfa_code || '').trim());
+      if (!proofGate) {
+        return withCors(json({ error: 'mfa_required', message: 'Enter a fresh authenticator code or unused recovery code.' }, 400));
+      }
+      actionGate = { sql: `(${proofGate.sql}) AND EXISTS (SELECT 1 FROM users u JOIN user_sessions s ON s.user_id = u.id
+        WHERE u.id = ? AND u.password_hash = ? AND s.id = ?)`,
+        bindings: [...proofGate.bindings, session.authUser.id, account.password_hash, session.authUser.sessionId] };
       sets.push('phone_number = ?');
       values.push(body.phone_number.trim() || null);
     }
@@ -132,10 +112,9 @@ export async function handleAuthProfileRoute(
     values.push(new Date().toISOString());
     values.push(session.authUser.id);
 
-    await db
-      .prepare(`UPDATE profiles SET ${sets.join(', ')} WHERE id = ?`)
-      .bind(...values)
-      .run();
+    const changed = await db.prepare(`UPDATE profiles SET ${sets.join(', ')} WHERE id = ? AND (${actionGate.sql}) RETURNING id`)
+      .bind(...values, ...actionGate.bindings).first();
+    if (!changed) return withCors(apiError('Security state changed. Verify again before retrying.', 409));
 
     await logActivity(
       db,
@@ -381,11 +360,17 @@ export async function handleAuthProfileRoute(
       return withCors(apiError('Incorrect password', 400));
     }
 
+    const proofGate = await authorizeActionMfa(db, env, userId, String(body.mfa_code || '').trim());
+    if (!proofGate) {
+      return withCors(json({ error: 'mfa_required', message: 'Enter a fresh authenticator code or unused recovery code.' }, 400));
+    }
+    const deleted = await db.prepare(`DELETE FROM users WHERE id = ? AND password_hash = ? AND (${proofGate.sql})
+      AND EXISTS (SELECT 1 FROM user_sessions WHERE id = ? AND user_id = ?) RETURNING id`)
+      .bind(userId, userRow.password_hash, ...proofGate.bindings, session.authUser.sessionId, userId).first();
+    if (!deleted) return withCors(apiError('Security state changed. Verify again before retrying.', 409));
     if (env.AVATARS_BUCKET) {
       await env.AVATARS_BUCKET.delete(`avatars/${userId}`).catch(() => undefined);
     }
-
-    await db.prepare('DELETE FROM users WHERE id = ?').bind(userId).run();
 
     const remaining = await inspectBrowserAccounts(request, db, env, { excludeSlot: session.slot });
     let deleteOutCookies: string[];

@@ -38,9 +38,11 @@ async function makeEnv(callbacks) {
     .bind(JSON.stringify(callbacks), 'kiwi-store')
     .run();
 
+  await db.prepare("INSERT INTO user_sessions (id, user_id) VALUES ('redirect-session', 'test-user')").run();
   const sessionJwt = await issueSessionAccessToken(env, {
     userId: 'test-user',
     username: 'tester',
+    sessionId: 'redirect-session',
   });
   return { env, sessionJwt };
 }
@@ -117,6 +119,7 @@ test('consent decision also requires exact registration and preserves native sta
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          Origin: env.AUTH_HUB_URL,
           Cookie: `gothwad_at=${sessionJwt}`,
         },
         body: JSON.stringify({

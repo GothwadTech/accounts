@@ -1,3 +1,6 @@
+import { oauthDecision } from './oauth-decision.ts';
+import { oauthToken } from './oauth-token.ts';
+import { currentOAuthBinding } from '../oauth-state.ts';
 /**
  * =============================================================================
  * OAUTH 2.0 PROVIDER ROUTES ("Sign in with Gothwad")
@@ -11,16 +14,10 @@ import {
   CORE_GOTHWAD_SERVICES,
   json,
   parseJsonStringArray,
-  readFormOrJson,
   readJson,
 } from '../http.ts';
 import {
-  ACCESS_TOKEN_TTL_SECONDS,
   getSigningSecret,
-  issueOAuthAccessToken,
-  OAUTH_CODE_TTL_MS,
-  randomToken,
-  REFRESH_TOKEN_TTL_MS,
   sha256Hex,
   verifyJwt,
 } from '../crypto.ts';
@@ -31,11 +28,8 @@ import {
   findOAuthClient,
   isRedirectUriAllowed,
   OAUTH_SCOPES,
-  oauthCallbackUrl,
   parseScopes,
   pkceRequestError,
-  verifyClientSecret,
-  verifyPkce,
 } from '../oauth-helpers.ts';
 
 export async function handleOAuthRoute(
@@ -98,259 +92,10 @@ export async function handleOAuthRoute(
   }
 
   if ((route === '/oauth/decision' || route === '/oauth/authorize/decision') && request.method === 'POST') {
-    const session = await oauthQuery(() => resolveSession(request, db, env));
-    setOAuthCookies(session.newCookies || []);
-    if (!session.ok || !session.authUser) return withCors(apiError('Please sign in first', 401));
-
-    const respond = (res: Response) => withCors(res, session.newCookies);
-    const body = await readJson(request);
-    const approved = body.approved === true;
-    const clientId = String(body.client_id || '');
-    const redirectUri = String(body.redirect_uri || '');
-    const state = body.state ? String(body.state) : '';
-    const scopes = parseScopes(String(body.scope || ''));
-    const challenge = body.code_challenge ? String(body.code_challenge) : null;
-    const challengeMethod = body.code_challenge_method ? String(body.code_challenge_method) : null;
-
-    const client = await findOAuthClient(db, clientId);
-    if (!client) return respond(apiError('Unknown client_id', 400));
-    if (!isRedirectUriAllowed(env, client, redirectUri)) {
-      return respond(apiError('redirect_uri is not registered', 400));
-    }
-
-    if (!approved) {
-      const denyUrl = oauthCallbackUrl(redirectUri, { error: 'access_denied' }, state);
-      return respond(json({ redirect_url: denyUrl }));
-    }
-
-    if (scopes.length === 0) return respond(apiError('No valid scopes requested', 400));
-    const pkceError = pkceRequestError(client, challenge, challengeMethod);
-    if (pkceError) return respond(apiError(pkceError, 400));
-
-    const code = randomToken();
-    const nowIso = new Date().toISOString();
-    const expiresAt = new Date(Date.now() + OAUTH_CODE_TTL_MS).toISOString();
-    const scopesJson = JSON.stringify(scopes);
-
-    await oauthQuery(() =>
-      db
-        .prepare(
-          `INSERT INTO oauth_auth_codes (
-             code, client_id, user_id, redirect_uri, scopes,
-             code_challenge, code_challenge_method, expires_at, used, created_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
-        )
-        .bind(
-          code,
-          client.id,
-          session.authUser!.id,
-          redirectUri,
-          scopesJson,
-          challenge,
-          challenge ? challengeMethod : null,
-          expiresAt,
-          nowIso,
-        )
-        .run(),
-    );
-
-    await oauthQuery(() =>
-      db
-        .prepare(
-          `INSERT INTO app_authorizations (id, user_id, app_id, scopes, granted_at, last_used_at)
-           VALUES (?, ?, ?, ?, ?, ?)
-           ON CONFLICT (user_id, app_id) DO UPDATE SET
-             scopes = excluded.scopes,
-             last_used_at = excluded.last_used_at`,
-        )
-        .bind(crypto.randomUUID(), session.authUser!.id, client.id, scopesJson, nowIso, nowIso)
-        .run(),
-    );
-
-    await logActivity(
-      db,
-      session.authUser.id,
-      'app_authorized',
-      `App connected: ${client.name}`,
-      `Scopes: ${scopes.join(', ')}`,
-      request,
-    );
-
-    const backUrl = oauthCallbackUrl(redirectUri, { code }, state);
-    return respond(json({ redirect_url: backUrl }));
+    return oauthDecision(request, db, env, withCors, setOAuthCookies);
   }
-
   if (route === '/oauth/token' && request.method === 'POST') {
-    const body = await readFormOrJson(request);
-    const grantType = String(body.grant_type || '');
-    const clientId = String(body.client_id || '');
-    const clientSecret = body.client_secret ? String(body.client_secret) : undefined;
-
-    const client = await findOAuthClient(db, clientId);
-    if (!client) {
-      return withCors(json({ error: 'invalid_client', error_description: 'Unknown client_id' }, 401));
-    }
-    if (!(await verifyClientSecret(client, clientSecret))) {
-      return withCors(json({ error: 'invalid_client', error_description: 'Bad client_secret' }, 401));
-    }
-
-    if (grantType === 'authorization_code') {
-      const code = String(body.code || '');
-      const redirectUri = String(body.redirect_uri || '');
-      const codeVerifier = body.code_verifier ? String(body.code_verifier) : '';
-
-      const row = await oauthQuery(() =>
-        db.prepare('SELECT * FROM oauth_auth_codes WHERE code = ? LIMIT 1').bind(code).first(),
-      );
-
-      if (!row || row.used) {
-        return withCors(json({ error: 'invalid_grant', error_description: 'Code is invalid or already used' }, 400));
-      }
-      if (new Date(row.expires_at).getTime() < Date.now()) {
-        return withCors(json({ error: 'invalid_grant', error_description: 'Code expired' }, 400));
-      }
-      if (row.client_id !== client.id || row.redirect_uri !== redirectUri) {
-        return withCors(json({ error: 'invalid_grant', error_description: 'redirect_uri or client mismatch' }, 400));
-      }
-      if (
-        pkceRequestError(client, row.code_challenge ?? null, row.code_challenge_method ?? null) ||
-        !(await verifyPkce(codeVerifier, row.code_challenge ?? null, row.code_challenge_method ?? null))
-      ) {
-        return withCors(json({ error: 'invalid_grant', error_description: 'PKCE verification failed' }, 400));
-      }
-
-      const nowIso = new Date().toISOString();
-      const consumed = await oauthQuery(() =>
-        db
-          .prepare(
-            `UPDATE oauth_auth_codes
-                SET used = 1
-              WHERE code = ? AND used = 0 AND expires_at > ?
-              RETURNING user_id, scopes`,
-          )
-          .bind(code, nowIso)
-          .first(),
-      );
-      if (!consumed) {
-        return withCors(json({ error: 'invalid_grant', error_description: 'Code is invalid or already used' }, 400));
-      }
-
-      const userId = String(consumed.user_id);
-      const profile = await fetchProfile(db, userId);
-      const scopes = parseJsonStringArray(consumed.scopes);
-      const accessToken = await issueOAuthAccessToken(env, {
-        userId,
-        username: profile?.username || '',
-        clientId: client.id,
-        scopes,
-      });
-
-      const response: Record<string, any> = {
-        access_token: accessToken,
-        token_type: 'Bearer',
-        expires_in: ACCESS_TOKEN_TTL_SECONDS,
-        scope: scopes.join(' '),
-      };
-
-      if (scopes.includes('offline_access')) {
-        const rt = randomToken();
-        const rtHash = await sha256Hex(rt);
-        await oauthQuery(() =>
-          db
-            .prepare(
-              `INSERT INTO oauth_refresh_tokens (id, token_hash, user_id, client_id, scopes, expires_at, revoked, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, 0, ?)`,
-            )
-            .bind(
-              crypto.randomUUID(),
-              rtHash,
-              userId,
-              client.id,
-              JSON.stringify(scopes),
-              new Date(Date.now() + REFRESH_TOKEN_TTL_MS).toISOString(),
-              nowIso,
-            )
-            .run(),
-        );
-        response.refresh_token = rt;
-      }
-
-      return withCors(json(response));
-    }
-
-    if (grantType === 'refresh_token') {
-      const rt = String(body.refresh_token || '');
-      const hash = await sha256Hex(rt);
-
-      const row = await oauthQuery(() =>
-        db.prepare('SELECT * FROM oauth_refresh_tokens WHERE token_hash = ? LIMIT 1').bind(hash).first(),
-      );
-
-      if (!row || row.revoked || new Date(row.expires_at).getTime() < Date.now()) {
-        return withCors(json({ error: 'invalid_grant', error_description: 'Refresh token invalid or expired' }, 400));
-      }
-      if (row.client_id !== client.id) {
-        return withCors(json({ error: 'invalid_grant', error_description: 'Token was issued to another app' }, 400));
-      }
-
-      const nowIso = new Date().toISOString();
-      const consumed = await oauthQuery(() =>
-        db
-          .prepare(
-            `UPDATE oauth_refresh_tokens
-                SET revoked = 1
-              WHERE token_hash = ? AND revoked = 0 AND expires_at > ?
-              RETURNING user_id, scopes`,
-          )
-          .bind(hash, nowIso)
-          .first(),
-      );
-      if (!consumed) {
-        return withCors(json({ error: 'invalid_grant', error_description: 'Refresh token invalid or expired' }, 400));
-      }
-
-      const userId = String(consumed.user_id);
-      const scopes = parseJsonStringArray(consumed.scopes);
-      const profile = await fetchProfile(db, userId);
-      const accessToken = await issueOAuthAccessToken(env, {
-        userId,
-        username: profile?.username || '',
-        clientId: client.id,
-        scopes,
-      });
-
-      const newRt = randomToken();
-      const newRtHash = await sha256Hex(newRt);
-      await oauthQuery(() =>
-        db
-          .prepare(
-            `INSERT INTO oauth_refresh_tokens (id, token_hash, user_id, client_id, scopes, expires_at, revoked, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, 0, ?)`,
-          )
-          .bind(
-            crypto.randomUUID(),
-            newRtHash,
-            userId,
-            client.id,
-            JSON.stringify(scopes),
-            new Date(Date.now() + REFRESH_TOKEN_TTL_MS).toISOString(),
-            nowIso,
-          )
-          .run(),
-      );
-
-      return withCors(
-        json({
-          access_token: accessToken,
-          token_type: 'Bearer',
-          expires_in: ACCESS_TOKEN_TTL_SECONDS,
-          scope: scopes.join(' '),
-          refresh_token: newRt,
-        }),
-      );
-    }
-
-    return withCors(json({ error: 'unsupported_grant_type' }, 400));
+    return oauthToken(request, db, env, withCors);
   }
 
   if (route === '/oauth/userinfo' && request.method === 'GET') {
@@ -359,13 +104,21 @@ export async function handleOAuthRoute(
     if (!token) return withCors(json({ error: 'invalid_token' }, 401));
 
     const payload = await verifyJwt(token, getSigningSecret(env));
-    if (!payload || payload.token_use !== 'oauth_access') {
+    if (!payload || payload.token_use !== 'oauth_access' || payload.iss !== env.AUTH_HUB_URL ||
+      !payload.client_id || payload.aud !== payload.client_id || !Number.isFinite(payload.exp) ||
+      payload.exp <= Date.now() / 1000 || !Number.isFinite(payload.iat) || payload.iat > Date.now() / 1000 + 30) {
       return withCors(json({ error: 'invalid_token' }, 401));
     }
 
     const scopes: string[] = String(payload.scope || '')
       .split(' ')
       .filter(Boolean);
+    const tokenHash = await sha256Hex(token);
+    const binding = await oauthQuery(() => currentOAuthBinding(db, tokenHash, 'access'));
+    if (!binding || binding.user_id !== payload.sub || binding.client_id !== payload.client_id ||
+      !scopes.every(scope => parseJsonStringArray(binding.granted_scopes).includes(scope))) {
+      return withCors(json({ error: 'invalid_token' }, 401));
+    }
     const profile = await fetchProfile(db, String(payload.sub));
     if (!profile) {
       return withCors(json({ error: 'invalid_token' }, 401));
@@ -446,6 +199,8 @@ export async function handleOAuthRoute(
 
     const uid = session.authUser.id;
     await db.batch([
+      db.prepare('DELETE FROM oauth_credential_bindings WHERE user_id = ? AND client_id = ?').bind(uid, appId),
+      db.prepare('DELETE FROM oauth_auth_codes WHERE user_id = ? AND client_id = ?').bind(uid, appId),
       db.prepare('DELETE FROM app_authorizations WHERE user_id = ? AND app_id = ?').bind(uid, appId),
       db
         .prepare('UPDATE oauth_refresh_tokens SET revoked = 1 WHERE user_id = ? AND client_id = ?')

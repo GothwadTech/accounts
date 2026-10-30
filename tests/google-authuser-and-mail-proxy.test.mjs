@@ -4,7 +4,7 @@
  * =============================================================================
  * Permanently verifies:
  *   1. Exact `GothwadTech/mail` server-to-server proxy flow (`callAccounts` with
- *      NO `Origin`/`Referer`, `Accept: application/json`) switches & signs out
+ *      an explicit audited origin, `Accept: application/json`) switches & signs out
  *      cleanly (`200 OK` + full `accounts` array, ZERO `"Please sign in."` 403/401!)
  *   2. Multi-tab refresh-token race immunity + automatic healing when only the
  *      active slot expires/revokes (never wipes other signed-in accounts!)
@@ -34,7 +34,7 @@ function walkHtmlFiles(dir, out = []) {
   return out;
 }
 
-/** Reproduces exact `GothwadTech/mail/worker/src/accounts.ts` `callAccounts()` wire request. */
+/** Reproduces current `GothwadTech/mail/worker/src/accounts.ts` `callAccounts()` wire request. */
 async function callAccountsLikeMailWorker(env, jar, method, path, bodyObj = undefined) {
   const cookie = Array.from(jar.cookies.entries())
     .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
@@ -42,6 +42,7 @@ async function callAccountsLikeMailWorker(env, jar, method, path, bodyObj = unde
   const headers = {
     cookie,
     accept: 'application/json',
+    origin: 'https://mail.gothwadtech.com',
   };
   if (bodyObj !== undefined) {
     headers['content-type'] = 'application/json';
@@ -65,7 +66,7 @@ async function callAccountsLikeMailWorker(env, jar, method, path, bodyObj = unde
   return res;
 }
 
-test('Mail Worker Proxy Reproduction: server-to-server /api/auth/switch & signout (no Origin header) return 200 + full accounts list', async () => {
+test('Mail Worker Proxy Reproduction: server-to-server /api/auth/switch & signout (trusted Origin header) return 200 + full accounts list', async () => {
   const env = makeEnv();
   await seedAccount(env, { username: 'pawan', firstName: 'Pawan', lastName: 'Gothwad' });
   await seedAccount(env, { username: 'work', firstName: 'Pawan', lastName: 'Work' });

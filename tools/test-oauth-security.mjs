@@ -68,6 +68,7 @@ function wrapDbWithFaults(realDb, { failSql, raceSql } = {}) {
           return inner.raw();
         },
         _executeSync() {
+          if (failSql && failSql(sql, 'batch')) throw new Error('Simulated D1 failure');
           return inner._executeSync();
         },
       });
@@ -136,6 +137,7 @@ async function createFixture({ callback = native, secret = null, failSql, raceSq
       new Request(`${env.AUTH_HUB_URL}/api/oauth/${path}`, {
         method: body === undefined ? 'GET' : 'POST',
         headers: {
+          Origin: env.AUTH_HUB_URL,
           ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
           ...(session ? { Authorization: `Bearer ${sessionJwt}` } : {}),
           ...(cookie ? { Cookie: cookie } : {}),
@@ -252,7 +254,7 @@ test('consent state cannot close the script tag, and still round-trips unchanged
   assert.equal(res.status, 200);
   const html = await res.text();
   assert.equal(html.includes(state), false);
-  assert.equal((html.match(/<script>/g) || []).length, 1);
+  assert.equal((html.match(/<script(?:\s[^>]*)?>/g) || []).length, 1);
   const serialized = html.match(/const data = (.+);/)[1];
   assert.equal(JSON.parse(serialized).state, state);
   assert.equal(res.headers.get('Cache-Control'), 'no-store');
@@ -360,6 +362,15 @@ for (const table of ['oauth_auth_codes', 'oauth_refresh_tokens']) {
         .run();
       body = { grant_type: 'refresh_token', client_id: params.client_id, refresh_token: 'test-refresh' };
     }
+    await rawDb.prepare(`INSERT INTO app_authorizations (id, user_id, app_id, scopes)
+      VALUES ('race-grant', 'test-user', ?, '["profile","email","offline_access"]')`).bind(params.client_id).run();
+    const password = await rawDb.prepare("SELECT password_hash FROM users WHERE id = 'test-user'").first('password_hash');
+    await rawDb.prepare(`INSERT INTO oauth_credential_bindings
+      (credential_hash, kind, user_id, client_id, grant_id, password_snapshot, expires_at)
+      VALUES (?, ?, 'test-user', ?, 'race-grant', ?, ?)`)
+      .bind(sha256(table === 'oauth_auth_codes' ? 'test-code' : 'test-refresh'),
+        table === 'oauth_auth_codes' ? 'code' : 'refresh', params.client_id, password,
+        new Date(Date.now() + 60_000).toISOString()).run();
     const results = await Promise.all([call('token', { body }), call('token', { body })]);
     assert.deepEqual(results.map((r) => r.status).sort(), [200, 400]);
     assert.equal(await rawDb.prepare('SELECT COUNT(*) AS c FROM oauth_refresh_tokens WHERE revoked = 0').first('c'), 1);

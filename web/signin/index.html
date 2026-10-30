@@ -89,10 +89,18 @@
                 </div>
               </div>
 
+              <div id="step-mfa" class="hidden">
+                <label class="auth-field-label" for="signin-mfa-code">Authenticator or unused recovery code</label>
+                <input class="input" id="signin-mfa-code" type="text" autocomplete="one-time-code" maxlength="128" />
+                <p class="hint">Use a fresh six-digit authenticator code or one of your offline recovery codes.</p>
+                <button type="button" class="btn btn-text" id="signin-mfa-restart">Start again</button>
+              </div>
+
               <!-- Button 1 (Primary): Next / Sign In -->
               <button type="submit" class="btn btn-primary btn-block btn-lg auth-btn-outside" id="signin-btn">
                 <span>Next</span>
               </button>
+            <button type="button" class="btn btn-tonal" id="signin-passkey">Sign in with a passkey</button>
 
               <!-- Button 2 (Secondary, non-confusing bg): Forgot Password -->
               <button type="button" class="btn-secondary-auth" id="btn-forgot-action">

@@ -1,6 +1,68 @@
 # Accounts Handover
 
-## Current change: session startup, 2026-10-24
+## Current change: remaining security phases, 2026-10-29
+
+Branch `arena/b5820242-accounts`; implementation commit `120f918` is pushed and
+draft [PR #24](https://github.com/GothwadTech/accounts/pull/24) is open at the owner's
+request on 2026-10-30. No merge or deployment command was executed; external
+Cloudflare integration outcomes still require verification.
+All remaining coding phases are complete: required-UV passkeys, exact origin/proxy
+trust, cookie-only browser responses, durable OAuth revocation, and release/
+restore/incident tooling/docs. No configuration questions interrupted the work.
+See [release readiness](docs/SECURITY_RELEASE_READINESS.md) and the single
+[final owner checklist](docs/SECURITY_OWNER_CHECKLIST.md).
+
+Verification: **194 tests**, build, strict Worker types, default-only entrypoint
+bundle, root/Worker production audits, actual local workerd/D1 ES256/RS256 and
+OAuth flows, real Chromium virtual-passkey settings/login/removal, and synthetic
+SQLite backup/restore checks. Nothing proves production email/deployment/backups.
+
+Mail/Store current source was audited read-only; no other repository was changed.
+Existing parent-domain cookie names/domain/slots/Set-Cookie behavior remain.
+Old unbound OAuth tokens require re-consent; older headerless write proxies need
+trusted Origin or a server-only SSO_PROXY_TOKEN. Browser JSON no longer exposes
+session credentials; OAuth token response contracts remain separate.
+
+Next: owner review/approval of the consolidated checklist, real email/key/origin
+setup, protected backup/isolated restore, coordinated Worker/Pages release and
+consumer/device pilot. Do not restore the Accept-only proxy exception, silently
+switch to host-only cookies, bypass MFA, rotate encryption keys blindly, or deploy
+without authorization. Preserve unrelated Realtime assessment documentation.
+
+### Historical milestones below
+
+Older phase counts, pending-work notes, and proxy behavior record their session's
+state and are superseded by the current section and release documents above.
+
+## Previous change: security hardening, 2026-10-28
+
+Branch: `arena/b5820242-accounts`. Scope and decisions:
+[Accounts security hardening](docs/ACCOUNTS_SECURITY_HARDENING.md).
+
+Phase 1 adds persistent authentication throttling (SQL 06 and runtime bootstrap),
+parsed CORS origin checks, central rejection of explicit hostile browser mutations,
+other-device revocation on password change, static script/framing CSP, and dynamic
+OAuth script nonces. Current cookies and headerless proxy compatibility remain;
+this is not a completed SSO trust-boundary migration or full CSRF remediation.
+
+Verification: build, **142/142 tests**, strict Worker typecheck, deploy dry-run,
+and synthetic Chromium checks pass. No production deployment or new secrets.
+PR 23 was merged previously; its Worker build failed while Pages passed. Inspect
+the Cloudflare build log before diagnosing the production failure.
+
+Recovery core is also implemented: password-confirmed pending replacements,
+single-use verification bound to session/password/address state, atomic reset
+consumption/update/revocation, and current-password checks for phone changes.
+SQL 07 matches runtime bootstrap. Confirmation removes the fragment and requires
+an explicit click; generic profile updates cannot overwrite recovery addresses.
+Real email delivery remains unconfigured and successful browser email responses
+were mocked. See [owner actions](docs/SECURITY_OWNER_CHECKLIST.md).
+
+Next: owner chose authenticator MFA/recovery codes first, then passkeys. Implement
+real enforcement and audit OAuth/SSO/token consumers; no MFA is enabled yet. No other
+repositories were edited. Keep unrelated Realtime research documentation intact.
+
+## Historical change: session startup, 2026-10-24
 
 User reported an Accounts homepage -> Sign in -> profile bounce and multi-second
 identity loading in Accounts, Mail, and Store / Console.

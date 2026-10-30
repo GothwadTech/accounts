@@ -1,3 +1,5 @@
+import { authenticatedProxy } from './sso-policy.ts';
+import { isTrustedOrigin } from './origins.ts';
 /**
  * =============================================================================
  * SUBDOMAIN SSO COOKIES, MULTI-ACCOUNT SLOTS (`a`..`f`) & CSRF VERIFICATION
@@ -201,40 +203,7 @@ export function clearAllAuthCookies(request: Request, env: Env): string[] {
 }
 
 export function isTrustedGothwadOrigin(rawOrigin: string, request: Request, env: Env): boolean {
-  if (!rawOrigin || rawOrigin === 'null') return false;
-  let parsed: URL;
-  try {
-    parsed = new URL(rawOrigin);
-  } catch {
-    return false;
-  }
-
-  const normalizedOrigin = parsed.origin;
-  const extra = (env.ALLOWED_ORIGINS || '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (extra.includes(normalizedOrigin)) return true;
-
-  try {
-    if (env.AUTH_HUB_URL && new URL(env.AUTH_HUB_URL).origin === normalizedOrigin) return true;
-  } catch {
-    // Ignore malformed AUTH_HUB_URL
-  }
-
-  const appDomain = (env.APP_DOMAIN || '').trim().toLowerCase();
-  const host = parsed.hostname.toLowerCase();
-  if (appDomain && (host === appDomain || host.endsWith(`.${appDomain}`))) {
-    return parsed.protocol === 'https:' || env.DEV_MODE === 'true';
-  }
-
-  const reqHost = new URL(request.url).hostname.toLowerCase();
-  const isLoopbackReq = reqHost === 'localhost' || reqHost === '127.0.0.1';
-  if ((isLoopbackReq || env.DEV_MODE === 'true') && (host === 'localhost' || host === '127.0.0.1')) {
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
-  }
-
-  return false;
+  return isTrustedOrigin(rawOrigin, request, env, true);
 }
 
 export function verifyCsrfOrigin(
@@ -244,7 +213,7 @@ export function verifyCsrfOrigin(
 ): boolean {
   const origin = request.headers.get('Origin');
   if (origin !== null) {
-    return isTrustedGothwadOrigin(origin.trim(), request, env);
+    return isTrustedOrigin(origin.trim(), request, env);
   }
   const referer = request.headers.get('Referer');
   if (referer !== null) {
@@ -256,27 +225,21 @@ export function verifyCsrfOrigin(
     return false;
   }
 
-  // Server-to-server Gothwad Worker proxy subrequests (e.g. Gothwad Mail Worker `callAccounts`)
-  // omit browser `Origin`/`Referer` headers and send explicit `Accept: application/json`.
-  const accept = (request.headers.get('Accept') || '').trim().toLowerCase();
-  if (accept === 'application/json') {
-    return true;
-  }
-
-  return !opts.requireHeader;
+  // Accept and fetch metadata are not proof of proxy identity.
+  return authenticatedProxy(request, env) || !opts.requireHeader;
 }
 
 export function resolveSafeRedirectTarget(rawNext: string | null | undefined, request: Request, env: Env): string {
   const hubBase = (env.AUTH_HUB_URL || '').replace(/\/+$/, '');
   const fallback = `${hubBase || new URL(request.url).origin}/u/0/me`;
-  if (!rawNext || typeof rawNext !== 'string') return fallback;
+  if (!rawNext || typeof rawNext !== 'string' || /[\\\x00-\x20\x7f]/.test(rawNext)) return fallback;
 
   if (rawNext.startsWith('/') && !rawNext.startsWith('//')) {
     return `${hubBase || new URL(request.url).origin}${rawNext}`;
   }
   try {
     const candidate = new URL(rawNext);
-    if (isTrustedGothwadOrigin(candidate.origin, request, env)) {
+    if (isTrustedGothwadOrigin(candidate.toString(), request, env)) {
       return candidate.toString();
     }
   } catch {

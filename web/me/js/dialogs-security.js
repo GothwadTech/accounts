@@ -5,6 +5,7 @@
  */
 
 import { api, clearTokens } from '../../js/api.js';
+import { mfaActionField, mfaActionCode } from '../../js/mfa-ui.js';
 import { toast, escapeHtml, setBusy } from '../../js/common.js';
 import { gothwadEmail } from '../../js/config.js';
 import { initialsFor, clearAllAccounts } from '../../js/accounts.js';
@@ -93,11 +94,12 @@ export function dialogPhoto() {
 export function dialogPassword() {
   modal({
     title: 'Change password',
-    sub: 'Choose a strong password with at least 8 characters.',
+    sub: 'Choose a strong password with at least 8 characters. Other devices will be signed out.',
     body:
       field('dlg-current-pw', 'Current password', { type: 'password', autocomplete: 'current-password', eye: true }) +
       field('dlg-new-pw', 'New password (min. 8 chars)', { type: 'password', autocomplete: 'new-password', eye: true }) +
-      field('dlg-confirm-pw', 'Confirm new password', { type: 'password', autocomplete: 'new-password', eye: true }),
+      field('dlg-confirm-pw', 'Confirm new password', { type: 'password', autocomplete: 'new-password', eye: true }) +
+      mfaActionField(getDialogUser(), 'dlg-password-mfa'),
     actions: '<button type="button" class="btn btn-primary" id="dlg-save">Update password</button>',
   });
   el('dlg-current-pw').focus();
@@ -121,10 +123,10 @@ export function dialogPassword() {
     if (next !== confirm) return toast('New passwords do not match.', 'error');
     const btn = el('dlg-save');
     setBusy(btn, true, 'Updating...');
-    const res = await api.post('/auth/change-password', { current_password: current, new_password: next });
+    const res = await api.post('/auth/change-password', { current_password: current, new_password: next, mfa_code: mfaActionCode('dlg-password-mfa') });
     setBusy(btn, false);
     if (!res.ok) return toast(res.error || 'Could not change password.', 'error');
-    toast('Password changed successfully');
+    toast('Password changed. Other devices were signed out.');
     closeDialog();
     import('./tabs/security.js').then((m) => m.markPasswordChanged());
   });
@@ -142,7 +144,8 @@ export function dialogDelete() {
       <div class="alert alert-error" style="margin-bottom:16px;">
         <b>${escapeHtml(email)}</b> will be permanently deleted.
       </div>
-      ${field('dlg-delete-pw', 'Confirm your password', { type: 'password', autocomplete: 'current-password', eye: true })}`,
+      ${field('dlg-delete-pw', 'Confirm your password', { type: 'password', autocomplete: 'current-password', eye: true })}
+      ${mfaActionField(currentUser, 'dlg-delete-mfa')}`,
     actions: '<button type="button" class="btn btn-danger" id="dlg-confirm-delete">Delete my account</button>',
   });
   el('dlg-delete-pw').focus();
@@ -162,7 +165,7 @@ export function dialogDelete() {
     const btn = el('dlg-confirm-delete');
     setBusy(btn, true, 'Deleting...');
 
-    const res = await api.post('/auth/delete-account', { password: pw });
+    const res = await api.post('/auth/delete-account', { password: pw, mfa_code: mfaActionCode('dlg-delete-mfa') });
     if (!res.ok) {
       setBusy(btn, false);
       return toast(res.error || 'Could not delete account.', 'error');

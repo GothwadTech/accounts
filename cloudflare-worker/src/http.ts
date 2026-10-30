@@ -5,6 +5,7 @@
  */
 
 import type { Env } from './types.ts';
+import { isTrustedOrigin } from './origins.ts';
 
 export const RESERVED_USERNAMES = new Set([
   'admin', 'administrator', 'api', 'app', 'assets', 'mail', 'email', 'smtp', 'imap', 'pop',
@@ -96,19 +97,8 @@ export function usernameFromIdentifier(raw: string): string {
 export function buildCorsHeaders(request: Request, env: Env): Headers {
   const headers = new Headers();
   const origin = request.headers.get('Origin') || '';
-  const rootDomain = env.APP_DOMAIN;
-
-  const extra = (env.ALLOWED_ORIGINS || '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-
-  const allowed =
-    origin.endsWith(`.${rootDomain}`) ||
-    origin === `https://${rootDomain}` ||
-    origin.startsWith('http://localhost') ||
-    origin.startsWith('http://127.0.0.1') ||
-    extra.includes(origin);
+  const allowed = isTrustedOrigin(origin, request, env);
+  headers.set('Vary', 'Origin');
 
   if (allowed && origin) {
     headers.set('Access-Control-Allow-Origin', origin);

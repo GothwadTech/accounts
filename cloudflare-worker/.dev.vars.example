@@ -13,3 +13,13 @@ DEV_MODE="true"
 JWT_SECRET="local-dev-only-jwt-secret-change-in-production-0123456789"
 MAIL_INTERNAL_TOKEN="local-dev-mail-internal-token"
 # RESEND_API_KEY="re_xxxxxxxxx"
+
+# Optional MFA encryption key: 32 random bytes encoded as unpadded base64url.
+# MFA_ENCRYPTION_KEY="<generate-a-separate-local-test-key>"
+# Never reuse production keys or commit .dev.vars.
+
+# Optional local backend-only authenticated proxy transport. Never expose to browsers.
+# SSO_PROXY_TOKEN="<generate-a-separate-random-token-at-least-32-characters>"
+# Passkeys default to AUTH_HUB_URL's exact hostname. Parent-domain RP IDs are refused.
+# For local smoke checks, use AUTH_HUB_URL="http://localhost:3012" and DEV_MODE="true".
+# WEBAUTHN_RP_ID="localhost"

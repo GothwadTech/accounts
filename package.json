@@ -1,18 +1,26 @@
 {
   "name": "gothwad-accounts",
   "version": "2.0.0",
-  "description": "Gothwad Accounts — 100% Cloudflare Native (D1 + Worker Auth + OAuth 2.0) central identity provider",
+  "description": "Gothwad Accounts \u2014 100% Cloudflare Native (D1 + Worker Auth + OAuth 2.0) central identity provider",
   "type": "module",
   "scripts": {
     "dev": "node --experimental-strip-types server.js",
     "build": "node tools/bundle-css.js",
     "test": "node --experimental-strip-types --test tests/*.test.mjs tools/test-oauth-*.mjs",
     "start": "node --experimental-strip-types server.js",
-    "preview:menu": "node tools/widget-preview/server.mjs"
+    "preview:menu": "node tools/widget-preview/server.mjs",
+    "test:mfa:worker": "node tools/test-mfa-worker.mjs",
+    "test:passkeys:worker": "node tools/test-passkeys-worker.mjs",
+    "test:passkeys:browser": "node tools/test-passkeys-browser.mjs",
+    "security:check": "node tools/check-security-release.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "@simplewebauthn/server": "14.0.3",
+    "otpauth": "9.5.2"
   }
 }
