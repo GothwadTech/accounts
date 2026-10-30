@@ -2,15 +2,36 @@
  * =============================================================================
  * D1 SCHEMA BOOTSTRAP & ERROR ISOLATION (`getDb`, `authQuery`, `oauthQuery`)
  * =============================================================================
- * Cold-start safe via WeakMap: initializes all 10 tables + core ecosystem seeds
+ * Cold-start safe via WeakMap: initializes core/security tables + ecosystem seeds
  * automatically without ever overwriting existing `redirect_uris` or `secret_hash`.
  */
 
 import type { D1Database, D1PreparedStatement, Env } from './types.ts';
+import { OAUTH_STATE_SCHEMA } from './oauth-schema.ts';
+import { PASSKEY_SCHEMA } from './passkey-schema.ts';
+import { MFA_SCHEMA } from './mfa-schema.ts';
 
 const initializedDbs = new WeakMap<object, Promise<void>>();
 
 const BOOTSTRAP_STATEMENTS: string[] = [
+  ...MFA_SCHEMA,
+  ...PASSKEY_SCHEMA,
+  ...OAUTH_STATE_SCHEMA,
+  `CREATE TABLE IF NOT EXISTS recovery_email_changes (
+    token_hash TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    session_id TEXT NOT NULL REFERENCES user_sessions(id) ON DELETE CASCADE,
+    new_email TEXT NOT NULL, previous_email TEXT,
+    password_hash_snapshot TEXT NOT NULL, expires_at TEXT NOT NULL, consumed_by TEXT
+  )`,
+  `CREATE TABLE IF NOT EXISTS verified_recovery_emails (
+    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    email TEXT NOT NULL, verified_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS auth_rate_limits (
+    bucket TEXT PRIMARY KEY, hits INTEGER NOT NULL, expires_at INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_auth_rate_limits_expiry ON auth_rate_limits (expires_at)`,
   `CREATE TABLE IF NOT EXISTS users (
     id            TEXT PRIMARY KEY,
     username      TEXT NOT NULL UNIQUE COLLATE NOCASE,

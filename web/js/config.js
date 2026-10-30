@@ -17,6 +17,9 @@ export const GOTHWAD_CONFIG = {
    */
   API_URL: '',
 
+  /** Additional exact HTTPS redirect origins, coordinated with Worker ALLOWED_ORIGINS. */
+  SSO_REDIRECT_ORIGINS: [],
+
   /**
    * Root ecosystem domain used to format display emails in the UI
    * (authoritative email is always derived server-side as `username@APP_DOMAIN`).

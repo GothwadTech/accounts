@@ -34,3 +34,24 @@ Review and deploy both Pages and Worker, then measure production startup rather
 than promising a fixed latency. Mail optional metadata and Store account-content
 hydration must be decoupled from identity readiness in their own repositories.
 See [the performance audit](docs/SESSION_STARTUP_PERFORMANCE.md).
+
+
+## Accounts security hardening — 2026-10-29
+
+Phases 0–4 coding and Phase 5 local release/operational preparation are complete.
+Implemented: persistent throttling/CSP, verified recovery and sensitive changes,
+optional authenticator MFA/recovery codes, user-verified passkeys, exact origins,
+authenticated headerless transport, cookie-only browser session responses, and
+live grant/password-bound OAuth revocation. Parent-domain SSO cookies remain
+intentional; a host-only transition needs separate cross-app coordination.
+
+Verification: **194 tests**, build, strict Worker types, dry-run, production audits,
+real local workerd/D1 ES256/RS256/OAuth flows, Chromium virtual-passkey UI, and
+synthetic SQLite restore checks. No production deployment or configuration occurred.
+Real email, consumer/device pilots, backup recovery, live headers/rules/quotas, and
+production release remain owner-only gates, not completed coding claims.
+
+See [A–F findings](docs/ACCOUNTS_SECURITY_HARDENING.md),
+[release/incident readiness](docs/SECURITY_RELEASE_READINESS.md), and the single
+[final owner checklist](docs/SECURITY_OWNER_CHECKLIST.md). No paid infrastructure,
+Supabase application edits, or automatic release are authorized.

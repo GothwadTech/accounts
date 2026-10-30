@@ -76,13 +76,16 @@ export async function handleAuthAccountsRoute(
 
   // ---------------------------------------------------- /auth/forgot-password
   if (route === '/auth/forgot-password' && request.method === 'POST') {
+    if (env.DEV_MODE !== 'true' && (!env.RESEND_API_KEY || !env.RESEND_FROM)) {
+      return withCors(json({ error: 'email_unavailable', message: 'Password recovery email is not configured. Please contact support.' }, 503));
+    }
     const body = await readJson(request);
     const username = String(body.username || '').toLowerCase().trim();
     const genericOk = () =>
       withCors(
         json({
           ok: true,
-          message: 'If that account exists, a reset link has been sent to its recovery email.',
+          message: 'If that account exists and email delivery is available, you will receive a reset link.',
         }),
       );
 
@@ -113,7 +116,7 @@ export async function handleAuthAccountsRoute(
 
     const responsePayload: Record<string, any> = {
       ok: true,
-      message: 'If that account exists, a reset link has been sent to its recovery email.',
+      message: 'If that account exists and email delivery is available, you will receive a reset link.',
     };
     if (env.DEV_MODE === 'true' && !sent) {
       responsePayload.dev_reset_link = resetLink;
@@ -137,28 +140,34 @@ export async function handleAuthAccountsRoute(
     const tokenHash = await sha256Hex(rawToken);
     const nowIso = new Date().toISOString();
 
-    const consumed = await db
-      .prepare(
-        `UPDATE password_reset_tokens
-            SET used = 1
-          WHERE token_hash = ? AND used = 0 AND expires_at > ?
-          RETURNING user_id`,
-      )
-      .bind(tokenHash, nowIso)
-      .first();
-
-    if (!consumed?.user_id) {
-      return withCors(apiError('Reset link is invalid or has expired.', 400));
-    }
-
-    const userId = String(consumed.user_id);
+    const pending = await db.prepare(
+      'SELECT user_id FROM password_reset_tokens WHERE token_hash = ? AND used = 0 AND expires_at > ?',
+    ).bind(tokenHash, nowIso).first();
+    if (!pending?.user_id) return withCors(apiError('Reset link is invalid or has expired.', 400));
+    const userId = String(pending.user_id);
     const newHash = await hashPassword(newPassword);
-
-    await db.batch([
-      db.prepare('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?').bind(newHash, nowIso, userId),
-      db.prepare('UPDATE auth_refresh_tokens SET revoked = 1 WHERE user_id = ?').bind(userId),
-      db.prepare('DELETE FROM user_sessions WHERE user_id = ?').bind(userId),
-    ]);
+    const applyTime = new Date().toISOString();
+    // Randomly salted newHash is this transaction's winner marker. Every subsequent
+    // write requires it, so a concurrent loser cannot revoke sessions or consume links.
+    const results = await authQuery(() => db.batch([
+      db.prepare(`UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?
+        AND EXISTS (SELECT 1 FROM password_reset_tokens WHERE token_hash = ?
+          AND user_id = ? AND used = 0 AND expires_at > ?) RETURNING id`)
+        .bind(newHash, applyTime, userId, tokenHash, userId, applyTime),
+      db.prepare(`UPDATE password_reset_tokens SET used = 1 WHERE user_id = ?
+        AND EXISTS (SELECT 1 FROM users WHERE id = ? AND password_hash = ?)`)
+        .bind(userId, userId, newHash),
+      db.prepare(`UPDATE auth_refresh_tokens SET revoked = 1 WHERE user_id = ?
+        AND EXISTS (SELECT 1 FROM users WHERE id = ? AND password_hash = ?)`)
+        .bind(userId, userId, newHash),
+      db.prepare(`DELETE FROM user_sessions WHERE user_id = ?
+        AND EXISTS (SELECT 1 FROM users WHERE id = ? AND password_hash = ?)`)
+        .bind(userId, userId, newHash),
+      db.prepare(`DELETE FROM recovery_email_changes WHERE user_id = ?
+        AND EXISTS (SELECT 1 FROM users WHERE id = ? AND password_hash = ?)`)
+        .bind(userId, userId, newHash),
+    ]));
+    if (!results[0].results?.length) return withCors(apiError('Reset link is invalid or has expired.', 400));
 
     await logActivity(
       db,

@@ -98,7 +98,7 @@ test('8. CSRF protection: POST /api/auth/switch and POST /api/auth/accounts/:id/
   for (const badOrigin of rejectedOrigins) {
     const swRes = await browser.fetch(env, '/api/auth/switch', {
       method: 'POST',
-      origin: badOrigin,
+      origin: badOrigin ?? null,
       body: { id: 'a' },
     });
     assert.equal(swRes.status, 403, `Expected 403 for switch with Origin=${badOrigin}`);
@@ -106,7 +106,7 @@ test('8. CSRF protection: POST /api/auth/switch and POST /api/auth/accounts/:id/
 
     const outRes = await browser.fetch(env, '/api/auth/accounts/a/signout', {
       method: 'POST',
-      origin: badOrigin,
+      origin: badOrigin ?? null,
     });
     assert.equal(outRes.status, 403, `Expected 403 for signout with Origin=${badOrigin}`);
     assert.equal((await outRes.json()).error, 'csrf_rejected');

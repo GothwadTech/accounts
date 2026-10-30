@@ -7,7 +7,7 @@
 >
 > Engineering guide: [`AGENTS.md`](AGENTS.md) · Architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · Session archive (`1–30`): [`docs/TASK_HISTORY.md`](docs/TASK_HISTORY.md)
 
-**Last updated:** 2026-10-24 (Session 39 — Pull request preparation)
+**Last updated:** 2026-10-30 (Session 45 — Security pull request preparation and owner release gates)
 
 ---
 
@@ -23,11 +23,68 @@
 | 2.8 | **Universal Google-Style Shadow-DOM Account Menu (`v2.4`) + 100% Pure-English Codebase & Hygiene Gate** | ✅ **DONE (2026-10-22)** |
 | 3 | Roll out central `account-menu.js` + automatic silent SSO in `GothwadTech/store` & `GothwadTech/mail` | 🔜 NEXT |
 
-**Current state in one line:** Startup fixes and the Universal Account Menu redesign are prepared on this branch, not deployed. **105/105 tests pass.** An interactive, synthetic-data preview runs via `npm run preview:menu` for design approval.
+**Current state in one line:** All security coding phases are implemented locally; **194 tests**, build/types/bundle/audits, actual workerd/D1 ES256/RS256/OAuth, Chromium virtual-passkey UI, and synthetic restore checks pass. No deployment/configuration occurred. One final owner checklist covers production email/keys/origins, backups, cross-app/device pilots, and release approval.
 
 ---
 
-## ✅ DONE (Newest First — Sessions 31 to 39)
+## ✅ DONE (Newest First — Sessions 31 to 45)
+
+### Session 45 — 2026-10-30 — Security Pull Request Preparation
+- Owner requested a pull request and a clear explanation of remaining owner actions; this does not authorize a merge or deployment.
+- Preparing a draft PR from `arena/b5820242-accounts` to `main`, with the complete security implementation and explicit release gates. Unrelated `docs/CLOUDFLARE_REALTIME_ASSESSMENT.md` remains outside this PR.
+- Reinstalled dependencies from both lockfiles in the fresh workspace and reran the complete local gate: **194/194 tests**, build, strict Worker types, bundle dry-run (951.25 KiB / 185.16 KiB gzip), root/Worker production audits with zero known vulnerabilities, and patch whitespace checks pass. Preserve six-slot parent-domain cookies; do not treat OAuth re-consent or older proxy compatibility as already verified in production.
+- **NEXT UP:** owner review of backup/isolated restore, MFA encryption key, recovery delivery, exact origins/deployed consumers, and coordinated release. Keep the PR draft until release prerequisites are reviewed; merging may trigger externally configured Cloudflare deployments.
+
+### Session 44 — 2026-10-29 — Remaining Security Coding Phases Complete Locally
+- Added pinned WebAuthn verification, identity-host RP/origin policy, required device verification, password/MFA-authorized passkey management, single-use bounded challenges, guarded atomic login, and native browser UI. Added additive migration 09.
+- Audited current Mail/Store source read-only; exact first-party/explicit extra origins replace broad siblings, headerless writes require server authentication, and browser signup/signin/refresh JSON omits session credentials. Parent-domain cookie/slot contracts remain unchanged.
+- Split OAuth routes; consent/code issuance and refresh/access replacement are atomic. Additive migration 10 binds credential hashes to live grant/password state; userinfo checks issuer/audience/claims/ledger/scopes. Revocation, password changes, and factor changes invalidate access; legacy tokens require fresh consent.
+- Added `npm run security:check`, local Worker/browser smoke tools, and synthetic backup/restore/migration/redirect regressions. Verified **194 tests**, build, types, dry-run, production audits, actual workerd ES256/RS256/OAuth, and Chromium registration/list/signed-out login/deletion/storage/CSP flows.
+- Stopped both synthetic verification servers after the successful checks; no test server is left running.
+- Added passkey/SSO contracts, release/incident/rollback runbook, and one final consolidated owner checklist; updated README/PLAN/HANDOVER and A–F dispositions. No secrets, production configuration, deployment, paid services, or cross-repository edits.
+- **NEXT UP (owner-only release gates):** review/approve the checklist; confirm exact live consumers/origins, configure protected keys and real email, prove isolated D1 restore, inspect the historic Worker build, then authorize coordinated release and controlled device/cross-app pilot. This is not production completion or certification.
+
+### Session 43 — 2026-10-28 — Authenticator MFA and Offline Recovery Codes
+- Recorded the owner's instruction to defer email setup, build-log requests, and all configuration until a consolidated checklist after the coding phases.
+- Added pinned OTPAuth, AES-256-GCM seed storage with account-bound authentication, optional explicit enrollment, ten hashed single-use recovery codes, and additive migration 08 matching runtime bootstrap.
+- Password-only signin now returns a five-minute MFA challenge without session cookies for enrolled accounts. Proof/challenge consumption and full session issuance commit atomically; per-account and IP limits, replay protection, expiry, and concurrency/rollback cases are covered.
+- Enforced factor-version assurance across JWT, refresh, legacy-token, and grace paths. Password reset retains MFA. Sensitive password/phone/recovery/deletion actions require password plus MFA when enabled and gate actual mutations on the authorized security state.
+- Implemented Security settings, manual authenticator setup, once-only recovery-code display/download, replacement/disable controls, sign-in verification UI, and dialog/account guards. No secrets are persisted in Web Storage or sent to external QR services.
+- Actual workerd exposed an existing invalid named-constant deployment export. Added a default-only `src/worker.ts` deployment entry while preserving `index.ts` library compatibility. Local runtime now starts and passes the MFA smoke flow; this is not proof of the older production build's exact failure cause.
+- Synthetic Chromium passed real setup/confirmation, signout/password/MFA login, recovery-code replacement, and CSP/storage checks. The local-only smoke command is `npm run test:mfa:worker`.
+- Final verification: **169/169 tests** (27 added this session), CSS build, strict Worker typecheck, dry-run (236.80 KiB / 54.48 KiB gzip), real local workerd/D1 and Chromium flows, and production-dependency audit with no known vulnerabilities. No production readiness guarantee.
+- Documentation: [`docs/AUTHENTICATOR_MFA.md`](docs/AUTHENTICATOR_MFA.md); final setup items are queued, not requested now, in the owner checklist.
+- Next: passkeys (Phase 3B), OAuth/SSO consumer audit and trust-boundary changes (Phase 4), then final configuration/production verification. No deployment, push, live secret changes, or other-repository edits.
+
+### Session 42 — 2026-10-28 — Security Hardening Phase 0, Phase 1, and Recovery Core
+- Documented findings A–F, phased acceptance criteria, limitations, owner decisions, deployment prerequisites, and the remaining security backlog in [`docs/ACCOUNTS_SECURITY_HARDENING.md`](docs/ACCOUNTS_SECURITY_HARDENING.md).
+- Added persistent atomic D1 throttling on selected public auth routes, hashed source buckets, expiry cleanup, Retry-After, and fail-closed storage behavior; additive SQL migration 06 matches runtime bootstrap.
+- Unified parsed origin policy for CORS and added a central hostile-browser mutation guard. Preserved HTTPS sibling SSO and temporary headerless-proxy compatibility; strict origin allowlists/proxy authentication remain unfinished.
+- Password changes now atomically revoke other devices and pending reset links while retaining the current password-verified device and unrelated accounts.
+- Enforced static script CSP/framing protections, moved executable inline HTML scripts into files, and nonce-protected dynamic OAuth consent. Existing styles/fonts and module-error fallback remain functional.
+- Verified CSS build, **142/142 tests**, strict Worker TypeScript, Wrangler dry-run, and synthetic Chromium flows including blocked inline injection and working consent/fallback scripts.
+- Rechecked PR 23: Cloudflare Worker build remains failed; Pages passed. Failure details require Cloudflare Dashboard access. No merge, production deployment, secret changes, or other repository edits.
+- Owner chose staged authenticator MFA/recovery codes, then passkeys; email delivery is not configured. Recorded setup actions in [`docs/SECURITY_OWNER_CHECKLIST.md`](docs/SECURITY_OWNER_CHECKLIST.md).
+- Added password-confirmed, single-use, email-verified recovery replacement with session/password/previous-address binding, atomic activation, and honest delivery errors. Existing recovery stays active until verification; generic profile updates cannot bypass the flow.
+- Made reset consumption/password update/revocation atomic; tested concurrency and transaction rollback. Phone identifier changes/removal now require the current password, without claiming phone ownership verification.
+- Added migration 07 and confirmation UI that removes the fragment and requires explicit action. Synthetic browser success used mocked delivery/verification; no real email was sent.
+- Next: implement enforced authenticator MFA and recovery codes, then passkeys; complete OAuth/session and SSO consumer audits. Real delivery and deployment require owner configuration and separate verification.
+
+
+### Session 41 — 2026-10-28 — Accounts Security Posture Review
+- Reviewed local authentication, cookie, recovery, OAuth, CORS, and security-header implementation; reran tests: **105/105 passing**. This is a limited source review, not a penetration test or production certification.
+- Confirmed salted password hashing, hashed refresh/reset tokens, refresh rotation, reset-time session revocation, HttpOnly cookies, and OAuth PKCE controls.
+- Identified priorities: application-level abuse controls, enforced MFA/passkeys, consistent CSRF/origin policy, narrower subdomain trust, verified recovery changes with reauthentication, password-change session policy, reduced browser token exposure, and CSP/framing protection.
+- Production Cloudflare rules/headers, deployment revision, secret management, backup restoration, and incident readiness remain unverified. Previous Worker deployment failure remains unresolved by this review.
+- Recommended staged security hardening and a small controlled pilot before broad adoption; Indian product ownership does not imply Indian-only infrastructure or data residency. No runtime code, infrastructure, or billing changes were made.
+- Next: obtain authorization for a dedicated security audit and prioritized fixes before making public security-equivalence claims.
+
+### Session 40 — 2026-10-28 — RealtimeKit, TURN, and SFU Assessment
+- Checked current official pricing: RealtimeKit participant-minute pricing versus the shared 1,000 GB/month SFU/TURN egress allowance; flagged conflicting older beta/calculator copy instead of assuming free RealtimeKit production usage.
+- Read-only Meet and GrixChat call-path inspection found PeerJS/public TURN in Meet and LiveKit plus a STUN-only P2P fallback with Supabase signaling in GrixChat.
+- Recommended evaluating short-lived managed TURN credentials first, then a deliberate SFU architecture for groups. Preserve GrixChat's Supabase stack; no app changes or service/billing activation were performed.
+- Saved sources, limitations, and recommendations in [`docs/CLOUDFLARE_REALTIME_ASSESSMENT.md`](docs/CLOUDFLARE_REALTIME_ASSESSMENT.md).
+
 
 ### Session 39 — 2026-10-24 — Pull Request Preparation
 - User requested a pull request for all changes on `arena/d34d0d2c-accounts`.
@@ -90,7 +147,7 @@
 
 ## 🔜 NEXT UP
 
-0. Review the live Universal Account Menu preview and wait for design approval before deploying the redesign.
+0. Continue the [security hardening phases](docs/ACCOUNTS_SECURITY_HARDENING.md): recovery verification, MFA/passkeys, scoped SSO trust, browser credential migration, and production evidence. Phase 1 is locally verified, not a completed security certification.
 1. Review and deploy the session-startup fix to Accounts Pages and Worker.
 2. Verify existing login, signed-out, expired-token, revoked-session, multi-tab, and throttled-network flows in production; compare browser Network timings before making speed claims.
 3. Address Mail's optional quota/unread bootstrap work and Store's catalog/library/developer/admin loading gates in their own repositories. The central widget cannot change those app-specific gates.

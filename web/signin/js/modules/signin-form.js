@@ -4,6 +4,7 @@
  * Preserves `?add=1` when appending a new account slot via `POST /api/auth/signin?add=1`.
  */
 
+import { performPasskey, passkeysSupported } from '../../../js/passkeys.js';
 import { api, clearTokens } from '../../../js/api.js';
 import { setBusy, toast } from '../../../js/common.js';
 import { safeNextUrl } from '../../../js/accounts.js';
@@ -70,6 +71,38 @@ export function initSigninForm(showAlert, hideAlert) {
 
   let currentStep = 'identifier';
   let verifiedIdentifier = '';
+  let mfaChallenge = null;
+  const mfaStep = document.getElementById('step-mfa');
+  const mfaInput = document.getElementById('signin-mfa-code');
+  function complete(data) {
+    mfaChallenge = null;
+    if (mfaInput) mfaInput.value = '';
+    toast(`Welcome back, ${data.user.first_name || data.user.username}!`);
+    const authuser = Number.isInteger(data.authuser) ? data.authuser : 0;
+    const defaultMe = mePathForAuthuser(authuser);
+    const next = new URLSearchParams(location.search).get('next');
+    location.href = !next || isInternalAccountHubPath(next) ? defaultMe : safeNextUrl(next, defaultMe);
+  }
+  const passkeyButton = document.getElementById('signin-passkey');
+  if (passkeyButton) {
+    passkeyButton.disabled = !passkeysSupported();
+    passkeyButton.addEventListener('click', async () => {
+      const val = validateIdentifier(identifierInput?.value);
+      if (!val.ok) return showAlert('alert-signin', val.error);
+      setBusy(passkeyButton, true, 'Verifying...');
+      try {
+        const prepared = await api.post('/auth/passkeys/login/options', { identifier: val.identifier,
+          remember: true, add: new URLSearchParams(location.search).get('add') === '1' });
+        if (!prepared.ok) return showAlert('alert-signin', 'No available passkey. Try your password or another device.');
+        const response = await performPasskey(prepared.data.options);
+        const verified = await api.post('/auth/passkeys/login/verify', { challenge: prepared.data.challenge, response });
+        if (!verified.ok) return showAlert('alert-signin', verified.error || 'Passkey verification failed.');
+        complete(verified.data);
+      } catch { showAlert('alert-signin', 'Passkey verification was cancelled or failed. Your password is still available.'); }
+      finally { setBusy(passkeyButton, false); }
+    });
+  }
+  document.getElementById('signin-mfa-restart')?.addEventListener('click', () => goToIdentifierStep());
 
   function setFieldError(msg) {
     if (identifierNote) {
@@ -88,6 +121,10 @@ export function initSigninForm(showAlert, hideAlert) {
 
   function goToIdentifierStep() {
     currentStep = 'identifier';
+    mfaChallenge = null;
+    if (mfaStep) mfaStep.classList.add('hidden');
+    if (mfaInput) mfaInput.value = '';
+    if (passwordInput) { passwordInput.value = ''; passwordInput.required = true; }
     hideAlert('alert-signin');
     setFieldError(null);
     if (identifierStep) identifierStep.classList.remove('hidden');
@@ -171,6 +208,15 @@ export function initSigninForm(showAlert, hideAlert) {
     e.preventDefault();
     hideAlert('alert-signin');
 
+    if (currentStep === 'mfa') {
+      if (!mfaChallenge || !mfaInput?.value.trim()) return showAlert('alert-signin', 'Enter your verification code.');
+      setBusy(btn, true, 'Verifying...');
+      const verified = await api.post('/auth/mfa/verify', { challenge: mfaChallenge, code: mfaInput.value.trim() });
+      setBusy(btn, false);
+      if (!verified.ok) return showAlert('alert-signin', verified.error || 'Verification failed.');
+      complete(verified.data);
+      return;
+    }
     if (currentStep === 'identifier') {
       await goToPasswordStep();
       return;
@@ -207,11 +253,17 @@ export function initSigninForm(showAlert, hideAlert) {
       return showAlert('alert-signin', msg);
     }
 
-    toast(`Welcome back, ${res.data.user.first_name || res.data.user.username}!`);
-
-    const authuser = Number.isInteger(res.data?.authuser) ? res.data.authuser : 0;
-    const defaultMe = mePathForAuthuser(authuser);
-    const next = params.get('next');
-    location.href = !next || isInternalAccountHubPath(next) ? defaultMe : safeNextUrl(next, defaultMe);
+    if (res.data.mfa_required) {
+      mfaChallenge = res.data.challenge;
+      currentStep = 'mfa';
+      passwordInput.value = '';
+      passwordInput.required = false;
+      passwordStep?.classList.add('hidden');
+      mfaStep?.classList.remove('hidden');
+      if (btnText) btnText.textContent = 'Verify';
+      mfaInput?.focus();
+      return;
+    }
+    complete(res.data);
   });
 }

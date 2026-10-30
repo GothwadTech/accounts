@@ -11,6 +11,26 @@
 
 ---
 
+## Security status — 2026-10-29
+
+All planned security **coding** phases are implemented locally: abuse controls,
+verified recovery, authenticator MFA/recovery codes, optional passkeys, exact
+origin/proxy policy, cookie-only browser responses, and durable OAuth revocation.
+The release gate covers **194 tests**, build/types/bundle/audits, plus separate
+actual local Worker and Chromium checks and a synthetic restore rehearsal.
+
+**Nothing has been deployed or configured in production.** Real email delivery,
+backup restoration, deployed consumer compatibility/re-consent, live security
+headers, quotas, and physical/mobile passkeys still need controlled verification.
+Shared parent-domain SSO cookies are preserved; host-only isolation is not claimed.
+This is not certification, a penetration test, or Google equivalence.
+
+Start with [release readiness](docs/SECURITY_RELEASE_READINESS.md) and the single
+[final owner checklist](docs/SECURITY_OWNER_CHECKLIST.md). Technical details:
+[A–F findings](docs/ACCOUNTS_SECURITY_HARDENING.md), [MFA](docs/AUTHENTICATOR_MFA.md),
+[passkeys](docs/PASSKEYS.md), [SSO/OAuth](docs/SSO_TRUST_AND_OAUTH.md).
+Free-tier operation remains subject to provider quotas; no paid service is enabled.
+
 ## 📚 Documentation Map
 
 | File | Audience | Contents |
@@ -89,3 +109,10 @@ Open the live preview on port 3010. It uses the actual widget with synthetic
 accounts, light/dark appearance, and 1/3/6-account controls. Close the menu to
 change preview controls. Preview files live in `tools/widget-preview/`, outside
 the production `web/` deployment. Review and approve before deploying changes.
+
+### Local Worker MFA smoke test
+
+After installing Worker dependencies, start a configured **local-only** Worker on
+port 3012 and run `npm run test:mfa:worker`. It creates synthetic local accounts
+and refuses remote targets. See the MFA document for test scope and limitations.
+Production configuration requires the final combined owner checklist and separate approval.

@@ -56,6 +56,9 @@ const server = http.createServer(async (req, res) => {
         DEV_MODE: process.env.DEV_MODE || 'true',
         JWT_SECRET: process.env.JWT_SECRET || 'dev-only-jwt-secret-key',
         MAIL_INTERNAL_TOKEN: process.env.MAIL_INTERNAL_TOKEN || 'dev-mail-internal-token',
+        MFA_ENCRYPTION_KEY: process.env.MFA_ENCRYPTION_KEY,
+        WEBAUTHN_RP_ID: process.env.WEBAUTHN_RP_ID,
+        SSO_PROXY_TOKEN: process.env.SSO_PROXY_TOKEN,
         ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS || origin,
       };
 
@@ -102,6 +105,12 @@ const server = http.createServer(async (req, res) => {
   const staticHeaders = {
     'Content-Type': MIME[ext] || 'application/octet-stream',
     'Cache-Control': 'no-store, max-age=0',
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    // Mirror Pages so CSP failures surface during development, not only after deploy.
+    'Content-Security-Policy': fs.readFileSync(path.join(WEB_ROOT, '_headers'), 'utf8')
+      .match(/^  Content-Security-Policy: (.+)$/m)[1],
   };
   if (url.pathname.startsWith('/widget/')) {
     staticHeaders['Access-Control-Allow-Origin'] = '*';

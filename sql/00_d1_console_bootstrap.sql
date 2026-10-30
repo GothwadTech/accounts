@@ -164,3 +164,37 @@ ON CONFLICT (id) DO UPDATE SET
   is_core = excluded.is_core;
 
 SELECT id, name, redirect_uris FROM ecosystem_apps WHERE redirect_uris != '[]';
+
+-- WebAuthn passkeys and short-lived, single-use challenges.
+CREATE TABLE IF NOT EXISTS auth_passkeys (
+    id TEXT PRIMARY KEY, credential_id TEXT NOT NULL UNIQUE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    public_key BLOB NOT NULL, counter INTEGER NOT NULL, transports TEXT NOT NULL,
+    name TEXT NOT NULL, created_at TEXT NOT NULL, last_used_at TEXT,
+    version TEXT NOT NULL, last_proof TEXT
+  );
+
+CREATE INDEX IF NOT EXISTS idx_passkeys_user ON auth_passkeys(user_id);
+
+CREATE TABLE IF NOT EXISTS auth_passkey_challenges (
+    token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL, challenge TEXT NOT NULL, origin TEXT NOT NULL, rp_id TEXT NOT NULL,
+    session_id TEXT REFERENCES user_sessions(id) ON DELETE CASCADE,
+    password_hash_snapshot TEXT NOT NULL, factor_version TEXT,
+    remember_me INTEGER NOT NULL DEFAULT 1, add_mode INTEGER NOT NULL DEFAULT 0,
+    expires_at TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, used_by TEXT
+  );
+
+CREATE INDEX IF NOT EXISTS idx_passkey_challenge_expiry ON auth_passkey_challenges(expires_at);
+
+-- Durable grant-bound OAuth credentials. Old unbound tokens require fresh consent.
+CREATE TABLE IF NOT EXISTS oauth_credential_bindings (
+    credential_hash TEXT PRIMARY KEY, kind TEXT NOT NULL,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    client_id TEXT NOT NULL, grant_id TEXT NOT NULL, password_snapshot TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+  );
+
+CREATE INDEX IF NOT EXISTS idx_oauth_bindings_user ON oauth_credential_bindings(user_id, client_id);
+
+CREATE INDEX IF NOT EXISTS idx_oauth_bindings_expiry ON oauth_credential_bindings(expires_at);

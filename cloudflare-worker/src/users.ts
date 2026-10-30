@@ -206,6 +206,7 @@ export async function sendResetEmail(env: Env, toEmail: string, resetLink: strin
   try {
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
+      signal: AbortSignal.timeout(10_000),
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${env.RESEND_API_KEY}`,

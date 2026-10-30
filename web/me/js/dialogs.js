@@ -7,10 +7,12 @@
  */
 
 import { api } from '../../js/api.js';
+import { mfaActionField, mfaActionCode } from '../../js/mfa-ui.js';
 import { toast, escapeHtml, setBusy } from '../../js/common.js';
 import { dialogPhoto, dialogPassword, dialogDelete } from './dialogs-security.js';
 
 let currentUser = null;
+let dialogGeneration = 0;
 const listeners = new Set();
 
 export function getDialogUser() {
@@ -38,7 +40,7 @@ export function el(id) {
 
 export function closeDialog() {
   const root = el('dialog-root');
-  if (root) root.innerHTML = '';
+  if (root) { root.innerHTML = ''; delete root.dataset.dialogGeneration; }
   document.removeEventListener('keydown', escListener);
 }
 
@@ -49,6 +51,7 @@ function escListener(e) {
 /** Shared modal shell renderer. */
 export function modal({ title, sub, body, actions, danger = false }) {
   const root = el('dialog-root');
+  root.dataset.dialogGeneration = String(++dialogGeneration);
   root.innerHTML = `
     <div class="modal-backdrop" id="modal-backdrop">
       <div class="modal" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
@@ -183,15 +186,16 @@ function dialogGender() {
 function dialogPhone() {
   modal({
     title: 'Phone number',
-    sub: 'Add a phone number to sign in easily and help keep your account secure.',
-    body: field('dlg-phone', 'Phone number', { type: 'tel', value: currentUser.phone_number || '', placeholder: '+91 98765 43210' }),
+    sub: 'Confirm your password to change this sign-in identifier. Phone ownership is not verified.',
+    body: field('dlg-phone', 'Phone number', { type: 'tel', value: currentUser.phone_number || '', placeholder: '+91 98765 43210' }) +
+      field('dlg-phone-password', 'Current password', { type: 'password', autocomplete: 'current-password' }) + mfaActionField(currentUser, 'dlg-phone-mfa'),
     actions:
       '<button type="button" class="btn btn-text" id="dlg-clear" style="margin-right:auto;color:var(--danger);">Remove</button>' +
       '<button type="button" class="btn btn-primary" id="dlg-save">Save</button>',
   });
   el('dlg-phone').focus();
   el('dlg-clear').addEventListener('click', async () => {
-    const res = await api.post('/auth/update-profile', { phone_number: '' });
+    const res = await api.post('/auth/update-profile', { phone_number: '', current_password: el('dlg-phone-password').value, mfa_code: mfaActionCode('dlg-phone-mfa') });
     if (!res.ok) return toast(res.error || 'Could not remove.', 'error');
     toast('Phone number removed');
     notifyUpdated(res.data.user);
@@ -200,7 +204,7 @@ function dialogPhone() {
   el('dlg-save').addEventListener('click', async () => {
     const btn = el('dlg-save');
     setBusy(btn, true, 'Saving...');
-    const res = await api.post('/auth/update-profile', { phone_number: el('dlg-phone').value.trim() });
+    const res = await api.post('/auth/update-profile', { phone_number: el('dlg-phone').value.trim(), current_password: el('dlg-phone-password').value, mfa_code: mfaActionCode('dlg-phone-mfa') });
     setBusy(btn, false);
     if (!res.ok) return toast(res.error || 'Could not save.', 'error');
     toast('Phone number updated');
@@ -212,23 +216,25 @@ function dialogPhone() {
 function dialogRecovery() {
   modal({
     title: 'Recovery email',
-    sub: 'Password reset links are sent to this address. Use a personal email address you check regularly.',
-    body: field('dlg-recovery', 'Recovery email', { type: 'email', value: currentUser.recovery_email || '', placeholder: 'yourname@gmail.com' }),
-    actions: '<button type="button" class="btn btn-primary" id="dlg-save">Save</button>',
+    sub: 'Confirm your password and verify the replacement address. Your current recovery email stays active until verification.',
+    body: field('dlg-recovery', 'Replacement recovery email', { type: 'email', value: '', placeholder: 'yourname@example.com' }) +
+      field('dlg-recovery-password', 'Current password', { type: 'password', autocomplete: 'current-password' }) + mfaActionField(currentUser, 'dlg-recovery-mfa'),
+    actions: '<button type="button" class="btn btn-primary" id="dlg-save">Send verification</button>',
   });
   el('dlg-recovery').focus();
   el('dlg-save').addEventListener('click', async () => {
     const rec = el('dlg-recovery').value.trim();
-    if (rec && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rec)) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rec)) {
       return toast('Please enter a valid email address.', 'error');
     }
     const btn = el('dlg-save');
-    setBusy(btn, true, 'Saving...');
-    const res = await api.post('/auth/update-profile', { recovery_email: rec });
+    setBusy(btn, true, 'Sending...');
+    const res = await api.post('/auth/recovery-email/request', {
+      recovery_email: rec, current_password: el('dlg-recovery-password').value, mfa_code: mfaActionCode('dlg-recovery-mfa'),
+    });
     setBusy(btn, false);
     if (!res.ok) return toast(res.error || 'Could not save.', 'error');
-    toast('Recovery email updated');
-    notifyUpdated(res.data.user);
+    toast('Verification sent. Your current recovery email has not changed yet.');
     closeDialog();
   });
 }

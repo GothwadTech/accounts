@@ -24,6 +24,8 @@
  */
 
 import type { Env } from './types.ts';
+import { isUnsafeBrowserMutation } from './origins.ts';
+import { enforceAuthRateLimit } from './auth-rate-limit.ts';
 import { DatabaseUnavailableError, getDb, OAuthDatabaseError, oauthQuery } from './db.ts';
 import { apiError, buildCorsHeaders, json } from './http.ts';
 import { handleInternalRoute, handlePublicRoute } from './routes/public-internal.ts';
@@ -32,6 +34,9 @@ import { handleAuthSessionRoute } from './routes/auth-session.ts';
 import { handleAuthSwitchRoute } from './routes/auth-switch.ts';
 import { handleAuthAccountsRoute } from './routes/auth-accounts.ts';
 import { handleAuthProfileRoute } from './routes/auth-profile.ts';
+import { handleRecoveryChangeRoute } from './routes/auth-recovery-change.ts';
+import { handlePasskeyRoute } from './routes/auth-passkeys.ts';
+import { handleMfaRoute } from './routes/auth-mfa.ts';
 import { handleOAuthRoute } from './routes/oauth.ts';
 
 export type {
@@ -78,6 +83,12 @@ export default {
     let oauthCookies: string[] = [];
     const withCors = (res: Response, newCookies: string[] = oauthCookies): Response => {
       corsHeaders.forEach((v, k) => res.headers.set(k, v));
+      res.headers.set('X-Content-Type-Options', 'nosniff');
+      res.headers.set('X-Frame-Options', 'DENY');
+      res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+      if (!res.headers.has('Content-Security-Policy')) {
+        res.headers.set('Content-Security-Policy', "object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
+      }
       for (const cookie of newCookies) res.headers.append('Set-Cookie', cookie);
       if (route.startsWith('/auth/') || route.startsWith('/oauth/')) {
         res.headers.set('Cache-Control', 'no-store');
@@ -87,6 +98,9 @@ export default {
     };
 
     try {
+      if ((route.startsWith('/auth/') || route.startsWith('/oauth/')) && isUnsafeBrowserMutation(request, env)) {
+        return withCors(json({ error: 'csrf_rejected', message: 'Untrusted request origin' }, 403));
+      }
       // 2. Public Avatars & Health Check
       const publicRes = await handlePublicRoute(request, url, env, route, withCors);
       if (publicRes) return publicRes;
@@ -95,12 +109,18 @@ export default {
         ? await oauthQuery(() => getDb(env))
         : await getDb(env);
 
+      const limited = await enforceAuthRateLimit(request, db, env, route);
+      if (limited) return withCors(limited);
+
       // 3. Auth Entry, Session, Multi-Account Switcher, Profile & OAuth 2.0 Routes
       return (
         (await handleAuthEntryRoute(request, url, db, env, route, withCors)) ??
         (await handleAuthSessionRoute(request, url, db, env, route, withCors)) ??
+        (await handleMfaRoute(request, db, env, route, withCors)) ??
+        (await handlePasskeyRoute(request, db, env, route, withCors)) ??
         (await handleAuthSwitchRoute(request, url, db, env, route, withCors)) ??
         (await handleAuthAccountsRoute(request, db, env, route, withCors)) ??
+        (await handleRecoveryChangeRoute(request, db, env, route, withCors)) ??
         (await handleAuthProfileRoute(request, db, env, route, withCors)) ??
         (await handleOAuthRoute(request, url, db, env, route, withCors, (c) => {
           oauthCookies = c;

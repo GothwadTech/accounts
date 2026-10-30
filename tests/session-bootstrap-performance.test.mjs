@@ -109,7 +109,9 @@ test('root opens the dashboard shell without an auth timeout or Sign in detour',
   assert.match(redirects, /^\/\s+\/me\/index\.html\s+200$/m);
   const root = readFileSync(new URL('../web/index.html', import.meta.url), 'utf8');
   assert.doesNotMatch(root, /getSession|Promise\.race|1200/);
-  assert.match(root, /location\.replace\('\/me'/);
+  assert.match(root, /src="\/js\/root-redirect\.js"/);
+  const redirect = readFileSync(new URL('../web/js/root-redirect.js', import.meta.url), 'utf8');
+  assert.match(redirect, /location\.replace\('\/me'/);
   const dashboard = readFileSync(new URL('../web/me/index.html', import.meta.url), 'utf8');
   assert.ok(dashboard.indexOf('/js/session-bootstrap.js') < dashboard.indexOf('/me/js/me.js'));
 });

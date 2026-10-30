@@ -27,6 +27,7 @@ function makeTestEnv(overrides = {}) {
     AUTH_HUB_URL: 'https://accounts.gothwadtech.com',
     API_DOMAIN: 'api.gothwadtech.com',
     JWT_SECRET: 'test-production-grade-random-secret-key-48-chars-long',
+    SSO_PROXY_TOKEN: 'synthetic-proxy-secret-for-tests-only-2026',
     MAIL_INTERNAL_TOKEN: 'mail-shared-internal-secret-token',
     DEV_MODE: 'true',
     ...overrides,
@@ -35,6 +36,7 @@ function makeTestEnv(overrides = {}) {
 
 async function apiCall(env, path, { method = 'GET', body, headers = {}, host = 'accounts.gothwadtech.com' } = {}) {
   const reqHeaders = new Headers(headers);
+  reqHeaders.set('X-Gothwad-Proxy-Token', env.SSO_PROXY_TOKEN);
   if (body !== undefined && !reqHeaders.has('Content-Type')) {
     reqHeaders.set('Content-Type', 'application/json');
   }

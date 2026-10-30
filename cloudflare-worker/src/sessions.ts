@@ -20,6 +20,7 @@ import {
   type SlotCredentials,
 } from './types.ts';
 import { authQuery } from './db.ts';
+import { mfaSessionSql } from './mfa-policy.ts';
 import {
   getSigningSecret,
   issueSessionAccessToken,
@@ -89,11 +90,14 @@ export async function rotateSessionRefreshToken(
     const sid = (consumed.session_id ? String(consumed.session_id) : null) || fallbackSessionId || null;
     if (sid) {
       const updatedSession = await db
-        .prepare('UPDATE user_sessions SET last_active = ? WHERE id = ? AND user_id = ? RETURNING id')
+        .prepare(`UPDATE user_sessions SET last_active = ? WHERE id = ? AND user_id = ?
+          AND ${mfaSessionSql('user_sessions.user_id', 'user_sessions.id')} RETURNING id`)
         .bind(nowIso, sid, userId)
         .first();
       if (!updatedSession) return null;
     }
+
+    if (!sid && await db.prepare('SELECT user_id FROM auth_mfa_factors WHERE user_id = ? AND enabled = 1').bind(userId).first()) return null;
 
     const newRefresh = randomToken();
     const newRefreshHash = await sha256Hex(newRefresh);
@@ -152,9 +156,9 @@ export async function validateCredentialsAgainstDb(
           ? await db.prepare(
               `SELECT u.id, u.username FROM users u
                JOIN user_sessions s ON s.user_id = u.id
-               WHERE u.id = ? AND s.id = ? LIMIT 1`,
+               WHERE u.id = ? AND s.id = ? AND ${mfaSessionSql('u.id', 's.id')} LIMIT 1`,
             ).bind(userId, tokenSid).first()
-          : await db.prepare('SELECT id, username FROM users WHERE id = ? LIMIT 1').bind(userId).first();
+          : await db.prepare(`SELECT id, username FROM users WHERE id = ? AND ${mfaSessionSql('users.id', 'NULL')} LIMIT 1`).bind(userId).first();
         if (!userRow?.username) return null;
         return {
           id: userId,
@@ -214,7 +218,8 @@ export async function validateCredentialsAgainstDb(
             .bind(userId, sid, new Date(Date.now() - 10_000).toISOString());
 
       const [sessRow, freshSibling, userRow] = await Promise.all([
-        db.prepare('SELECT id FROM user_sessions WHERE id = ? AND user_id = ? LIMIT 1').bind(sid, userId).first(),
+        db.prepare(`SELECT id FROM user_sessions WHERE id = ? AND user_id = ?
+          AND ${mfaSessionSql('user_sessions.user_id', 'user_sessions.id')} LIMIT 1`).bind(sid, userId).first(),
         siblingQuery.first(),
         db.prepare('SELECT id, username FROM users WHERE id = ? LIMIT 1').bind(userId).first(),
       ]);

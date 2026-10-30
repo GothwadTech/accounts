@@ -15,6 +15,7 @@ export function makeEnv(overrides = {}) {
     AUTH_HUB_URL: 'https://accounts.gothwadtech.com',
     API_DOMAIN: 'api.gothwadtech.com',
     JWT_SECRET: 'test-multi-account-jwt-secret-key-2026-gothwad',
+    SSO_PROXY_TOKEN: 'synthetic-proxy-secret-for-tests-only-2026',
     MAIL_INTERNAL_TOKEN: 'mail-internal-test-secret-2026',
     DEV_MODE: 'false',
     ...overrides,
@@ -76,6 +77,9 @@ export class BrowserJar {
 
   async fetch(env, path, { method = 'GET', body, headers = {}, host = 'api.gothwadtech.com', origin } = {}) {
     const finalHeaders = { ...headers };
+    if (origin === undefined && !new Headers(headers).has('Origin') && !new Headers(headers).has('Referer')) {
+      finalHeaders.Origin = env.AUTH_HUB_URL;
+    }
     const cookieStr = this.headerValue();
     if (cookieStr && finalHeaders.Cookie === undefined) {
       finalHeaders.Cookie = cookieStr;

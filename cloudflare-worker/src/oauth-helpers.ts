@@ -155,6 +155,7 @@ export function consentPageHtml(
     code_challenge_method: params.get('code_challenge_method') || 'S256',
   };
 
+  const nonce = crypto.randomUUID().replace(/-/g, '');
   const html = `<!doctype html>
 <html lang="en"><head>
 <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -213,7 +214,7 @@ export function consentPageHtml(
 </style></head>
 <body>
   <div class="card">
-    <div class="brand"><img src="/favicon.ico" onerror="this.style.display='none'" alt="Gothwad" /><span>Gothwad</span></div>
+    <div class="brand"><img src="/favicon.ico" id="brand-icon" alt="Gothwad" /><span>Gothwad</span></div>
     <h1>${esc(client.name)} wants access to your account</h1>
     <p class="sub">Sign in with your Gothwad Account</p>
 
@@ -239,7 +240,8 @@ export function consentPageHtml(
       <button class="btn btn-primary" id="allow">Continue</button>
     </div>
   </div>
-<script>
+<script nonce="${nonce}">
+  document.getElementById('brand-icon').addEventListener('error', (event) => { event.target.style.display = 'none'; });
   const data = ${JSON.stringify(data).replace(/</g, '\\u003c')};
   async function decide(approved) {
     const btn = document.getElementById(approved ? 'allow' : 'deny');
@@ -266,6 +268,10 @@ export function consentPageHtml(
 
   return new Response(html, {
     status: 200,
-    headers: { 'Content-Type': 'text/html; charset=utf-8' },
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Content-Security-Policy': `default-src 'self'; script-src 'nonce-${nonce}'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`,
+      'X-Frame-Options': 'DENY',
+    },
   });
 }

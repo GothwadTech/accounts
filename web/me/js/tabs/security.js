@@ -7,6 +7,8 @@ import { setBusy, toast, escapeHtml, formatDate } from '../../../js/common.js';
 import { getActivity, getAuthorizations } from '../store.js';
 import { renderActivity } from './activity.js';
 import { setDialogUser, dialogPassword } from '../dialogs.js';
+import { openPasskeySettings } from '../passkey-settings.js';
+import { openMfaSettings } from '../mfa-settings.js';
 
 let user = null;
 let onUserUpdated = () => {};
@@ -41,6 +43,9 @@ export function initSecurity(currentUser, cb) {
         row.addEventListener('click', () => import('../dialogs.js').then((m) => m.openDialog('recovery'))),
       );
 
+    document.getElementById('btn-passkey-settings')?.addEventListener('click', openPasskeySettings);
+    document.getElementById('btn-mfa-settings')?.addEventListener('click', openMfaSettings);
+
     const revokeOthersBtn = document.getElementById('btn-revoke-others');
     revokeOthersBtn?.addEventListener('click', async (e) => {
       const btn = e.currentTarget;
@@ -64,6 +69,10 @@ function refreshRows() {
   if (!user) return;
   const el = document.getElementById('sec-recovery');
   if (el) el.textContent = user.recovery_email || 'Not set';
+  const status = document.getElementById('sec-mfa-status');
+  const badge = document.getElementById('sec-mfa-badge');
+  if (status) status.textContent = user.two_factor_enabled ? 'Authenticator and recovery codes' : 'Add an authenticator app';
+  if (badge) badge.textContent = user.two_factor_enabled ? 'On' : 'Off';
 }
 
 export function markPasswordChanged() {
@@ -81,7 +90,7 @@ export async function loadActivity() {
     'session_revoked',
     'app_authorized',
     'app_revoked',
-    'signup',
+    'signup', 'mfa_enabled', 'mfa_disabled', 'mfa_codes_regenerated', 'recovery_email_verified',
   ];
   renderActivity('sec-activity', rows.filter((r) => securityTypes.includes(r.type)).slice(0, 10));
 }

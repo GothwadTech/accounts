@@ -57,6 +57,9 @@ export interface Env {
   ALLOWED_ORIGINS?: string;
   JWT_SECRET: string;
   RESEND_API_KEY?: string;
+  MFA_ENCRYPTION_KEY?: string;
+  WEBAUTHN_RP_ID?: string;
+  SSO_PROXY_TOKEN?: string;
   MAIL_INTERNAL_TOKEN?: string;
 }
 
