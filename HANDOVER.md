@@ -52,7 +52,8 @@ Worker deployment dry-run passes. Root and Worker full dependency audits both re
 zero vulnerabilities after updating the compatible Worker tooling lock. Build/types,
 256 tests and native/Google Chromium checks pass. The owner authorized committing,
 pushing and merging the accumulated local work; production migration/deployment is
-not manually performed here. Follow the PR for merge/check results.
+not manually performed here. Delivery: [PR #28](https://github.com/GothwadTech/accounts/pull/28);
+follow its merge/check results independently of local verification.
 No synthetic result establishes live provider, email, or physical-device behavior.
 
 ## Preserve these boundaries

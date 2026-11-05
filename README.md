@@ -24,7 +24,8 @@ service is required by the core stack. Provider quotas still apply.
   the existing server safety cap is 128. Create New has no strength meter.
 
 Google sign-in was merged in PR #26 and is owner-confirmed working after redirect
-configuration. Current UI/cleanup work is local, not a production deployment.
+configuration. Source verification of the current changes is not proof of a
+production deployment.
 Synthetic tests do not establish live email delivery, provider approval, backup
 recovery or physical-device security. Use the owner checklist before release.
 
