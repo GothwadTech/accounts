@@ -1,17 +1,52 @@
-# 📚 Gothwad Accounts Documentation (`docs/`)
+# Accounts Documentation
 
-Welcome to **Gothwad Accounts v2.0 (100% Cloudflare Native — Zero Supabase)** documentation!
+Use one source per responsibility. [TASK.md](../TASK.md) records changes;
+[HANDOVER.md](../HANDOVER.md) describes the working tree and [PLAN.md](../PLAN.md)
+tracks next work. Historical test counts and dated audits are not current release evidence.
+
+## Setup and implementation
 
 | Document | Purpose |
 |---|---|
-| **[`SETUP.md`](SETUP.md)** | **Step-by-step Cloudflare Dashboard deployment guide** (`accounts` D1 + Worker Secrets) |
-| **[`CLOUDFLARE_NATIVE_PLAN.md`](CLOUDFLARE_NATIVE_PLAN.md)** | **Master Hybrid Architecture Plan** (`Accounts` + `Mail` on Cloudflare D1 · `PlusTube` + `Indogram` + `GrixChat` on Supabase) |
-| **[`MAIL_D1_MIGRATION_PROMPT.md`](MAIL_D1_MIGRATION_PROMPT.md)** | **Copy-Paste Master Prompt & Spec for `GothwadTech/mail` AI Agents** (100% Cloudflare D1 `mail` DB + `500`-email smart retention) |
-| **[`STORE_D1_MIGRATION_PROMPT.md`](STORE_D1_MIGRATION_PROMPT.md)** | **Master Prompt & Spec for `GothwadTech/store` AI Agents** (100% Zero-Card Cloudflare D1 `store` DB + Edge CDN Images + Full Independent Audit) |
-| **[`MAIL_UNIVERSAL_ACCOUNT_MENU_PROMPT.md`](MAIL_UNIVERSAL_ACCOUNT_MENU_PROMPT.md)** | **Dedicated Prompt for `GothwadTech/mail`** (Central `widget/account-menu.js` Google-Style Switcher + Zero-Reload Draft Flush & Unread Pills) |
-| **[`STORE_UNIVERSAL_ACCOUNT_MENU_PROMPT.md`](STORE_UNIVERSAL_ACCOUNT_MENU_PROMPT.md)** | **Dedicated Prompt for `GothwadTech/store`** (Automatic Silent `.gothwadtech.com` SSO + Zero Web Consent Popup + Central `widget/account-menu.js`) |
-| **[`DRIVE_SSO_UPGRADE_PROMPT.md`](DRIVE_SSO_UPGRADE_PROMPT.md)** | **Master Prompt for `GothwadTech/drive`** (Silent `.gothwadtech.com` SSO + Central `widget/account-menu.js` + `AES-256-GCM` D1 Cross-Device Vault + `<= 500`-Line Split) |
-| **[`MAIL_INTERNAL.md`](MAIL_INTERNAL.md)** | **Mail ↔ Accounts HTTP Contract** (`GET /api/internal/usernames/:username`, `/api/auth/me`, cookie forwarding & naming rules) |
-| **[`ARCHITECTURE.md`](ARCHITECTURE.md)** | Deep technical diagram of WebCrypto PBKDF2, JWT separation (`session` vs `oauth_access`), edge-cached avatars & D1 tables |
-| **[`OAUTH.md`](OAUTH.md)** | Developer integration guide for `"Sign in with Gothwad"` (OAuth 2.0 + S256 PKCE) |
-| **[`STORE_OAUTH.md`](STORE_OAUTH.md)** | Exact callback allowlist & Android deep-link setup for **Kiwi Store** |
+| [Setup](SETUP.md) | Pages, Worker, dedicated D1 and private configuration |
+| [Architecture](ARCHITECTURE.md) | Runtime modules, identity and cookie contracts |
+| [Google sign-in](GOOGLE_SIGN_IN.md) | Passwordless onboarding, explicit linking, setup and limitations |
+| [Session startup](SESSION_STARTUP_PERFORMANCE.md) | Identity/bootstrap performance and remaining verification |
+| [Entry performance](AUTH_ENTRY_PERFORMANCE.md) | Entry bundles, fonts and local measurement limits |
+| [Worker troubleshooting](WORKER_BUILD_TROUBLESHOOTING.md) | Diagnose Worker builds separately from Pages |
+| [SQL guide](../sql/README.md) | Additive migrations and bootstrap |
+| [Local tools](../tools/README.md) | Build, browser QA and development servers |
+
+## Security and app integration
+
+| Document | Purpose |
+|---|---|
+| [Owner checklist](SECURITY_OWNER_CHECKLIST.md) | Single operational approval/checklist |
+| [Release readiness](SECURITY_RELEASE_READINESS.md) | Local gates, incident/restore work and production limits |
+| [Security findings](ACCOUNTS_SECURITY_HARDENING.md) | Threat findings and implementation decisions |
+| [Authenticator MFA](AUTHENTICATOR_MFA.md) | Enrollment, recovery codes and enforcement |
+| [Passkeys](PASSKEYS.md) | WebAuthn setup, verification and device limitations |
+| [SSO trust](SSO_TRUST_AND_OAUTH.md) | Shared-cookie trust, origins and token boundaries |
+| [OAuth](OAUTH.md) | Consumer integration and PKCE contracts |
+| [Mail contract](MAIL_INTERNAL.md) | Worker URLs, cookie forwarding and internal lookup |
+| [Store OAuth](STORE_OAUTH.md) | Web/Android callbacks and registration |
+
+## Dated sibling-repository handoffs
+
+Keep these specifications/audits for their distinct migration or repair detail,
+but re-read the target repository before applying them. They do not authorize
+changes outside Accounts or establish current production failures.
+
+- Mail: [D1 migration](MAIL_D1_MIGRATION_PROMPT.md),
+  [account menu](MAIL_UNIVERSAL_ACCOUNT_MENU_PROMPT.md), [startup](MAIL_STARTUP_PERFORMANCE_PROMPT.md).
+- Store: [D1 migration](STORE_D1_MIGRATION_PROMPT.md),
+  [account menu](STORE_UNIVERSAL_ACCOUNT_MENU_PROMPT.md), [startup](STORE_STARTUP_PERFORMANCE_PROMPT.md),
+  [web auth](STORE_WEB_AUTH_FIX_PROMPT.md), [Android auth](STOREAPP_AUTH_FIX_PROMPT.md),
+  [post-merge hotfix findings](STORE_HOTFIX_PROMPT.md).
+- Drive: [SSO/vault specification](DRIVE_SSO_UPGRADE_PROMPT.md),
+  [startup audit](DRIVE_STARTUP_AUDIT.md), [repair handoff](DRIVE_STARTUP_REPAIR_PROMPT.md).
+- [Archived session history](TASK_HISTORY.md).
+
+Superseded Mail bootstrap/session-repair instructions have been removed; use the
+Mail contract above. The old founding roadmap and duplicate hybrid-cloud plan
+have been consolidated into PLAN.md and the architecture/migration guides.

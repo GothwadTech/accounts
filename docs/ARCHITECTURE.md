@@ -1,8 +1,8 @@
 # 🏗️ ARCHITECTURE.md — Technical Deep Dive (v2.3 — Google-Grade `u/0..5` Multi-Account Cloudflare Native)
 
-> **Updated: 2026-10-20 — Google Session-Indexed Multi-Account Routing (`/u/0..5`, `?authuser=`) + Modular `<= 500`-Line Standard**
+> **Updated: 2026-11-05 — module map and documentation consolidation**
 > Gothwad Accounts runs **100% on Cloudflare (`Pages` + `Workers` + `D1 SQLite` + `Global Edge Cache` + optional `R2`)**.
-> Master roadmap: [`CLOUDFLARE_NATIVE_PLAN.md`](CLOUDFLARE_NATIVE_PLAN.md) · Setup: [`SETUP.md`](SETUP.md) · OAuth: [`OAUTH.md`](OAUTH.md) · Mail Contract: [`MAIL_INTERNAL.md`](MAIL_INTERNAL.md)
+> Master roadmap: [`PLAN.md`](../PLAN.md) · Setup: [`SETUP.md`](SETUP.md) · OAuth: [`OAUTH.md`](OAUTH.md) · Mail Contract: [`MAIL_INTERNAL.md`](MAIL_INTERNAL.md)
 
 ---
 
@@ -17,8 +17,8 @@
 └───────────────────────────┬────────────────────────────┘
                             │ fetch('/api/*') — HttpOnly `.gothwadtech.com` Slots (`a`..`f`) + `X-Gothwad-Authuser`
 ┌───────────────────────────▼────────────────────────────┐
-│  CLOUDFLARE WORKER (`accounts` — 17 Modular TS Files)  │
-│  cloudflare-worker/src/index.ts (~30 KiB gzip bundle)  │
+│  CLOUDFLARE WORKER (`accounts` — Modular TypeScript)  │
+│  cloudflare-worker/src/worker.ts → index.ts router  │
 │  • types · db · http · crypto · cookies · users        │
 │  • sessions · browser-slots · oauth-helpers            │
 │  • routes/{public-internal,auth-entry,auth-session,    │
@@ -28,7 +28,7 @@
               │ `env.DB` (1–5ms SQLite)  │ Optional `env.AVATARS_BUCKET` / Edge Cache
 ┌─────────────▼─────────────┐  ┌─────────▼─────────────────────────────┐
 │  CLOUDFLARE D1 (`accounts`)│  │  AVATAR DELIVERY ENGINE               │
-│  11 Tables · Pure Username│  │  D1 `user_avatars` BLOB + ETag 304    │
+│  Pure Username Identities│  │  D1 `user_avatars` BLOB + ETag 304    │
 │  0 Auto-Pause · $0 MAU    │  │  + Cloudflare Edge Cache / Drop-in R2 │
 └───────────────────────────┘  └───────────────────────────────────────┘
 ```
@@ -46,7 +46,7 @@ Every source, stylesheet, SQL migration, test, and active documentation file acr
 ### Worker Module Map (`cloudflare-worker/src/`)
 | File | Responsibility |
 | :--- | :--- |
-| `index.ts` | Top-level request router, CORS/OAuth header wrapper, 503 error boundary, public re-exports |
+| `worker.ts` / `index.ts` | Fetch-only deployment entrypoint / router, CORS wrapper, error boundary and compatibility re-exports |
 | `types.ts` | `Env`, D1/R2 interfaces, `AccountSlot` (`a`..`f`), cookie & session data models |
 | `db.ts` | WeakMap-memoized cold-start D1 schema bootstrap & `DatabaseUnavailableError` (`503`) wrappers |
 | `http.ts` | JSON/form body readers, username/email/phone validators, dynamic subdomain CORS |
@@ -60,7 +60,10 @@ Every source, stylesheet, SQL migration, test, and active documentation file acr
 | `routes/auth-entry.ts` | `/api/auth/check-username`, `/api/auth/check-identifier`, `/api/auth/signup` |
 | `routes/auth-session.ts` | `/api/auth/signin`, `/api/auth/signout`, `/api/auth/refresh` |
 | `routes/auth-accounts.ts` | `/api/auth/accounts`, `/api/auth/switch`, `/api/auth/accounts/:id/signout`, `/api/auth/me`, recovery |
-| `routes/auth-profile.ts` | `/api/auth/change-password`, `/api/auth/update-profile`, `/api/auth/sessions*`, `/api/auth/avatar`, `/api/auth/export`, `/api/auth/delete-account` |
+| `routes/auth-profile.ts` | `/api/auth/update-profile`, `/api/auth/sessions*`, `/api/auth/avatar`, `/api/auth/export`, `/api/auth/delete-account` |
+| `routes/auth-password-change.ts` | Add/change password, fresh credential/MFA checks and device revocation |
+| `routes/auth-google.ts`, `routes/auth-mfa.ts`, `routes/auth-passkeys.ts` | Provider identities and optional MFA/passkey endpoints |
+| `routes/auth-recovery-change.ts` | Verified recovery-address changes |
 | `routes/oauth.ts` | `/api/oauth/{app-info,authorize,decision,token,userinfo,authorizations,revoke}` |
 
 ---
@@ -79,9 +82,12 @@ Every source, stylesheet, SQL migration, test, and active documentation file acr
 
 Accounts can also act as an OIDC client for Google, separately from its Gothwad
 OAuth-provider routes. `google-oidc.ts` verifies authorization-code/PKCE/nonce/RSA
-claims; `routes/auth-google.ts`, `google-signin.ts`, `google-proofs.ts` and SQL 11
+claims; `routes/auth-google.ts`, `google-signin.ts`, `google-proofs.ts` and SQL 11/12
 manage browser-bound single-use proofs, explicit identity links and passwordless
-onboarding. Existing internal user IDs, local MFA and session issuance are reused.
+onboarding. Canonical account links support many users per verified Google subject
+but one Google link per user. Returning users explicitly select an account or Add
+new; legacy links are preserved/imported once. Internal user IDs, account-specific
+local MFA and shared session issuance are reused.
 Missing passwords use a disabled non-hash marker and a derived `has_password` flag;
 no fake password is generated. Only transient Google proof cookies are host-only;
 existing parent-domain SSO slot cookies are untouched. Fresh Google proof supports

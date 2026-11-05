@@ -74,11 +74,14 @@ export async function verifyGoogle(env, jar, body = {}, overrides = {}) {
   assert.doesNotMatch(callback.headers.get('Location'), /error=1/);
   return flow;
 }
-export const onboarding = (username = 'googleowner') => ({ username, first_name: 'Google', last_name: 'Owner',
+export const onboarding = (username = 'googleowner') => ({ action: 'create', username, first_name: 'Google', last_name: 'Owner',
   confirm_recovery_email: true, accept_terms: true });
 export async function googleAccount(env, jar = new GoogleJar(), overrides = {}, username = 'googleowner') {
   await verifyGoogle(env, jar, {}, overrides);
-  const response = await jar.fetch(env, '/api/auth/google/finish', { method: 'POST', body: onboarding(username) });
+  const status = await (await jar.fetch(env, '/api/auth/google/status')).json();
+  const selected = status.accounts?.find(account => account.username === username) || status.accounts?.[0];
+  const body = selected ? { action: 'select', account_id: selected.id } : onboarding(username);
+  const response = await jar.fetch(env, '/api/auth/google/finish', { method: 'POST', body });
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   return { jar, data: await response.json(), response };
 }

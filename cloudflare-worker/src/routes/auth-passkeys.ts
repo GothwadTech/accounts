@@ -7,7 +7,6 @@ import { registrationOptions, verifyRegistration } from '../passkey-registration
 import { passkeyLoginOptions, verifyPasskeyLogin } from '../passkey-login.ts';
 import { resolveSession } from '../sessions.ts';
 import { authorizeActionMfa, reserveMfaAttempt } from '../mfa-proofs.ts';
-import { verifyPassword } from '../crypto.ts';
 import { logActivity } from '../users.ts';
 import { authQuery } from '../db.ts';
 

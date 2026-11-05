@@ -1,138 +1,90 @@
-# 🔥 GOTHWAD ACCOUNTS (v2.4 — Modular 100% Cloudflare Native + Universal Multi-Account SSO)
+# Gothwad Accounts
 
-**Central Identity, Subdomain Multi-Account Single Sign-On & OAuth 2.0 Hub for the Gothwad Ecosystem** — sign in once to access Mail, Kiwi Store, Kiwi Console, Meet, Drive, Notes, Calendar, and connected apps with instant `< 16ms` multi-account switching and a unified Google-style account menu across every app.
+Central identity, multi-account SSO and OAuth/PKCE provider for Gothwad apps.
+Vanilla HTML/CSS/JavaScript runs on Cloudflare Pages; the API runs on a Cloudflare
+Worker with a dedicated D1 database. No frontend framework or paid/card-gated
+service is required by the core stack. Provider quotas still apply.
 
-> **⚡ Architecture Highlights (v2.4 — Zero Supabase, Zero Credit Card, 100% Pure English, `<= 500` Lines/File):**
-> - **♾️ Unlimited Users ($0 MAU Forever)** — Native Worker WebCrypto `PBKDF2-SHA256` + `HS256` JWT engine
-> - **👥 Universal Google-Style Multi-Account Switcher (`a`..`f` + `/u/0..5`)** — Central Shadow-DOM widget (`web/widget/account-menu.js`) shared across `Accounts`, `Mail`, and `Kiwi Store` with **zero client storage tokens**
-> - **🚫 Never Sleeps / Zero 7-Day Pause** — Native Cloudflare D1 binding (`1–5ms` SQL) + D1 `BLOB` Edge-Cached Avatars (`0` card required)
-> - **🧬 100% Pure Username-Only DB (`Rule #2`)** — No primary email column in users/profiles; provider and recovery addresses are secondary metadata
-> - **🧩 Strictly Modular & Clean Codebase (`Rule #0` + `Rule #8`)** — 100% pure English across all UI/code/docs and every file strictly `<= 500` lines, enforced automatically by `npm test`!
+## Features and boundaries
 
----
+- Native password authentication and passwordless Google onboarding with explicit
+  identity linking; one Google identity may authorize multiple separate accounts.
+  Returning users choose an existing account or Add new; no implicit sign-in or
+  automatic email-based merge. SQL 12 preserves existing links.
+- Optional authenticator MFA, recovery codes and user-verified passkeys.
+- Six HttpOnly parent-domain account slots, `/u/0..5` per-tab routing and the
+  shared Universal Account Menu in `web/widget/`.
+- Username-only primary identities, profile/avatars, device revocation, export,
+  account deletion and OAuth 2.0 with S256 PKCE.
+- No session/OAuth credentials in browser storage. Secrets remain server-side.
+- New usernames use 3–24 lowercase letters and numbers only; no dots, dashes or
+  underscores. Historical usernames still work for sign-in/recovery. The optional
+  birthday is one joined Day / Month / Year field, without a calendar picker.
+- Passwords need at least 8 characters with no composition/strength requirement;
+  the existing server safety cap is 128. Create New has no strength meter.
 
-## Google sign-in — 2026-11-05
+Google sign-in was merged in PR #26 and is owner-confirmed working after redirect
+configuration. Source verification of the current changes is not proof of a
+production deployment.
+Synthetic tests do not establish live email delivery, provider approval, backup
+recovery or physical-device security. Use the owner checklist before release.
 
-Implemented locally as an additional sign-in method. New Google users choose a
-Gothwad username **without creating a password**; Security shows **Add password**.
-Existing users can explicitly connect Google. No email-only merging or local-MFA
-bypass; shared Gothwad SSO remains unchanged. Google stays disabled until owner
-OAuth setup and reviewed deployment. See [Google setup and limitations](docs/GOOGLE_SIGN_IN.md).
+## Start locally
 
-## Security status — 2026-10-29
-
-All planned security **coding** phases are implemented locally: abuse controls,
-verified recovery, authenticator MFA/recovery codes, optional passkeys, exact
-origin/proxy policy, cookie-only browser responses, and durable OAuth revocation.
-The release gate covers **194 tests**, build/types/bundle/audits, plus separate
-actual local Worker and Chromium checks and a synthetic restore rehearsal.
-
-**Nothing has been deployed or configured in production.** Real email delivery,
-backup restoration, deployed consumer compatibility/re-consent, live security
-headers, quotas, and physical/mobile passkeys still need controlled verification.
-Shared parent-domain SSO cookies are preserved; host-only isolation is not claimed.
-This is not certification, a penetration test, or Google equivalence.
-
-Start with [release readiness](docs/SECURITY_RELEASE_READINESS.md) and the single
-[final owner checklist](docs/SECURITY_OWNER_CHECKLIST.md). Technical details:
-[A–F findings](docs/ACCOUNTS_SECURITY_HARDENING.md), [MFA](docs/AUTHENTICATOR_MFA.md),
-[passkeys](docs/PASSKEYS.md), [SSO/OAuth](docs/SSO_TRUST_AND_OAUTH.md).
-Free-tier operation remains subject to provider quotas; no paid service is enabled.
-
-## 📚 Documentation Map
-
-| File | Audience | Contents |
-|------|----------|----------|
-| **[AGENTS.md](AGENTS.md)** | 🤖 AI Agents | **Mandatory 9 Architectural Rules (`Rule #0: Pure English` & `Rule #8: <= 500 lines/file`)** (**Read First!**) |
-| **[TASK.md](TASK.md)** | 📋 Everyone | Live status board + recent session changelog (historical logs archived in **[docs/TASK_HISTORY.md](docs/TASK_HISTORY.md)**) |
-| **[docs/SETUP.md](docs/SETUP.md)** | 👤 Maintainers | Step-by-Step Cloudflare Dashboard & D1 Setup Guide |
-| **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** | 🏗️ Engineers | Worker module map, WebCrypto primitives, multi-account cookies & D1 schema |
-| **[docs/MAIL_INTERNAL.md](docs/MAIL_INTERNAL.md)** | 📧 Mail Integration | `.gothwadtech.com` cookie contract + `/api/internal/usernames/:username` |
-| **[docs/OAUTH.md](docs/OAUTH.md)** | 🧩 App Developers | `"Sign in with Gothwad"` OAuth 2.0 + S256 PKCE integration guide |
-| **[docs/CLOUDFLARE_NATIVE_PLAN.md](docs/CLOUDFLARE_NATIVE_PLAN.md)** | 🧭 Ecosystem Plan | Cloudflare Workers + D1 ecosystem architecture |
-
----
-
-## 🚀 Quick Start & Full Verification
-
-```bash
-npm install
-npm run build                                                    # Verify all modular CSS stylesheets (`<= 500` lines each)
-npm test                                                         # Run all 80+ security, E2E, widget, English & file-size tests
-npm start                                                        # Start UI + Worker + real local SQLite D1 on http://localhost:3000
-```
-
-Verify strict TypeScript & Cloudflare Worker production bundle:
-
-```bash
-cd cloudflare-worker
-npx --yes --package=typescript tsc --noEmit
-npx wrangler deploy --dry-run
-```
-
----
-
-## 🛡️ Core Engineering Rules
-
-0. **100% Pure English Everywhere (`Rule #0`):** Zero Hindi / Hinglish in any UI screen, dialog, error message, comment, or document.
-1. **Domain-Agnostic (`Rule #1`):** Never hardcode domains in runtime code — read `APP_DOMAIN` strictly from config/env.
-2. **100% Pure Username DB (`Rule #2`):** `users` & `profiles` store **only `username`** — `email = username@APP_DOMAIN` is computed dynamically.
-3. **Zero Secrets or Tokens in Frontend (`Rule #3`):** Secrets live solely in Cloudflare Worker Secrets; web sessions live solely in `HttpOnly` `.APP_DOMAIN` cookies.
-4. **Modular File Size Ceiling (`Rule #8`):** Every file stays strictly **`<= 500` lines**, verified automatically by `npm test`.
-
-© 2026 Gothwad Tech
-
-## Session startup performance
-
-The homepage opens the dashboard shell directly; only a confirmed anonymous
-session redirects to Sign in. Identity discovery starts independently of the
-larger dashboard module tree, and `/api/auth/me` validates browser accounts once
-per request with concurrent slot checks and live D1 revocation checks.
-
-See [Session startup performance](docs/SESSION_STARTUP_PERFORMANCE.md) for the
-root cause, regression coverage, deployment requirements, and remaining Mail /
-Store loading gates. These changes require both Pages and Worker deployment.
-
-
-Standalone follow-up implementation prompts:
-[Mail startup](docs/MAIL_STARTUP_PERFORMANCE_PROMPT.md),
-[Store / Console startup](docs/STORE_STARTUP_PERFORMANCE_PROMPT.md), and
-[Drive repair](docs/DRIVE_STARTUP_REPAIR_PROMPT.md).
-The [Drive audit](docs/DRIVE_STARTUP_AUDIT.md) distinguishes reproduced local
-failures from production checks that remain unverified.
-
-
-## Universal Account Menu
-
-Use **Universal Account Menu** (or **Account Switcher**) to refer to the shared
-profile popup shown across apps. Its source is `web/widget/`.
-
-To review its design without signing in or touching real accounts:
+Use Node 22 or newer with built-in SQLite support.
 
 ```sh
-npm run preview:menu
+npm ci
+npm run build
+npm test
+npm start
 ```
 
-Open the live preview on port 3010. It uses the actual widget with synthetic
-accounts, light/dark appearance, and 1/3/6-account controls. Close the menu to
-change preview controls. Preview files live in `tools/widget-preview/`, outside
-the production `web/` deployment. Review and approve before deploying changes.
+The server binds to `0.0.0.0:3000`, serves `web/` and runs the Worker against an
+ignored local SQLite database. Dev/start builds once; rebuild after source edits.
+Do not hand-edit generated `web/assets/auth` bundles; ship entry HTML and bundles
+together. See [entry performance](docs/AUTH_ENTRY_PERFORMANCE.md).
 
-### Local Worker MFA smoke test
+Check Worker types and, with Worker dependencies installed, the production bundle:
 
-After installing Worker dependencies, start a configured **local-only** Worker on
-port 3012 and run `npm run test:mfa:worker`. It creates synthetic local accounts
-and refuses remote targets. See the MFA document for test scope and limitations.
-Production configuration requires the final combined owner checklist and separate approval.
+```sh
+npm exec --no -- tsc --noEmit -p cloudflare-worker/tsconfig.json
+cd cloudflare-worker
+npm ci
+npm run check
+```
 
-### Recovery sender configuration
+Build checks verify CSS and entry bundles. Tests cover authentication, OAuth,
+SSO/cookies, regression behavior, module links, English-only text and file sizes.
+See [local tools](tools/README.md) for optional local-only Chromium, MFA/passkey
+Worker checks, and the standalone widget preview (`npm run preview:menu`, port 3010).
 
-The owner-selected sender is `Gothwad Accounts <security@noreply.gothwadtech.com>`,
-maintained in `cloudflare-worker/wrangler.toml` so future deployments retain it.
-Verify the sending subdomain in Resend and add RESEND_API_KEY as a private Worker
-secret before delivery tests. This repository update alone does not configure or
-verify production email.
+## Documentation
 
-For a successful Pages deploy but missing API endpoints, see
-[Worker build troubleshooting](docs/WORKER_BUILD_TROUBLESHOOTING.md). The two Git
-deployment integrations must be verified independently.
+| Start here | Responsibility |
+|---|---|
+| [AGENTS.md](AGENTS.md) | Mandatory engineering rules |
+| [TASK.md](TASK.md) | Current status and recent changes |
+| [HANDOVER.md](HANDOVER.md) | Working-tree handoff and verification boundaries |
+| [PLAN.md](PLAN.md) | Next work and scope decisions |
+| [Documentation index](docs/README.md) | Setup, architecture, security and sibling-app handoffs |
+| [Owner checklist](docs/SECURITY_OWNER_CHECKLIST.md) | Production approval and operational checks |
+| [Setup](docs/SETUP.md) | Accounts Pages, Worker, D1 and private configuration |
+| [Google sign-in](docs/GOOGLE_SIGN_IN.md) | Provider setup, linking and recovery limitations |
+| [Mail contract](docs/MAIL_INTERNAL.md) / [OAuth](docs/OAUTH.md) | Consumer integration contracts |
+
+Pages and Worker deployments must be checked independently. A successful Pages
+build or merge does not prove that API endpoints were released; see
+[Worker troubleshooting](docs/WORKER_BUILD_TROUBLESHOOTING.md).
+
+The source-controlled recovery sender is
+`Gothwad Accounts <security@noreply.gothwadtech.com>`. Verify the sending subdomain
+and configure RESEND_API_KEY privately before testing real delivery. Repository
+configuration alone does not establish delivery.
+
+## Engineering rules
+
+English only; files at most 500 lines; APP_DOMAIN-driven configuration; dedicated
+Accounts data; no browser-storage credentials; additive idempotent migrations;
+PBKDF2 at most 100,000 iterations; preserve OAuth/session and six-slot cookie
+contracts. Do not change sibling applications or deploy without authorization.

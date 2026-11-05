@@ -9,7 +9,7 @@
 import type { D1Database, D1PreparedStatement, Env } from './types.ts';
 import { OAUTH_STATE_SCHEMA } from './oauth-schema.ts';
 import { PASSKEY_SCHEMA } from './passkey-schema.ts';
-import { GOOGLE_SCHEMA } from './google-schema.ts';
+import { GOOGLE_SCHEMA, GOOGLE_ACCOUNT_SCHEMA } from './google-schema.ts';
 import { MFA_SCHEMA } from './mfa-schema.ts';
 
 const initializedDbs = new WeakMap<object, Promise<void>>();
@@ -226,6 +226,7 @@ export async function getDb(env: Env): Promise<D1Database> {
   if (!pending) {
     const statements = [
       ...BOOTSTRAP_STATEMENTS.map((sql) => env.DB.prepare(sql)),
+      ...GOOGLE_ACCOUNT_SCHEMA.map((sql) => env.DB.prepare(sql)),
       ...buildDefaultCallbackSeedStatements(env.DB, env.APP_DOMAIN),
     ];
     pending = env.DB.batch(statements)

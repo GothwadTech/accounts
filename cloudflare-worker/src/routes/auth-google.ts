@@ -49,7 +49,7 @@ async function handleGoogleRequest(request: Request, db: D1Database, env: Env,
       if (!account) return wrap(json({ error: 'unauthorized' }, 401));
       snapshot = account.password_hash;
       factorVersion = (await enabledMfa(db, userId))?.version || null;
-      const linked = await db.prepare('SELECT subject FROM auth_external_identities WHERE issuer = ? AND user_id = ?')
+      const linked = await db.prepare('SELECT subject FROM auth_external_account_links WHERE issuer = ? AND user_id = ?')
         .bind(GOOGLE_ISSUER, userId).first();
       if (purpose === 'reauth' && !linked) return wrap(json({ error: 'google_not_linked' }, 409));
       if (purpose === 'link') {
@@ -107,17 +107,17 @@ async function handleGoogleRequest(request: Request, db: D1Database, env: Env,
     catch { return failed(); } // Never log provider tokens or authorization codes.
     if (flow.purpose === 'link') {
       try {
-        const linked = await db.prepare(`INSERT INTO auth_external_identities (issuer, subject, user_id, provider_email, created_at)
+        const linked = await db.prepare(`INSERT INTO auth_external_account_links (issuer, subject, user_id, provider_email, created_at)
           SELECT ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM auth_google_flows WHERE state_hash = ? AND used_by = ? AND (${liveFlow}))
           RETURNING user_id`).bind(GOOGLE_ISSUER, identity.subject, flow.user_id, identity.email, new Date().toISOString(),
             flow.state_hash, marker).first();
         if (!linked) return failed();
-      } catch { return failed(); } // A Google identity cannot be transferred or merged by email.
+      } catch { return failed(); } // Linking requires this account’s password/MFA proof; no email-based merge.
       return wrap(new Response(null, { status: 303, headers: { Location: `${config.origin}/u/${flow.authuser}/me#security` } }),
         [googleCookie(env, 'flow', '', 0)]);
     }
     if (flow.purpose === 'reauth') {
-      const linked = await db.prepare('SELECT user_id FROM auth_external_identities WHERE issuer = ? AND subject = ? AND user_id = ?')
+      const linked = await db.prepare('SELECT user_id FROM auth_external_account_links WHERE issuer = ? AND subject = ? AND user_id = ?')
         .bind(GOOGLE_ISSUER, identity.subject, flow.user_id).first();
       if (!linked) return failed();
     }

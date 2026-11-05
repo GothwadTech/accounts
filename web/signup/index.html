@@ -8,14 +8,14 @@
   <link rel="icon" href="/favicon.ico" sizes="any" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="manifest" href="/manifest.json" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/css/legacy/variables.css" />
   <link rel="stylesheet" href="/css/legacy/base.css" />
   <link rel="stylesheet" href="/css/legacy/components.css" />
   <link rel="stylesheet" href="/css/legacy/auth.css" />
   <link rel="stylesheet" href="/signup/css/signup.css" />
+  <!-- auth-preload:start -->
+  <link rel="modulepreload" href="/assets/auth/shared-Y4LTDZZ3.js" />
+  <!-- auth-preload:end -->
 </head>
 <body>
   <div class="page">
@@ -30,26 +30,21 @@
             </div>
             <h1 class="auth-header-title">Gothwad Accounts</h1>
             <p class="auth-header-desc" id="signup-header-desc">
-              Basic information — enter your name and date of birth.
+              Enter your first and last name.
             </p>
           </div>
 
           <!-- ═══════════════ AUTH SWITCHER TABS ═══════════════ -->
           <div class="auth-nav-tabs">
             <a href="/signin" class="auth-tab-btn">Sign In</a>
-            <a href="/signup" class="auth-tab-btn active">Sign Up</a>
+            <a href="/signup" class="auth-tab-btn active">Create New</a>
           </div>
 
           <!-- ═══════════════ MULTI-STEP FORM ═══════════════ -->
-          <button type="button" class="btn-google" id="btn-google-entry">
-            <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" style="margin-right: 8px; vertical-align: middle;"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
-            <span>Continue with Google</span>
-          </button>
-          <p id="google-entry-error" class="auth-helper" role="status" style="margin: 0;"></p>
           <form id="signup-form" novalidate style="width: 100%;">
             <div id="alert-signup" class="alert alert-error hidden" style="margin-bottom: 14px;"></div>
 
-            <!-- ─── STEP 1: Basic Info (3 separate button-styled fields) ─── -->
+            <!-- ─── STEP 1: Your name ─── -->
             <div id="signup-step-1">
               <!-- Field 1: First name -->
               <div class="auth-field-group">
@@ -66,17 +61,26 @@
                   <input class="input" id="last_name" type="text" placeholder="Last name" required />
                 </div>
               </div>
-
-              <!-- Field 3: Date of birth -->
-              <div class="auth-field-group">
-                <label class="auth-field-label" for="dob">Date of birth</label>
-                <div class="btn-field-box">
-                  <input class="input" id="dob" type="date" placeholder="Date of birth" required />
+              <div class="auth-optional-action">
+                <button type="button" id="signup-optional-toggle" aria-expanded="false" aria-controls="signup-optional-details">
+                  <span>Fill optional details</span>
+                  <svg class="optional-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+                </button>
+              </div>
+              <div id="signup-optional-details" hidden inert>
+                <div class="auth-field-group">
+                  <label class="auth-field-label" for="birth-day">Date of birth (optional)</label>
+                  <div class="btn-field-box birthday-box" role="group" aria-label="Date of birth (optional)">
+                    <input class="input" id="birth-day" type="text" inputmode="numeric" maxlength="2" placeholder="Day" aria-label="Day" autocomplete="bday-day" />
+                    <input class="input" id="birth-month" type="text" inputmode="numeric" maxlength="2" placeholder="Month" aria-label="Month" autocomplete="bday-month" />
+                    <input class="input" id="birth-year" type="text" inputmode="numeric" maxlength="4" placeholder="Year" aria-label="Year" autocomplete="bday-year" />
+                  </div>
+                  <input id="date_of_birth" type="hidden" />
                 </div>
               </div>
             </div>
 
-            <!-- ─── STEP 2: Choose Username / Email ─── -->
+            <!-- ─── STEP 2: Email and password ─── -->
             <div id="signup-step-2" class="hidden">
               <div class="auth-field-group">
                 <label class="auth-field-label" for="username">Email or Username</label>
@@ -85,39 +89,22 @@
                          placeholder="username@gothwadtech.com"
                          autocomplete="username" required maxlength="24" />
                 </div>
-                <div class="hint" id="username-hint" style="margin-top: 8px;">3–24 characters: a-z, 0-9, dot (.), dash (-), underscore (_)</div>
+                <div class="hint" id="username-hint" style="margin-top: 8px;">3–24 characters: letters and numbers only</div>
               </div>
-            </div>
-
-            <!-- ─── STEP 3: Password ─── -->
-            <div id="signup-step-3" class="hidden">
               <div class="auth-field-group">
                 <label class="auth-field-label" for="password">Password</label>
                 <div class="btn-field-box">
                   <input class="input" id="password" type="password"
-                         placeholder="Create a password (min. 8 characters)"
-                         autocomplete="new-password" required />
+                         placeholder="Password"
+                         autocomplete="new-password" minlength="8" maxlength="128" required />
                   <button type="button" class="input-eye" data-eye="password" aria-label="Show password">👁️</button>
                 </div>
               </div>
 
-              <div class="auth-field-group">
-                <label class="auth-field-label" for="confirm_password">Confirm password</label>
-                <div class="btn-field-box">
-                  <input class="input" id="confirm_password" type="password"
-                         placeholder="Confirm password"
-                         autocomplete="new-password" required />
-                </div>
-              </div>
-
-              <div class="storage-bar" style="margin: 4px 0 6px;">
-                <div class="storage-fill" id="strength-fill" style="width: 0%; background: #6a7686;"></div>
-              </div>
-              <div class="hint" id="strength-text">Use 8+ characters with mixed case, numbers &amp; symbols.</div>
             </div>
 
-            <!-- ─── STEP 4: Recovery Email & Phone ─── -->
-            <div id="signup-step-4" class="hidden">
+            <!-- ─── STEP 3: Recovery Email & Phone ─── -->
+            <div id="signup-step-3" class="hidden">
               <div class="auth-field-group">
                 <label class="auth-field-label" for="recovery_email">Recovery email</label>
                 <div class="btn-field-box">
@@ -139,6 +126,14 @@
               <button type="button" class="btn btn-primary btn-block btn-lg auth-btn-outside" id="btn-step-1-next">
                 <span>Next</span>
               </button>
+              <div id="google-entry-options">
+                <div class="auth-separator" aria-hidden="true"><span>or</span></div>
+                <button type="button" class="btn-google" id="btn-google-entry">
+                  <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" style="flex-shrink: 0;"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
+                  <span>Continue with Google</span>
+                </button>
+                <p id="google-entry-error" class="auth-helper" role="status" style="margin: 0;"></p>
+              </div>
             </div>
 
             <div id="signup-step-2-actions" class="hidden">
@@ -151,19 +146,10 @@
             </div>
 
             <div id="signup-step-3-actions" class="hidden">
-              <button type="button" class="btn btn-primary btn-block btn-lg auth-btn-outside" id="btn-step-3-next">
-                <span>Next</span>
-              </button>
-              <button type="button" class="btn-secondary-auth" id="btn-step-3-back">
-                <span>Back</span>
-              </button>
-            </div>
-
-            <div id="signup-step-4-actions" class="hidden">
               <button type="submit" class="btn btn-primary btn-block btn-lg auth-btn-outside" id="signup-btn">
                 <span>Create account</span>
               </button>
-              <button type="button" class="btn-secondary-auth" id="btn-step-4-back">
+              <button type="button" class="btn-secondary-auth" id="btn-step-3-back">
                 <span>Back</span>
               </button>
             </div>
@@ -185,7 +171,6 @@
     </main>
   </div>
 
-  <script type="module" src="/js/google-entry.js"></script>
-  <script type="module" src="/signup/js/signup.js"></script>
+  <script type="module" data-auth-entry="signup" src="/assets/auth/signup-D47AWQP5.js"></script>
 </body>
 </html>

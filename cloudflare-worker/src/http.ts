@@ -80,6 +80,10 @@ export function isValidUsername(username: string): boolean {
   return /^[a-z0-9](?:[a-z0-9._-]{1,22}[a-z0-9])?$/.test(username);
 }
 
+export function isValidNewUsername(username: string): boolean {
+  return /^[a-z0-9]{3,24}$/.test(username);
+}
+
 export function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }

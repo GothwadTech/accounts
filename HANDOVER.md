@@ -1,177 +1,73 @@
 # Accounts Handover
 
-## Current work — Google authentication, 2026-11-05
+Updated 2026-11-05. Current branch: `arena/cc2b6a5f-accounts`.
+Read [AGENTS.md](AGENTS.md) for constraints and [TASK.md](TASK.md) for session history.
 
-Branch `arena/220dd98f-accounts`. Google sign-in/signup and explicit linking are
-implemented locally. Google signup creates no password; Security accurately offers
-Add password. Fresh Google proof supports passwordless security settings without
-removing existing MFA/session/snapshot guards. Native auth and parent six-slot SSO
-remain. See [protocol, setup and recovery limitations](docs/GOOGLE_SIGN_IN.md).
+## Current state
 
-Verification: 223 local tests, CSS build, strict Worker types, dry-run, production
-dependency audits, and synthetic-provider Chromium onboarding/COOP-popup/Add password
-QA. No real Google login, Google project, production configuration or deployment
-is claimed. Configure both Google client credentials privately and verify callback
-routing after review. Historical deployed MFA/passkey 404 reports remain unresolved.
-Worker dev-tool dependency audit also reports 2 moderate/1 high advisories in
-Wrangler/Miniflare/Undici; production-only audits are clean. Lockfiles are unchanged.
+- Baseline: owner's UI commit `6f41d56`, following merged Google PRs #26/#27.
+  The owner confirms Google sign-in works after correcting its redirect URI.
+  This is owner confirmation, not an independent production security audit.
+- Current changes: Create New labels, a collapsed optional birthday disclosure,
+  first-step-only Google below Next, password-step-only passkeys, lighter entry
+  bundles/system fonts, consistent spacing, and visible-step Enter handling.
+- Account creation now uses three steps: name with optional birthday, email and
+  one password together, then existing recovery details. No confirmation field or
+  strength meter remains. The optional-details chevron reflects open/closed state;
+  birthday stays optional and is sent only when filled. It is now one 48px joined
+  Day / Month / Year control with internal dividers and numeric entry, no calendar.
+- New native/Google usernames allow only 3–24 lowercase letters and numbers.
+  Historical punctuated usernames remain valid for sign-in/recovery.
+- Google now supports several separate Gothwad accounts per Google identity:
+  verified-subject chooser, Add new and explicit selection, never first-match login.
+  SQL 12 imports legacy links into canonical `auth_external_account_links` once;
+  deploy matching frontend/Worker together with old writes stopped. See the
+  [migration and Google pilot](docs/GOOGLE_SIGN_IN.md). No production migration ran.
+- Disclosure clicks keep focus on the toggle; top anchoring/stable scrollbar gutter
+  prevent threshold recentering. Mobile inputs use 16px text without disabling zoom.
+  Existing-account reauthentication now preserves browser account ordering/indices.
+- Passwords require at least 8 characters, without composition/strength rules.
+  Existing 128-character server safety limits remain unchanged.
+- Cleanup removes unused internal UI code and superseded documentation, not
+  authentication features, migrations, compatibility APIs, or regression tests.
 
-
-## Deployment investigation and requested merge — 2026-10-30
-
-The owner requests merging the pending sender change. A separate PR from
-`arena/bfd51291-accounts` will include that setting, its regression, and corrected
-deployment guidance. Pages and Workers Builds are independent; the old setup guide
-incorrectly implied that merging necessarily deploys both. That claim is corrected.
-[Worker troubleshooting](docs/WORKER_BUILD_TROUBLESHOOTING.md) documents compatible
-root/branch/commands and the redacted log needed to determine the real cause.
-No live dashboard setting, route, secret, or deployment command is changed here.
-The reported security endpoint 404 remains unresolved pending Worker evidence.
-
-## Current follow-up: source-controlled recovery sender, 2026-10-30
-
-On `arena/bfd51291-accounts`, Wrangler now retains the owner-selected public sender
-`Gothwad Accounts <security@noreply.gothwadtech.com>`. A configuration regression
-checks the sender against APP_DOMAIN. This prevents future reviewed deployments
-from reverting it to the old Resend test sender. No deployment or provider/DNS
-verification was performed; RESEND_API_KEY remains a private Cloudflare secret.
-PR #24 was merged previously; the older draft-state handoff below is historical.
-
-
-## Current change: remaining security phases, 2026-10-29
-
-Branch `arena/b5820242-accounts`; implementation commit `120f918` is pushed and
-draft [PR #24](https://github.com/GothwadTech/accounts/pull/24) is open at the owner's
-request on 2026-10-30. No merge or deployment command was executed; external
-Cloudflare integration outcomes still require verification.
-All remaining coding phases are complete: required-UV passkeys, exact origin/proxy
-trust, cookie-only browser responses, durable OAuth revocation, and release/
-restore/incident tooling/docs. No configuration questions interrupted the work.
-See [release readiness](docs/SECURITY_RELEASE_READINESS.md) and the single
-[final owner checklist](docs/SECURITY_OWNER_CHECKLIST.md).
-
-Verification: **194 tests**, build, strict Worker types, default-only entrypoint
-bundle, root/Worker production audits, actual local workerd/D1 ES256/RS256 and
-OAuth flows, real Chromium virtual-passkey settings/login/removal, and synthetic
-SQLite backup/restore checks. Nothing proves production email/deployment/backups.
-
-Mail/Store current source was audited read-only; no other repository was changed.
-Existing parent-domain cookie names/domain/slots/Set-Cookie behavior remain.
-Old unbound OAuth tokens require re-consent; older headerless write proxies need
-trusted Origin or a server-only SSO_PROXY_TOKEN. Browser JSON no longer exposes
-session credentials; OAuth token response contracts remain separate.
-
-Next: owner review/approval of the consolidated checklist, real email/key/origin
-setup, protected backup/isolated restore, coordinated Worker/Pages release and
-consumer/device pilot. Do not restore the Accept-only proxy exception, silently
-switch to host-only cookies, bypass MFA, rotate encryption keys blindly, or deploy
-without authorization. Preserve unrelated Realtime assessment documentation.
-
-### Historical milestones below
-
-Older phase counts, pending-work notes, and proxy behavior record their session's
-state and are superseded by the current section and release documents above.
-
-## Previous change: security hardening, 2026-10-28
-
-Branch: `arena/b5820242-accounts`. Scope and decisions:
-[Accounts security hardening](docs/ACCOUNTS_SECURITY_HARDENING.md).
-
-Phase 1 adds persistent authentication throttling (SQL 06 and runtime bootstrap),
-parsed CORS origin checks, central rejection of explicit hostile browser mutations,
-other-device revocation on password change, static script/framing CSP, and dynamic
-OAuth script nonces. Current cookies and headerless proxy compatibility remain;
-this is not a completed SSO trust-boundary migration or full CSRF remediation.
-
-Verification: build, **142/142 tests**, strict Worker typecheck, deploy dry-run,
-and synthetic Chromium checks pass. No production deployment or new secrets.
-PR 23 was merged previously; its Worker build failed while Pages passed. Inspect
-the Cloudflare build log before diagnosing the production failure.
-
-Recovery core is also implemented: password-confirmed pending replacements,
-single-use verification bound to session/password/address state, atomic reset
-consumption/update/revocation, and current-password checks for phone changes.
-SQL 07 matches runtime bootstrap. Confirmation removes the fragment and requires
-an explicit click; generic profile updates cannot overwrite recovery addresses.
-Real email delivery remains unconfigured and successful browser email responses
-were mocked. See [owner actions](docs/SECURITY_OWNER_CHECKLIST.md).
-
-Next: owner chose authenticator MFA/recovery codes first, then passkeys. Implement
-real enforcement and audit OAuth/SSO/token consumers; no MFA is enabled yet. No other
-repositories were edited. Keep unrelated Realtime research documentation intact.
-
-## Historical change: session startup, 2026-10-24
-
-User reported an Accounts homepage -> Sign in -> profile bounce and multi-second
-identity loading in Accounts, Mail, and Store / Console.
-
-Implemented in this repository:
-
-- Root dashboard rewrite, removing the 1.2-second false-anonymous timer.
-- Early, one-shot, memory-only session bootstrap with in-flight sharing.
-- One browser-account inspection per `/auth/me` request.
-- Parallel slot inspection with stable authuser ordering.
-- Joined user/session validation without removing live revocation checks.
-- No redundant frontend refresh after `/auth/me` returns 401.
-- Retryable dashboard state for service/network errors; no false sign-out.
-- `no-store` responses for all auth routes.
-- Client and real-SQLite regression tests.
-
-Architecture and follow-up details:
-[Session startup performance](docs/SESSION_STARTUP_PERFORMANCE.md).
-
-## Deployment boundary
-
-Changes are on `arena/d34d0d2c-accounts`. They are not deployed by editing the
-working tree. Both Accounts Pages and Worker must deploy after review/merge.
-No production speed claim has been measured in this session.
-
-Mail and Store were audited read-only. Their app-specific loading gates remain
-unchanged; recommendations are documented, not implemented in those repos.
-
-Verification completed: **98/98 tests pass**, CSS build passes, strict Worker
-TypeScript checks pass, and Wrangler dry-run succeeds.
-
-## Verification commands
+## Development and verification
 
 ```sh
 npm run build
 npm test
-npm exec --yes --package=typescript -- tsc --noEmit -p cloudflare-worker/tsconfig.json
-npm exec --yes --package=wrangler -- wrangler deploy --dry-run --config cloudflare-worker/wrangler.toml
+npm exec --no -- tsc --noEmit -p cloudflare-worker/tsconfig.json
 ```
 
-Keep English-only text, files at or below 500 lines, zero browser-storage auth
-credentials, and all existing HttpOnly slot-cookie / OAuth security contracts.
+`npm start` / `npm run dev` builds and starts the preview on port 3000. JavaScript
+source changes need another build; there is no watcher. Entry HTML and generated
+`web/assets/auth` files must ship together. See [entry performance](docs/AUTH_ENTRY_PERFORMANCE.md).
 
+Optional local browser checks and external Playwright setup are documented in
+[tools/README.md](tools/README.md). They cover native entry/keyboard/layout,
+synthetic Google onboarding/COOP reauthentication, two-account selection, MFA,
+and virtual passkeys. Latest build/types and 256 tests pass; entry and Google
+Chromium QA pass, including short-height disclosure geometry in both themes.
+Worker deployment dry-run passes. Root and Worker full dependency audits both report
+zero vulnerabilities after updating the compatible Worker tooling lock. Build/types,
+256 tests and native/Google Chromium checks pass. The owner authorized committing,
+pushing and merging the accumulated local work; production migration/deployment is
+not manually performed here. Delivery: [PR #28](https://github.com/GothwadTech/accounts/pull/28);
+follow its merge/check results independently of local verification.
+No synthetic result establishes live provider, email, or physical-device behavior.
 
-## Follow-up prompts and read-only Drive audit
+## Preserve these boundaries
 
-Created standalone implementation prompts in `docs/` for Mail, Store, and Drive.
-See `docs/DRIVE_STARTUP_AUDIT.md` for reproduced client failure classification,
-startup flow, data-preservation risks, and local verification results. Drive's
-nine tests pass; build succeeds with warnings; lint has 33 warnings. No app
-source changes or production deployment were performed in this follow-up.
-The audited Drive key variable is `DRIVE_ENCRYPTION_KEY`, not `VAULT_MASTER_KEY`.
-A missing Worker GitHub check is not evidence of a missing Worker deployment.
+- Existing parent-domain HttpOnly six-slot cookies, `/u/0..5`, per-tab authuser,
+  OAuth/session separation, live revocation, MFA, and explicit Google linking.
+- Passwordless Google onboarding and fresh verification for sensitive settings.
+- English only; files at most 500 lines; no browser-storage credentials or secrets.
+- Accounts only, no paid/card-gated services, no unrelated app changes or rename.
+- The owner authorized committing/pushing and merging this work through a PR.
+  No manual production deployment, secret/DNS changes or production migration is
+  included. Obtain separate authorization before those release actions.
 
-
-## Universal Account Menu design preview — 2026-10-24
-
-The shared profile/account-switcher popup is called the **Universal Account
-Menu**, implemented in `web/widget/`. Dark surface is now `#212121`; account rows
-are uniform and always visible, with the current account first but its server
-authuser index unchanged. No hero, edit pencil, collapse arrow, or Manage accounts
-control. The heading reads Gothwad Accounts; the manage pill uses the existing
-Gothwad logo. Add another account is a separate matching pill. Per-slot and
-all-account sign-out remain accessible without management mode.
-
-`npm run preview:menu` starts the real widget's local-only synthetic-data design
-preview at port 3010. No real authentication API or account changes are involved.
-The user requested preview before deployment; no merge or deployment performed.
-
-Verification: **105/105 tests pass**, CSS build passes, and headless Chromium
-checks passed for equal desktop row heights, switching, per-slot sign-out, add,
-themes, Escape, and mobile layout/close without horizontal overflow. Browser
-check dependencies were installed only under ignored `node_modules/`; no new
-production dependency was added.
+Production readiness is tracked in the [owner checklist](docs/SECURITY_OWNER_CHECKLIST.md)
+and [release guide](docs/SECURITY_RELEASE_READINESS.md). Inspect actual Worker
+build evidence independently of Pages; see [troubleshooting](docs/WORKER_BUILD_TROUBLESHOOTING.md).
+Private credentials and production observations must not be added to this file.

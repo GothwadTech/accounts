@@ -342,7 +342,9 @@ export async function buildSignInCookies(
       lastUsedAt: s.lastUsedAt,
     });
   }
-  entries.push({
+  // Reauthentication replaces a row in place; it must not reorder public authuser indices.
+  const previousIndex = inspected.validSlots.findIndex(s => s.slot === targetSlot);
+  entries.splice(previousIndex < 0 ? entries.length : previousIndex, 0, {
     slot: targetSlot,
     username: opts.username,
     firstName: opts.firstName,

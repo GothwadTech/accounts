@@ -4,21 +4,22 @@ import { GOTHWAD_CONFIG } from '../../../js/config.js';
 export function initUsernameCheck(usernameInput, usernameHint) {
   if (!usernameInput || !usernameHint) return;
 
-  let usernameTimer = null;
+  let usernameTimer = null, revision = 0;
 
   usernameInput.addEventListener('input', () => {
+    const requestRevision = ++revision;
     let val = usernameInput.value.toLowerCase();
     if (val.includes('@')) {
       val = val.split('@')[0];
     }
-    usernameInput.value = val.replace(/[^a-z0-9._-]/g, '');
+    usernameInput.value = val.replace(/[^a-z0-9]/g, '');
     clearTimeout(usernameTimer);
 
     const username = usernameInput.value.trim();
 
     if (username.length < 3) {
       usernameHint.className = 'hint';
-      usernameHint.textContent = '3–24 characters: a-z, 0-9, dot (.), dash (-), underscore (_)';
+      usernameHint.textContent = '3–24 characters: letters and numbers only';
       return;
     }
 
@@ -27,6 +28,7 @@ export function initUsernameCheck(usernameInput, usernameHint) {
 
     usernameTimer = setTimeout(async () => {
       const res = await api.get(`/auth/check-username?username=${encodeURIComponent(username)}`);
+      if (requestRevision !== revision || usernameInput.value.trim() !== username) return;
       if (res.ok && res.data) {
         if (res.data.available) {
           usernameHint.className = 'hint ok';

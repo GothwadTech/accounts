@@ -2,19 +2,31 @@
    SIGN IN PAGE STYLES
    ============================================================================= */
 
-/* Page-specific refinements for sign in */
+/* Render immediately with device fonts; do not fade the whole form on every navigation. */
 .auth-container-modern {
-  animation: fadeIn 0.3s ease-out;
+  --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, 'SF Mono', Menlo, monospace;
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+/* Use Create New's field rhythm without stacking wrapper and action margins. */
+.auth-recovery-action {
+  display: flex;
+  align-items: center;
+  margin: 0 0 var(--auth-field-gap, 12px);
+  text-align: left;
+}
+
+#signin-btn {
+  display: flex;
+  margin-top: 0;
 }
 
 /* Inline text button styled identically to .auth-field-label (left-aligned, no button chrome) */
 .auth-inline-text-btn {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  line-height: 1.55;
   background: transparent;
   border: none;
   font-family: inherit;
@@ -22,7 +34,7 @@
   font-weight: 700;
   color: var(--text-muted);
   letter-spacing: 0.02em;
-  padding: 4px 0;
+  padding: 0;
   cursor: pointer;
   text-align: left;
   text-decoration: none;

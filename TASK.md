@@ -7,7 +7,7 @@
 >
 > Engineering guide: [`AGENTS.md`](AGENTS.md) · Architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · Session archive (`1–30`): [`docs/TASK_HISTORY.md`](docs/TASK_HISTORY.md)
 
-**Last updated:** 2026-11-05 (Session 53 — Google sign-in confirmed working; requested merge)
+**Last updated:** 2026-11-05 (Session 63 — Username policy, segmented birthday and dependency fixes)
 
 ---
 
@@ -27,7 +27,86 @@
 
 ---
 
-## ✅ DONE (Newest First — Sessions 31 to 53)
+## ✅ DONE (Newest First — Sessions 31 to 63)
+
+### Session 63 — 2026-11-05 — Username Policy, Segmented Birthday and Dependency Fixes
+- **DONE:** new usernames in native signup, availability checks and Google signup accept only 3–24 lowercase letters/numbers; dots, underscores and dashes are rejected server-side and removed from native entry. Updated hints/patterns. Historical usernames remain supported for sign-in, recovery and internal lookup; no renaming or destructive migration.
+- Replaced the native birthday calendar with one same-width, 48px joined control, split horizontally into Day / Month / Year with internal dividers and numeric keyboards. Optional disclosure, retained values/Back, past-date/leap-day validation, ISO payload and blank omission remain intact. Partial or impossible dates reveal/focus visible segments; no calendar picker.
+- Updated the Worker lock within its existing compatible ranges to fix Wrangler/Miniflare/Undici advisories. Root and Worker full dependency audits now report **zero vulnerabilities**. No forced/major upgrades or added runtime dependencies.
+- Verification: build, **256/256 tests**, strict Worker types, deployment dry-run, whitespace checks and native/Google Chromium QA pass. Added server/Google username and historical-login regressions; browser checks verify joined segment geometry, disclosure stability and ISO birthday persistence. Actual iOS/live Google remain separate device/provider pilots.
+- Owner authorized committing, pushing and merging all accumulated local changes on this branch. No manual production deployment, secret/DNS changes or production migration. Delivery: [PR #28](https://github.com/GothwadTech/accounts/pull/28); local verification is complete and the Cloudflare Pages check gates the authorized merge.
+
+### Session 62 — 2026-11-05 — Google Account Choice and Stable Disclosure
+- **DONE:** one verified Google identity can create/link multiple independent Gothwad accounts. Returning Google sign-in shows all linked accounts above Add new account; no account/session is selected implicitly. New onboarding supports Back to accounts.
+- Added canonical `auth_external_account_links` with one Google link per Gothwad account and many accounts per Google subject. Additive/idempotent SQL 12 and runtime bootstrap preserve/backfill legacy metadata once with a migration marker; no destructive rebuild or recurring legacy scan. Coordinate frontend/Worker release with old writes stopped; legacy-only Worker rollback is unsupported.
+- Finish requires explicit select/account ID or create. Verified-subject membership gates both selection and final issuance. Proof replay/concurrency, username rollback, local MFA, account/session-bound security reauthentication and the six-browser-slot cap remain enforced. Explicit password/MFA-verified native linking can share Google without transfer, merge or account replacement.
+- Fixed existing-account sign-in reordering browser slots: build the replacement before revoking its old session and replace its metadata in place, retaining stable authuser indices.
+- Optional-details clicks no longer force date-field focus. Top-anchored signup, stable scrollbar gutter and 16px mobile input text avoid recentering/width shifts/focus zoom without disabling pinch zoom. Validation still reveals/focuses invalid optional input.
+- Verification: build, **253/253 tests**, strict Worker types and whitespace checks pass. Chromium verifies one/two-account chooser, Add new/Back, independent selection/data/password state, repeat-Enter/MFA locks and stale-backend failure; native mobile/desktop/light/dark QA includes crossing the disclosure scroll threshold with stable header/width/scroll/viewport scale. Actual iOS and real Google/provider approval remain unverified.
+- Worker deployment dry-run passes. Existing Worker dev-tool dependencies report three audit findings (two moderate, one high); production dependencies report zero. No automatic dependency upgrades.
+- Updated setup/schema/architecture/README/HANDOVER/PLAN; refreshed preview. No production migration/deployment, commit, push or PR.
+
+### Session 61 — 2026-11-05 — Shorter Create New Flow
+- **DONE:** added a left-aligned Fill optional details text button between Last name and Next, matching Sign In's recovery-action rhythm. An accessible down/up chevron reflects disclosure state; opening reveals an optional date-of-birth field, closing hides it without discarding its value. Back navigation preserves entered details.
+- Combined Gothwad email/username and password into one screen; removed password confirmation and the redundant password-only step. Flow is now name → email/password → existing recovery details. Google remains first-step-only below Next; sign-in/Google authentication contracts are untouched.
+- Removed the signup strength meter, weak/strong labels, composition advice and their unused module/scoring helper/styles. Passwords still need at least 8 characters without composition rules; existing server safety cap is unchanged.
+- Optional birthday validates only when filled (including invalid/partial date input), is omitted from signup JSON when blank, and uses the existing backend/profile field when filled. Invalid earlier details are revealed/focused rather than producing hidden-step errors. No backend/schema change.
+- Preserved the single visible-step submit dispatcher, held-Enter protection, pending/terminal locks, input spacing, lower Google styling, password visibility control and existing recovery requirements.
+- Verification: build, **246/246 tests**, strict Worker types and whitespace checks pass. Real Chromium at 390px/1280px in light/dark themes verifies optional disclosure/spacing, three-step navigation, weak single password, birthday persistence, Back/Enter behavior and existing Sign In/MFA/Google visibility. Separate synthetic Google onboarding/COOP reauth/Add password QA also passes.
+- Preview bundles rebuilt. No production deployment, commit, push or pull request.
+
+### Session 60 — 2026-11-05 — Code and Documentation Cleanup
+- **DONE:** audited frontend module references/DOM hooks and Worker unused-symbol diagnostics. Removed the uncalled legacy topbar/account-menu renderer and its private bindings, three unreferenced frontend forwarding entries, nonexistent suffix/forgot-button hooks, duplicate recovery handlers, unused imports/variables, unused `tsx` dev dependency and unrelated AI Studio metadata. Kept the real shared widget, dashboard fallback, CSS compatibility shims, API compatibility exports, migrations and regression tools.
+- Removed four superseded/redundant Markdown files: founding ROADMAP, duplicate CLOUDFLARE_NATIVE_PLAN, obsolete MAIL_BOOTSTRAP redirect and completed legacy MAIL_SESSION_FIX instructions. Retained distinct sibling migration/audit specifications; they are dated references, not current bug claims or permission to edit other repos.
+- Consolidated README, HANDOVER and PLAN, refreshed architecture/frontend documentation and the documentation index, and repaired local links without creating another cleanup/report document. Archived session history remains available.
+- Enabled Worker `noUnusedLocals`/`noUnusedParameters` and added a local Markdown-link regression gate to prevent dead imports and broken documentation from accumulating again.
+- **Password policy verified, not changed:** exactly eight repeated letters or digits work for signup/signin; weak eight-character change/reset passwords work too. Shorter and oversized inputs remain rejected. No composition/strength requirement exists; existing 128-character server safety cap remains. Added two policy regressions. **The shorter Create New flow and strength guidance are intentionally untouched pending owner instructions.**
+- Verification: build, **242/242 tests**, strict Worker types, whitespace checks, mobile/desktop entry/keyboard/light-dark spacing QA and separate synthetic Google onboarding/COOP reauth/Add password QA pass. Root dependency audit reports zero vulnerabilities after removing `tsx`.
+- No backend authentication behavior, database/cookie contract, production configuration, deployment, commit, push or pull request was changed/performed. Preview bundles rebuilt.
+
+### Session 59 — 2026-11-05 — Visible-Step Enter and Submission Guards
+- **DONE:** unified Create New's Next clicks and form submissions behind one current-step dispatcher. Enter validates/advances only the visible step; final account creation is reachable only from recovery. Hidden steps are hidden/inert, focus follows visible transitions, and final revalidation brings an invalid earlier field back on screen.
+- Added a small shared form guard for native sign-in, signup, forgot/reset and Google onboarding/MFA: repeated Enter cannot skip steps, IME/textareas/normal button activation retain native behavior, hidden forms cannot submit, pending actions share a lock, and terminal success stays locked during delayed navigation. Password and passkey sign-in share the pending-action guard.
+- Fixed one-character usernames incorrectly passing the existing 3–24-character UI rule, stale username availability hints, and identifier lookup responses advancing after the identifier was edited. Google entry rejects activation while hidden or while its native form is busy.
+- Audited the other dashboard/menu key handlers: they are scoped to search, Escape/menu navigation or photo activation, not hidden account-entry submissions. No new global Enter listener or destructive dialog shortcut was introduced.
+- Verification: build and **239/239 tests** pass; real Chromium keyboard checks at 390px/1280px cover missing fields, visible-step focus, held Enter with autofilled hidden values, implicit submit, pending/retry/terminal locks, hidden forms, sign-in/MFA/recovery/reset and Google consent/MFA. Existing native signup, navigation, method visibility and light/dark spacing QA pass. Separate synthetic-provider Google onboarding/COOP reauth/Add password browser QA also passes.
+- Updated the running local preview bundles; refresh Latest Accounts UI to load them. Existing spacing/layout preserved. No backend/API/cookie/security contract change, production deployment, commit, push or pull request.
+
+### Session 58 — 2026-11-05 — Consistent Sign In / Create New Spacing
+- **DONE:** reused shared 6px label-to-input and 12px row-gap tokens. Kept Create New's name-field layout and matching 48px input boxes, padding and corner radii.
+- Replaced both Sign In Forgot password wrapper inline margins with a consistent recovery-action row. Removed the extra accumulated gap before Next/Sign In; Create New primary actions use the same 12px final-field gap.
+- Preserved the existing lower separator/Google/passkey styling, step visibility, routes and authentication logic. Forgot password remains left-aligned with a minimum 24px target height.
+- Verification: build and **231/231 tests** pass. Chromium checks actual 6px/12px geometry, matching box sizes/padding/alignment at 390px and 1280px in light/dark themes, plus existing entry navigation, native signup and MFA UI regressions.
+- Preview remains running with the updated CSS. No backend/authentication changes, production deployment, commit, push or pull request was performed.
+- **NEXT UP:** owner refreshes Latest Accounts UI and reviews the form spacing before further UI-only refinements.
+
+### Session 57 — 2026-11-05 — Reduce Sign In / Create New Switching Delay
+- **DONE:** removed render-blocking external font CSS and the repeated 300ms entry-screen fade; both screens use system fonts and keep the owner's existing layout and step-specific methods.
+- Added a build-time-only esbuild entry bundler with one small entry per screen, a shared preloaded module and content-hashed filenames. Observed Create New JS requests fall from 13 to 2; no runtime framework, client router, skipped session check or token storage was added.
+- Local preview caches only hashed static entry bundles; API/HTML cache policies and production Pages security/revalidation headers remain unchanged. Dev/start now build before serving; later source JS edits require rebuilding.
+- Verification: CSS/bundle build, **230/230 tests**, mobile Chromium tab switching/native signup/Back/MFA UI, and synthetic-provider Google onboarding/COOP/Add password browser QA. A controlled slowed-network diagnostic improved from about 2.13s to 1.21s DOMContentLoaded; this is not a production speed guarantee.
+- Preview restarted on port 3000. No Worker auth/backend changes, production deployment, commit, push or pull request was performed. See [entry performance and build instructions](docs/AUTH_ENTRY_PERFORMANCE.md).
+- **NEXT UP:** owner refreshes Latest Accounts UI and checks switching on their device; continue UI-only refinements as requested.
+
+### Session 56 — 2026-11-05 — Create New and First-Step Google Entry
+- **DONE:** renamed Sign Up tabs to Create New on both entry screens, preserving existing routes and the owner's latest UI design from `6f41d56`.
+- Removed date-of-birth fields, introductory copy and request references from native and Google onboarding. Existing optional profile data/settings and all backend contracts are unchanged.
+- Moved Create New's Google option below Next with a matching separator, inside first-step actions only. Sign-in now scopes Google to the identifier step, passkeys to the password step, and neither to MFA. Returning with Back/Start again restores the correct options.
+- Verification: CSS build and **227/227 tests** pass, including four new UI regressions. Real Chromium at 390px verifies native signup without birthday, button placement, Google visibility across steps/Back and MFA; separate simulated-provider Google onboarding/COOP/Add password browser QA also passes.
+- Preview remains running on port 3000 with the updated files. No backend/security changes, production deployment, commit, push or pull request were performed.
+- **NEXT UP:** owner reviews the refreshed Latest Accounts UI preview and requests further UI-only polish.
+
+### Session 55 — 2026-11-05 — Preview the Latest Pushed UI
+- **DONE:** fetched the owner's latest main commit `6f41d56` (`feat: refactor sign-in UI and improve CSP`) and fast-forwarded the active `arena/cc2b6a5f-accounts` branch without switching branches or overwriting local task notes.
+- Restarted the port-3000 preview with the newly pushed sign-in/signup styling, Google/passkey buttons, forgot-password controls and local iframe-preview server changes. Verified the current HTML is served and the CSS build passes.
+- No additional UI, authentication or production configuration changes were made. No commit, push, deployment or pull request was performed.
+- **NEXT UP:** owner refreshes the Latest Accounts UI preview and requests UI-only refinements against this version, not the older checkout.
+
+### Session 54 — 2026-11-05 — Current UI Preview
+- **DONE:** started the current repository UI and local Worker/SQLite preview on port 3000, bound to 0.0.0.0. Preserved the existing UI; no styling, authentication or application logic was changed.
+- Installed locked dependencies and ran the CSS build successfully. Sign-in, signup and dashboard HTML return 200; an unauthenticated account API request correctly returns 401.
+- Preview uses isolated local SQLite, not production accounts/data. Production Google credentials were not copied into this environment. No deployment, commit or pull request was requested or performed.
+- **NEXT UP:** owner reviews the preview and identifies the first UI-only refinements. Preserve the existing Google AI Studio changes and authentication/session contracts.
 
 ### Session 53 — 2026-11-05 — Google Sign-In Working; Owner Requests Merge
 - **DONE:** owner confirms Google sign-in is working after the reported `redirect_uri_mismatch` configuration issue. This is owner-reported live success, not an independently executed production test.
@@ -132,7 +211,7 @@
 - Checked current official pricing: RealtimeKit participant-minute pricing versus the shared 1,000 GB/month SFU/TURN egress allowance; flagged conflicting older beta/calculator copy instead of assuming free RealtimeKit production usage.
 - Read-only Meet and GrixChat call-path inspection found PeerJS/public TURN in Meet and LiveKit plus a STUN-only P2P fallback with Supabase signaling in GrixChat.
 - Recommended evaluating short-lived managed TURN credentials first, then a deliberate SFU architecture for groups. Preserve GrixChat's Supabase stack; no app changes or service/billing activation were performed.
-- Saved sources, limitations, and recommendations in [`docs/CLOUDFLARE_REALTIME_ASSESSMENT.md`](docs/CLOUDFLARE_REALTIME_ASSESSMENT.md).
+- Saved sources, limitations, and recommendations in the historical Cloudflare Realtime assessment (not present in this checkout).
 
 
 ### Session 39 — 2026-10-24 — Pull Request Preparation
@@ -174,7 +253,7 @@
 
 
 ### Session 35 — 2026-10-22 — 100% Pure-English Repository Overhaul + Permanent Automated Language Gate
-- Audited every single `.html`, `.js`, `.mjs`, `.ts`, `.css`, `.sql`, `.toml`, and `.md` file across the repository and converted **all 39 previously mixed Hinglish files** (`web/me/index.html`, `web/me/js/dialogs.js`, `web/me/js/dialogs-security.js`, `web/signin/js/signin.js`, `web/signin/js/modules/forgot-password.js`, all `web/css/*.css` & `web/**` comments, `sql/*`, `tools/*`, `cloudflare-worker/wrangler.toml`, `AGENTS.md`, `README.md`, `ROADMAP.md`, `TASK.md`, and `docs/*.md`) into crisp, idiomatic Google-grade English.
+- Audited every single `.html`, `.js`, `.mjs`, `.ts`, `.css`, `.sql`, `.toml`, and `.md` file across the repository and converted **all 39 previously mixed Hinglish files** (`web/me/index.html`, `web/me/js/dialogs.js`, `web/me/js/dialogs-security.js`, `web/signin/js/signin.js`, `web/signin/js/modules/forgot-password.js`, all `web/css/*.css` & `web/**` comments, `sql/*`, `tools/*`, `cloudflare-worker/wrangler.toml`, `AGENTS.md`, `README.md`, `PLAN.md`, `TASK.md`, and `docs/*.md`) into crisp, idiomatic Google-grade English.
 - Added **Permanent Rule #0 (`100% Pure English Only — Zero Hindi/Hinglish`)** in `AGENTS.md`, both cross-repo prompts (`docs/MAIL_UNIVERSAL_ACCOUNT_MENU_PROMPT.md` & `docs/STORE_UNIVERSAL_ACCOUNT_MENU_PROMPT.md`), and automated test coverage in `tests/frontend-and-filesize.test.mjs`.
 
 ### Session 34 — 2026-10-22 — Universal Google-Style Shadow-DOM Account Widget (`v2.4`) + Cross-Subdomain Silent SSO
@@ -196,8 +275,9 @@
 
 ## 🔜 NEXT UP
 
-0. Continue the [security hardening phases](docs/ACCOUNTS_SECURITY_HARDENING.md): recovery verification, MFA/passkeys, scoped SSO trust, browser credential migration, and production evidence. Phase 1 is locally verified, not a completed security certification.
-1. Review and deploy the session-startup fix to Accounts Pages and Worker.
-2. Verify existing login, signed-out, expired-token, revoked-session, multi-tab, and throttled-network flows in production; compare browser Network timings before making speed claims.
-3. Address Mail's optional quota/unread bootstrap work and Store's catalog/library/developer/admin loading gates in their own repositories. The central widget cannot change those app-specific gates.
-4. Existing migration and widget-integration prompts remain in `docs/` for reference; audit live code before applying them again.
+0. Owner reviews Google chooser/Add new/two accounts and joined Day / Month / Year entry on an actual phone. Before authorized release, coordinate SQL 12 and matching Pages/Worker with old writes stopped; keep existing recovery details.
+1. Continue the [security hardening phases](docs/ACCOUNTS_SECURITY_HARDENING.md): recovery verification, MFA/passkeys, scoped SSO trust, browser credential migration, and production evidence. Phase 1 is locally verified, not a completed security certification.
+2. Review and deploy the session-startup fix to Accounts Pages and Worker.
+3. Verify existing login, signed-out, expired-token, revoked-session, multi-tab, and throttled-network flows in production; compare browser Network timings before making speed claims.
+4. Address Mail's optional quota/unread bootstrap work and Store's catalog/library/developer/admin loading gates in their own repositories. The central widget cannot change those app-specific gates.
+5. Existing migration and widget-integration prompts remain in `docs/` for reference; audit live code before applying them again.

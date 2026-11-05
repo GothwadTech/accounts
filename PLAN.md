@@ -1,76 +1,41 @@
-# 🗺️ PLAN.md — Gothwad Hybrid Cloud Master Plan
+# Accounts Plan
 
-> **Last updated:** 2026-10-20 (Final Hybrid Architecture Locked)
-> Deep technical blueprint & Mail retention math: **[`docs/CLOUDFLARE_NATIVE_PLAN.md`](docs/CLOUDFLARE_NATIVE_PLAN.md)**
-> Step-by-step Cloudflare Dashboard setup: **[`docs/SETUP.md`](docs/SETUP.md)**
+Updated 2026-11-05. Implementation history belongs in [TASK.md](TASK.md), operational
+handoff in [HANDOVER.md](HANDOVER.md), and design details in [architecture](docs/ARCHITECTURE.md).
 
----
+## Scope and architecture
 
-## 🏗️ FINAL ECOSYSTEM ARCHITECTURE (HYBRID FREE-TIER POWERHOUSE)
+- Accounts uses Cloudflare Pages, Workers and its dedicated D1 database.
+- Password authentication, Google OIDC, optional MFA/passkeys, OAuth/PKCE and
+  parent-domain six-account SSO share the same account/session model.
+- The core stack requires no paid/card-gated service. Free operation remains
+  subject to provider quotas; unlimited capacity or fixed latency is not promised.
+- Mail and Store use their own databases. PlusTube, Indogram and GrixChat retain
+  their separate Supabase projects. No sibling repository changes are authorized.
+- Preserve dynamic APP_DOMAIN configuration, username-only primary identities,
+  HttpOnly cookies, live revocation, English-only text and the 500-line file limit.
 
-| Zone | Apps | Backend Stack | Why |
-|------|------|---------------|-----|
-| **🟠 Zone A: Cloudflare Native (Zero Supabase!)** | **1. `Gothwad Accounts`** (`accounts.*`)<br>**2. `Gothwad Mail`** (`mail.*`) | **Cloudflare Pages + Workers + D1 SQLite** (D1 DBs: `accounts` & `mail`) | `24×7` Zero Sleep (logins & inbound emails never pause!), `<15ms` speed, Unlimited MAU (`$0`), saves **both** free Supabase projects! |
-| **🟢 Zone B: Supabase Powerhouse (Kept Forever!)** | **`PlusTube`** · **`Indogram`** · **`GrixChat`** *(+ heavy media apps)* | **Supabase PostgreSQL + Realtime WebSockets + Free Storage** *(authenticated via Gothwad SSO!)* | Full Postgres power for heavy feeds/search, live WebSockets for chat, and card-free media buckets! |
+## Next work
 
----
+1. Owner reviews the shorter Create New preview: optional birthday under name,
+   combined email/password without confirmation or strength labels, then existing
+   recovery details. Birthday is a joined Day / Month / Year field; new usernames
+   are letters/numbers only. Verify the disclosure and numeric keyboard on a phone.
+   Review Google Add new, two linked accounts and explicit selection of each;
+   account-specific MFA/password state and stable browser indices must remain intact.
+   Do not remove recovery requirements without instructions.
+2. Keep password acceptance independent of strength: at least 8 characters, with
+   the existing 128-character safety cap and no character-composition requirement.
+3. Review and release approved Pages/Worker changes separately. Merging is not
+   proof of deployment. The owner authorized merging the current changes, not a
+   manual production migration or deployment. Back up D1 and apply
+   SQL 11 then SQL 12 with old writes stopped and matching frontend/Worker; verify
+   old links were imported. Do not roll only the Worker back to the legacy table.
+4. Follow the [owner security checklist](docs/SECURITY_OWNER_CHECKLIST.md) for real
+   email delivery, restore drills, live headers/quotas, cross-app and device pilots.
+5. Re-check sibling repositories before using the dated handoff prompts in the
+   [documentation index](docs/README.md); they are not evidence of current bugs.
 
-## 📊 ROADMAP STATUS
-
-| Phase | Milestone | Status |
-|-------|-----------|--------|
-| **Step 1** | Gothwad Accounts UI (`/signin`, `/signup`, `/me`) + Google-style Light/Dark Dashboard | ✅ DONE |
-| **Step 2** | OAuth 2.0 + S256 PKCE Provider (`"Sign in with Gothwad"`) + Subdomain Cookie SSO | ✅ DONE |
-| **Step 2.5** | **`Gothwad Accounts` 100% Cloudflare D1 Native Upgrade (Zero Supabase, 62/62 Tests Passing)** | ✅ **DONE (2026-10-20)** |
-| **Step 3** | Connect `gothwad-accounts-db` on Cloudflare Dashboard (`docs/SETUP.md`) | 🔜 Owner Action |
-| **Step 4** | **`Gothwad Mail` (`GothwadTech/mail`) 100% Cloudflare D1 Migration + `500`-Email Smart Retention & User Settings Toggle** | 🔜 Next Repo Session |
-| **Step 5** | Connect `PlusTube`, `Indogram`, `GrixChat` (on Supabase) seamlessly with `"Sign in with Gothwad"` SSO | 📋 Planned |
-
-
-## Session startup follow-up — 2026-10-24
-
-Accounts startup now has a prepared root-routing and request-waterfall fix.
-Review and deploy both Pages and Worker, then measure production startup rather
-than promising a fixed latency. Mail optional metadata and Store account-content
-hydration must be decoupled from identity readiness in their own repositories.
-See [the performance audit](docs/SESSION_STARTUP_PERFORMANCE.md).
-
-
-## Accounts security hardening — 2026-10-29
-
-Phases 0–4 coding and Phase 5 local release/operational preparation are complete.
-Implemented: persistent throttling/CSP, verified recovery and sensitive changes,
-optional authenticator MFA/recovery codes, user-verified passkeys, exact origins,
-authenticated headerless transport, cookie-only browser session responses, and
-live grant/password-bound OAuth revocation. Parent-domain SSO cookies remain
-intentional; a host-only transition needs separate cross-app coordination.
-
-Verification: **194 tests**, build, strict Worker types, dry-run, production audits,
-real local workerd/D1 ES256/RS256/OAuth flows, Chromium virtual-passkey UI, and
-synthetic SQLite restore checks. No production deployment or configuration occurred.
-Real email, consumer/device pilots, backup recovery, live headers/rules/quotas, and
-production release remain owner-only gates, not completed coding claims.
-
-See [A–F findings](docs/ACCOUNTS_SECURITY_HARDENING.md),
-[release/incident readiness](docs/SECURITY_RELEASE_READINESS.md), and the single
-[final owner checklist](docs/SECURITY_OWNER_CHECKLIST.md). No paid infrastructure,
-Supabase application edits, or automatic release are authorized.
-
-### Sending-domain follow-up — 2026-10-30
-
-The owner selected `noreply.gothwadtech.com`. RESEND_FROM is now maintained in
-Wrangler configuration as `Gothwad Accounts <security@noreply.gothwadtech.com>`.
-Provider DNS verification, the private sending API key, reviewed deployment, and
-actual delivery verification remain pending; no dashboard-only sender edit is needed.
-
-Worker deployment follow-up: verify production branch/root/commands and the actual
-failed build log independently of Pages. See [the troubleshooting guide](docs/WORKER_BUILD_TROUBLESHOOTING.md); merging alone does not confirm API rollout.
-
-## Google authentication — 2026-11-05
-
-Local implementation complete: Google-only passwordless onboarding, explicit
-identity linking, optional first password and fresh Google-protected settings.
-Other apps keep using Accounts' existing SSO; no app-specific Google integration.
-Owner Google OAuth setup, reviewed deployment and real-provider/mobile/cross-app
-pilots remain release gates. See [Google sign-in](docs/GOOGLE_SIGN_IN.md).
-No Microsoft/Apple integration, domain purchase or rename is authorized.
+Google sign-in is owner-confirmed working. Public branding/consent approval and
+full production security verification are not independently established.
+Microsoft/Apple sign-in, domain purchase and product renaming remain deferred.
