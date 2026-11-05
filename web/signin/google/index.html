@@ -20,12 +20,17 @@
         <p id="google-message" role="status">Checking your Google verification…</p>
       </div>
       <p id="google-error" class="text-danger" role="alert"></p>
+      <form id="google-chooser" hidden>
+        <div class="chooser-list" id="google-account-list" aria-label="Linked Gothwad accounts"></div>
+        <button type="button" class="chooser-row chooser-add" id="google-add-new">
+          <span class="acct-plus" aria-hidden="true">+</span><span>Add new account</span>
+        </button>
+      </form>
       <form id="google-onboarding" hidden>
         <p>No password will be created. You can add one later in Security.</p>
         <div class="auth-field-group"><label for="google-first">First name</label><input class="input" id="google-first" autocomplete="given-name" maxlength="100" required /></div>
         <div class="auth-field-group"><label for="google-last">Last name</label><input class="input" id="google-last" autocomplete="family-name" maxlength="100" required /></div>
-        <div class="auth-field-group"><label for="google-username">Gothwad username</label><input class="input" id="google-username" autocomplete="username" minlength="3" maxlength="24" pattern="[a-z0-9][a-z0-9._\-]{1,22}[a-z0-9]" required /><p id="google-address"></p></div>
-        <div class="auth-field-group"><label for="google-dob">Date of birth (optional)</label><input class="input" id="google-dob" type="date" autocomplete="bday" /></div>
+        <div class="auth-field-group"><label for="google-username">Gothwad username</label><input class="input" id="google-username" autocomplete="username" minlength="3" maxlength="24" pattern="[a-z0-9]{3,24}" required /><p id="google-address"></p></div>
         <div class="auth-field-group"><label for="google-gender">Gender (optional)</label><select class="input" id="google-gender"><option value="">Not set</option><option>Male</option><option>Female</option><option>Other</option><option>Rather not say</option></select></div>
         <p id="google-recovery-address"></p>
         <label><input type="checkbox" id="google-confirm-recovery" required /> Use this Google email as my recovery email.</label>
@@ -33,6 +38,7 @@
         <p>Your chosen Gothwad address does not automatically create a mailbox.</p>
         <label><input type="checkbox" id="google-terms" required /> I agree to the <a href="/terms/" target="_blank" rel="noopener">Terms</a> and <a href="/privacy/" target="_blank" rel="noopener">Privacy Policy</a>.</label>
         <p><button class="btn btn-primary" type="submit" id="google-create">Create account</button></p>
+        <button type="button" class="btn btn-text" id="google-choose-back" hidden>Back to accounts</button>
       </form>
       <form id="google-mfa" hidden>
         <label for="google-mfa-code">Authenticator or unused recovery code</label>

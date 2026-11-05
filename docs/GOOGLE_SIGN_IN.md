@@ -13,10 +13,16 @@ Microsoft, Apple, a domain purchase and a future rebrand are out of scope.
 
 - Native signup/signin remains available.
 - Continue with Google identifies a Google account by canonical issuer plus stable
-  `sub`, never by email. A linked user keeps the same internal Gothwad ID and data.
+  `sub`, never by email. Each linked Gothwad account keeps its own ID and data.
+- One Google identity may create/link multiple Gothwad accounts. Returning users
+  see every linked account plus **Add new account**; none is automatically selected.
+  Add new opens passwordless onboarding, with Back to accounts when links exist.
+  Each Gothwad account has at most one Google link. The six-slot limit applies to
+  simultaneous browser sessions, not the total number of Google-linked accounts.
 - New users choose an available 3–24-character Gothwad username, enter names,
-  optionally supply birth date/gender, confirm the suggested Google recovery email,
-  and accept the terms. **No password is requested, generated or hashed.**
+  optionally supply gender, confirm the suggested Google recovery email,
+  and accept the terms. Date of birth is not requested during signup.
+  **No password is requested, generated or hashed.**
 - The Gothwad address is derived from username and APP_DOMAIN. This is not mailbox
   provisioning. Google's email is secondary authentication/recovery metadata.
 - The existing NOT NULL credential column contains a unique `!no-password:`
@@ -33,8 +39,9 @@ Microsoft, Apple, a domain purchase and a future rebrand are out of scope.
   or recovery details, and delete their account with fresh Google verification;
   existing local MFA and email-confirmation requirements still apply.
 - Existing native users may explicitly Connect Google after confirming their
-  password and local MFA. A Google identity already attached to another user is
-  rejected, not transferred or merged. Matching recovery emails never link users.
+  password and local MFA. The same Google identity may authorize another account
+  without transferring/merging the original. A different Google identity cannot
+  replace an account's existing link. Matching recovery emails never link users.
 - Google unlinking, provider replacement and provider-loss account recovery are not
   implemented. A registered passkey can sign in independently; Google-only
   **security reauthentication currently still uses the linked Google account**.
@@ -62,8 +69,16 @@ is lost. Local MFA recovery codes replace the **second factor**, not Google itse
 
 Modules: `google-oidc.ts`, `google-proofs.ts`, `google-schema.ts`,
 `google-signin.ts`, `routes/auth-google.ts`, and the small frontend Google helpers.
-Migration: `sql/11_google_identities.sql`, additive/idempotent and mirrored by
-Worker cold-start bootstrap. No runtime PRAGMA, user-table rebuild or primary-email
+Migrations: `sql/11_google_identities.sql` then `sql/12_google_account_links.sql`,
+additive/idempotent and mirrored by Worker cold-start bootstrap after core tables.
+The canonical `auth_external_account_links` table has a unique `(issuer,user_id)`
+and nonunique indexed `(issuer,subject)`. SQL 12 preserves the legacy table and
+copies every existing link with its metadata. A transactional schema-version marker
+makes that import one-time, avoiding full legacy scans and resurrected removed links.
+New code reads/writes only the canonical table. Use a coordinated Worker/frontend
+release: old Worker writes after migration are not imported again. Rolling back
+only the Worker is not supported; preserve/back up both tables and roll forward.
+Existing users, profiles, sessions and recovery metadata are not rebuilt or merged. No runtime PRAGMA, user-table rebuild or primary-email
 column is introduced. `created_passwordless` is immutable identity-origin metadata,
 not the current password state (which always comes from the credential column).
 
@@ -78,9 +93,16 @@ or persisted. Unknown or invalid keys/claims and provider failures fail closed.
 
 The callback creates a separate one-use, five-minute onboarding or security ticket
 in an HttpOnly cookie. Sign-in finishes through a same-origin CSRF-protected POST.
-New-user/profile/identity writes are atomic and unique; simultaneous requests cannot
-create orphan users. Returning Google users still pass the existing local MFA
-challenge before shared Gothwad session issuance. A factor-change race fails closed.
+`GET /auth/google/status` exposes only safe linked-account IDs, usernames and names
+for the verified ticket's subject. `POST /auth/google/finish` requires explicit
+`action: "select", account_id` or `action: "create"` with onboarding details. Missing,
+foreign and expired selections fail closed. Selection and final issuance both check
+subject membership; an absent new status contract also fails closed in the UI.
+New-user/profile/link writes are atomic; one proof has one winner and cannot create
+or select twice. Distinct fresh proofs may create distinct usernames for the same
+Google identity. Duplicate usernames leave no orphan rows. The selected account's
+own local MFA is required before shared Gothwad session issuance. Shared Google
+first-factor access never shares MFA, passwords or account-bound security proofs. A factor-change race fails closed.
 Existing six-slot/add-mode/authuser, parent-domain SSO and OAuth contracts remain.
 
 **Only transient Google handshake/proof cookies are host-only.** They are NOT SSO
@@ -124,19 +146,23 @@ flows fail closed. Expired rows are cleaned in bounded batches when flows start.
    These commands change production configuration; none were run here. Client ID is
    public by design, but both are read server-side. Never commit the client secret.
    Local `server.js` reads the same environment names. Do not commit local values.
-6. Back up D1 and review/apply SQL 11 (after the existing migrations), or verify the
-   reviewed Worker bootstrap created the tables. Deploy reviewed backend/frontend
-   together, verify Google config returns enabled, and complete the pilot below.
+6. Back up D1 and review/apply SQL 11 then SQL 12 (after existing migrations), or
+   verify the reviewed Worker bootstrap creates/imports them. Stop old Worker writes
+   during the migration and deploy matching reviewed backend/frontend together.
+   Verify preserved links and Google config returns enabled; complete the pilot below.
 
 ## Required live pilot
 
 - New Google signup: unique username, explicit confirmations, no password field or
   usable password hash, correct address and No password added / Add password state.
-- Returning sign-in, Google email change, local MFA/recovery-code sign-in, six-slot
-  add/switch, native login, signout/revocation and cross-app Gothwad SSO.
+- Returning chooser with one account, Add new, then both entries; select each and
+  verify separate IDs/data/password state, no implicit session and per-account MFA.
+- Google email changes, six-slot add/switch and stable authuser indices after repeat
+  selection, native login, signout/revocation and cross-app Gothwad SSO.
 - Fresh Google reauth for Add password and other settings; deny a different Google
   subject, expired/replayed proof, revoked session and changed MFA/password state.
-- Explicit native linking, identity-already-linked rejection and no email-only merge.
+- Explicit password/MFA-verified linking of the same Google identity to two native
+  accounts; reject replacing an existing link or using email alone to merge users.
 - Google consent cancellation, provider outage, popup blocking, mobile browser
   navigation, actual Google COOP behavior and exact callback routing/cookie scope.
 - Separate-email verification and recovery delivery where configured. Confirm that
@@ -153,5 +179,5 @@ Optional Chromium QA: `node --experimental-strip-types tools/test-google-browser
 with Playwright installed separately. `BROWSER_TOOLS_PATH` can select an external
 QA installation; `SERVERLESS_CHROMIUM=true` enables `@sparticuz/chromium`. This uses
 an isolated temporary database, synthetic credentials/provider and a COOP-isolated
-mock page. It tests actual UI/cookies, not a real Google account. No QA bypass exists
+mock page. It covers Add new, two-account selection and actual UI/cookies, not a real Google account. No QA bypass exists
 in production routes. Do not install QA dependencies into production dependencies.

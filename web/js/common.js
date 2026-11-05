@@ -10,10 +10,7 @@ import {
   switchToAccount,
   signOutAccount,
   signOutAllAccounts,
-  initialsFor,
-  MAX_ACCOUNTS,
   safeNextUrl,
-  addAccountHref,
 } from './accounts.js';
 import { getSession } from './session.js';
 export { getSession } from './session.js';
@@ -152,114 +149,6 @@ export async function signOut({ all = false, slotId = null } = {}) {
   location.href = '/signin';
 }
 
-export async function renderTopbar(existingSession = null) {
-  const el = document.getElementById('topbar');
-  if (!el) return;
-
-  const session = existingSession || (await getSession());
-  const authed = session.authenticated;
-  const activeId = session.activeId || null;
-  const accounts = authed
-    ? session.accounts?.length
-      ? session.accounts
-      : (await fetchAccounts()).accounts
-    : [];
-  const user = session.user || {};
-  const myAccountHref = mePathForAuthuser(session.authuser || 0);
-  const ini = initialsFor(user);
-
-  el.innerHTML = `
-    <div class="container topbar-inner">
-      <a class="brand" href="${authed ? escapeHtml(myAccountHref) : '/signin'}">
-        <img class="brand-logo sm" src="/icon-192.png" alt="Gothwad" />
-        <span class="brand-name">Gothwad</span>
-      </a>
-      <nav class="nav">
-        ${authed ? `
-          <a class="nav-link hide-mobile" href="${escapeHtml(myAccountHref)}">My Account</a>
-          <div class="acct-switch" id="acct-switch">
-            <button type="button" class="acct-switch-btn" id="acct-switch-btn" aria-label="Switch account">
-              <span class="avatar sm">${escapeHtml(ini)}</span>
-            </button>
-            <div class="acct-menu hidden" id="acct-menu" role="menu">
-              ${accounts.map((a) => `
-                <button type="button" class="acct-menu-item" data-switch="${escapeHtml(a.id)}" role="menuitem">
-                  <span class="avatar sm">${escapeHtml(initialsFor(a))}</span>
-                  <span>
-                    <span class="acct-item-name">${escapeHtml(`${a.firstName || ''} ${a.lastName || ''}`.trim() || a.username)}</span>
-                    <span class="acct-item-email mono">${escapeHtml(a.email || a.username)}</span>
-                  </span>
-                  ${a.id === activeId || a.username === user.username ? '<span class="acct-check">✓</span>' : ''}
-                </button>
-              `).join('')}
-              <a class="acct-menu-item" id="link-add-account" href="${escapeHtml(addAccountHref(location.pathname + location.search))}">
-                <span class="acct-plus">+</span>
-                <span>Add another account</span>
-              </a>
-              <button type="button" class="acct-menu-item" id="btn-signout-one">Sign out</button>
-              ${accounts.length > 1 ? '<button type="button" class="acct-menu-item danger" id="btn-signout-all">Sign out all accounts</button>' : ''}
-            </div>
-          </div>
-        ` : `
-          <a class="nav-link" href="/signin">Sign in</a>
-          <a class="btn btn-primary" href="/signup" style="padding:8px 16px;">Create account</a>
-        `}
-      </nav>
-    </div>`;
-
-  bindAccountMenu(accounts, activeId);
-}
-
-function bindAccountMenu(accounts, activeId) {
-  const btn = document.getElementById('acct-switch-btn');
-  const menu = document.getElementById('acct-menu');
-  if (btn && menu) {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      menu.classList.toggle('hidden');
-    });
-    document.addEventListener('click', () => menu.classList.add('hidden'));
-    menu.addEventListener('click', (e) => e.stopPropagation());
-  }
-
-  menu?.querySelectorAll('[data-switch]').forEach((el) => {
-    el.addEventListener('click', async () => {
-      const id = el.getAttribute('data-switch');
-      if (!id || id === activeId) {
-        menu.classList.add('hidden');
-        return;
-      }
-      const sw = await switchToAccount(id);
-      if (!sw.ok) {
-        toast(sw.error || 'Could not switch account', 'error');
-        if (sw.status === 409) {
-          location.href = addAccountHref(location.pathname + location.search);
-        }
-        return;
-      }
-      location.href = mePathForAuthuser(sw.authuser || 0);
-    });
-  });
-
-  const addLink = document.getElementById('link-add-account');
-  if (addLink) {
-    addLink.addEventListener('click', (e) => {
-      if (accounts.length >= MAX_ACCOUNTS) {
-        e.preventDefault();
-        toast(
-          `Maximum ${MAX_ACCOUNTS} accounts can stay signed in on one browser. Sign out of one first.`,
-          'error',
-        );
-      }
-    });
-  }
-
-  const one = document.getElementById('btn-signout-one');
-  if (one) one.addEventListener('click', () => signOut({ slotId: activeId }));
-  const all = document.getElementById('btn-signout-all');
-  if (all) all.addEventListener('click', () => signOut({ all: true }));
-}
-
 export function formatBytes(bytes) {
   if (!bytes) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -276,16 +165,6 @@ export function formatDate(iso) {
   } catch {
     return iso;
   }
-}
-
-export function passwordStrength(pw) {
-  if (!pw) return 0;
-  let score = 0;
-  if (pw.length >= 8) score++;
-  if (pw.length >= 12) score++;
-  if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) score++;
-  if (/\d/.test(pw) && /[^A-Za-z0-9]/.test(pw)) score++;
-  return Math.min(score, 4);
 }
 
 export function setupPasswordEyes() {

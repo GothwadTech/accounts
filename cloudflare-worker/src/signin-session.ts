@@ -48,13 +48,6 @@ export async function completeSignIn(
   if (!results[prefix.length].results?.length) {
     return withCors(json({ error: 'verification_expired', message: 'Sign-in verification expired. Please sign in again.' }, 401));
   }
-  if (inspected) {
-    const previous = inspected.validSlots.find(s => s.username.toLowerCase() === account.username.toLowerCase());
-    if (previous?.creds.sessionId) {
-      await db.prepare('DELETE FROM user_sessions WHERE id = ? AND user_id = ?')
-        .bind(previous.creds.sessionId, account.userId).run();
-    }
-  }
   const accessToken = await issueSessionAccessToken(env, { userId: account.userId, username: account.username, sessionId });
   const profile = await fetchProfile(db, account.userId);
   const slots = await buildSignInCookies(request, db, env, {
@@ -65,6 +58,14 @@ export async function completeSignIn(
   if (!slots.ok) {
     await db.prepare('DELETE FROM user_sessions WHERE id = ? AND user_id = ?').bind(sessionId, account.userId).run();
     return withCors(json({ error: slots.error, message: slots.message }, 409));
+  }
+  // Build the replacement while the old slot is still verifiable; then revoke it.
+  if (inspected) {
+    const previous = inspected.validSlots.find(s => s.username.toLowerCase() === account.username.toLowerCase());
+    if (previous?.creds.sessionId) {
+      await db.prepare('DELETE FROM user_sessions WHERE id = ? AND user_id = ?')
+        .bind(previous.creds.sessionId, account.userId).run();
+    }
   }
   await logActivity(db, account.userId, 'signin', 'Signed in',
     gate?.method === 'google' ? 'Google verification completed' : gate?.method === 'passkey' ? 'Passkey verification completed' : gate ? 'Authenticator or recovery-code verification completed' : `${ua.browser} on ${ua.os || 'unknown OS'}`, request);

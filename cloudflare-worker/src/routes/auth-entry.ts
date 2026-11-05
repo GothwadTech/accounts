@@ -11,7 +11,7 @@ import {
   GENDER_VALUES,
   identifierLooksLikePhone,
   isValidEmail,
-  isValidUsername,
+  isValidNewUsername,
   json,
   readJson,
   RESERVED_USERNAMES,
@@ -38,7 +38,7 @@ export async function handleAuthEntryRoute(
   // ----------------------------------------------------- /auth/check-username
   if (route === '/auth/check-username' && request.method === 'GET') {
     const username = (url.searchParams.get('username') || '').toLowerCase().trim();
-    if (!username || !isValidUsername(username)) {
+    if (!username || !isValidNewUsername(username)) {
       return withCors(json({ available: false, valid: false, error: 'Invalid username format' }));
     }
     if (RESERVED_USERNAMES.has(username)) {
@@ -110,8 +110,8 @@ export async function handleAuthEntryRoute(
     const remember = body.remember !== false;
 
     if (!firstName || !lastName) return withCors(apiError('First and last name are required'));
-    if (!isValidUsername(username)) {
-      return withCors(apiError('Username must be 3-24 chars: a-z, 0-9, dot, dash, underscore'));
+    if (!isValidNewUsername(username)) {
+      return withCors(apiError('Username must be 3-24 chars: letters and numbers only'));
     }
     if (RESERVED_USERNAMES.has(username)) return withCors(apiError('This username is reserved'));
     if (password.length < 8) return withCors(apiError('Password must be at least 8 characters'));

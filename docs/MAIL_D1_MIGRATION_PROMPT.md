@@ -17,7 +17,7 @@ Before writing any code, inspect BOTH:
 1. All files in this repository (`GothwadTech/mail`: `AGENTS.md`, `PLAN.md`, `TASK.md`, `docs/SETUP.md`, `docs/MAIL.md`, `package.json`, `worker/wrangler.toml`, `worker/src/*`, `worker/test/worker.test.ts`, `supabase/mail.sql`, `src/*`, `tests/*`).
 2. The live public sibling repository **`https://github.com/GothwadTech/accounts`** (`main` branch — already migrated to **v2.0 100% Cloudflare D1 Native with ZERO Supabase**!), specifically:
    - `GothwadTech/accounts/docs/MAIL_INTERNAL.md`
-   - `GothwadTech/accounts/docs/CLOUDFLARE_NATIVE_PLAN.md`
+   - `GothwadTech/accounts/PLAN.md`
    - `GothwadTech/accounts/docs/SETUP.md`
    - `GothwadTech/accounts/cloudflare-worker/wrangler.toml`
    - `GothwadTech/accounts/tools/local-d1.mjs` (clean pattern using Node 22 built-in `node:sqlite` `DatabaseSync` to test real SQLite D1 locally with zero NPM packages!)

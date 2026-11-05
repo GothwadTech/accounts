@@ -1,3 +1,4 @@
+import { bindFormSubmit } from '../../../js/form-submit.js';
 import { api } from '../../../js/api.js';
 import { setBusy } from '../../../js/common.js';
 
@@ -5,8 +6,7 @@ export function initForgotPassword(showAlert, hideAlert) {
   const form = document.getElementById('forgot-form');
   if (!form) return;
 
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
+  bindFormSubmit(form, async (_event, isCurrent) => {
     hideAlert('alert-forgot');
     document.getElementById('done-forgot').classList.add('hidden');
 
@@ -19,6 +19,7 @@ export function initForgotPassword(showAlert, hideAlert) {
     const res = await api.post('/auth/forgot-password', { username });
     setBusy(btn, false);
 
+    if (!isCurrent()) return;
     if (!res.ok) {
       return showAlert('alert-forgot', res.error || 'Something went wrong. Please try again.');
     }

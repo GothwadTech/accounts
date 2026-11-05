@@ -460,3 +460,18 @@ test('Rule #0 Gate: 100% Pure English across all UI, code, CSS, SQL, configs, an
   );
 });
 
+
+test('documentation links resolve after consolidation instead of pointing to deleted files', () => {
+  const broken = [];
+  for (const file of walkRepoFiles(REPO_ROOT).filter(file => extname(file) === '.md')) {
+    const source = readFileSync(file, 'utf8');
+    for (const [, target] of source.matchAll(/\]\(([^\s)]+)\)/g)) {
+      if (/^(?:[a-z][a-z0-9+.-]*:|#|\/)/i.test(target)) continue;
+      const localPath = target.split(/[?#]/)[0];
+      if (localPath && !existsSync(resolve(dirname(file), decodeURIComponent(localPath)))) {
+        broken.push(`${relative(REPO_ROOT, file)}: ${target}`);
+      }
+    }
+  }
+  assert.deepEqual(broken, [], 'Local documentation links must have an existing target');
+});

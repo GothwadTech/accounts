@@ -72,19 +72,19 @@ test('7. Legacy browser (ONLY pre-existing gothwad_at/gothwad_rt/gothwad_sid coo
 
 test('8. CSRF protection: POST /api/auth/switch and POST /api/auth/accounts/:id/signout reject missing, null, evil, and insecure Origins with 403', async () => {
   const env = makeEnv();
-  await seedAccount(env, { username: 'csrf_a', firstName: 'Csrf', lastName: 'One' });
-  await seedAccount(env, { username: 'csrf_b', firstName: 'Csrf', lastName: 'Two' });
+  await seedAccount(env, { username: 'csrfa', firstName: 'Csrf', lastName: 'One' });
+  await seedAccount(env, { username: 'csrfb', firstName: 'Csrf', lastName: 'Two' });
 
   const browser = new BrowserJar();
   await browser.fetch(env, '/api/auth/signin', {
     method: 'POST',
     origin: 'https://accounts.gothwadtech.com',
-    body: { identifier: 'csrf_a', password: 'StrongPassword!123', remember: true },
+    body: { identifier: 'csrfa', password: 'StrongPassword!123', remember: true },
   });
   await browser.fetch(env, '/api/auth/signin?add=1', {
     method: 'POST',
     origin: 'https://accounts.gothwadtech.com',
-    body: { identifier: 'csrf_b', password: 'StrongPassword!123', remember: true, add: true },
+    body: { identifier: 'csrfb', password: 'StrongPassword!123', remember: true, add: true },
   });
 
   const rejectedOrigins = [
@@ -112,7 +112,7 @@ test('8. CSRF protection: POST /api/auth/switch and POST /api/auth/accounts/:id/
     assert.equal((await outRes.json()).error, 'csrf_rejected');
   }
 
-  assert.equal((await (await browser.fetch(env, '/api/auth/me')).json()).user.username, 'csrf_b');
+  assert.equal((await (await browser.fetch(env, '/api/auth/me')).json()).user.username, 'csrfb');
 });
 
 test('9. Resilience & security invariants: 6-slot max cap, 503 JSON on DB error (never false 401), and zero client storage tokens across web/', async () => {
@@ -120,7 +120,7 @@ test('9. Resilience & security invariants: 6-slot max cap, 503 JSON on DB error 
   const browser = new BrowserJar();
 
   for (let i = 0; i < 6; i++) {
-    const uname = `slotuser_${i}`;
+    const uname = `slotuser${i}`;
     await seedAccount(env, { username: uname, firstName: 'Slot', lastName: String(i) });
     const res = await browser.fetch(env, i === 0 ? '/api/auth/signin' : '/api/auth/signin?add=1', {
       method: 'POST',
@@ -130,11 +130,11 @@ test('9. Resilience & security invariants: 6-slot max cap, 503 JSON on DB error 
     assert.equal(res.status, 200);
   }
 
-  await seedAccount(env, { username: 'slotuser_7', firstName: 'Overflow', lastName: 'Seven' });
+  await seedAccount(env, { username: 'slotuser7', firstName: 'Overflow', lastName: 'Seven' });
   const seventhRes = await browser.fetch(env, '/api/auth/signin?add=1', {
     method: 'POST',
     origin: 'https://accounts.gothwadtech.com',
-    body: { identifier: 'slotuser_7', password: 'StrongPassword!123', remember: true, add: true },
+    body: { identifier: 'slotuser7', password: 'StrongPassword!123', remember: true, add: true },
   });
   assert.equal(seventhRes.status, 409);
   assert.equal((await seventhRes.json()).error, 'max_accounts_reached');

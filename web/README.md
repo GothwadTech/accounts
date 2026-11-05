@@ -5,9 +5,9 @@ Static Vanilla HTML + Modular CSS + Native ES Modules (zero framework overhead).
 ```text
 web/
 ├── _headers                     Cloudflare Pages ETag revalidation headers (`must-revalidate`)
-├── index.html                   → /         Session-aware root splash (/me or /signin)
+├── index.html                   → /         Dashboard rewrite with /me static-host fallback
 ├── signin/index.html            → /signin   Multi-account chooser + sign-in + recovery
-├── signup/index.html            → /signup   4-step account creation
+├── signup/index.html            → /signup   3-step creation; optional birthday, combined credentials
 ├── me/index.html                → /me       Account dashboard + inline module error/watchdog guard
 ├── privacy/index.html           → /privacy  Privacy Policy
 ├── terms/index.html             → /terms    Terms of Service
@@ -20,7 +20,7 @@ web/
 │   ├── dashboard.css            `/me` shell, sidebar nav, section rows & lists
 │   ├── legal.css                Legal shell, sidebar TOC & callouts
 │   ├── legal-content.css        Privacy/Terms typography, responsive rules & animations
-│   ├── root.css                 Root splash styles
+│   ├── root.css                 Root fallback styles
 │   └── legacy/                  🔒 Frozen dark-theme auth/legal stylesheets (7 modules, exact cascade)
 │       ├── variables.css · base.css · components.css · auth.css
 │       └── dashboard.css · legal-layout.css · legal-content.css
@@ -30,6 +30,12 @@ web/
 ├── signin/js/                   Sign-in entry (`signin.js`) + `modules/*`
 └── signup/js/                   Sign-up entry (`signup.js`) + `modules/*`
 ```
+
+Entry pages build from `signin/js/entry.js` and `signup/js/entry.js` into
+content-hashed `assets/auth` modules. Run `npm run build` after source edits; ship
+updated HTML and bundles together. Old unused `js/signin.js`, `js/signup.js` and
+`js/me.js` forwarding files have been removed. CSS fallback shims remain intentional:
+`tools/bundle-css.js` regenerates them for compatible cached/static entrypoints.
 
 ## Mandatory Frontend Rules (`AGENTS.md`)
 - **Rule #8 (`<= 500` lines/file):** Keep every HTML, CSS, and JS file `<= 500` lines (`500–800` max). Split large files into clean ES/CSS modules without changing visuals or behavior.

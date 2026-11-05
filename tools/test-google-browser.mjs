@@ -72,8 +72,48 @@ try {
   assert.equal(profile.user.has_password, true); assert.equal(profile.user.google_linked, true);
   const storage = await page.evaluate(() => ({ local: { ...localStorage }, session: { ...sessionStorage }, cookies: document.cookie }));
   assert.doesNotMatch(JSON.stringify(storage), /access_token|refresh_token|gothwad_google_|gothwad_sess_|SyntheticGooglePassword/);
+  const firstId = profile.user.id;
+  let finishes = 0;
+  page.on('request', request => {
+    if (new URL(request.url()).pathname === '/api/auth/google/finish') finishes++;
+  });
+  async function chooseGoogle() {
+    await page.goto(origin + '/signin/?add=1');
+    await page.locator('#btn-google-entry').click();
+    await page.waitForURL('**/signin/google/');
+    await page.locator('#google-chooser').waitFor({ state: 'visible' });
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  await chooseGoogle();
+  assert.equal(await page.locator('#google-account-list button').count(), 1);
+  assert.equal(finishes, 0, 'Existing Google accounts must not auto-sign in');
+  await page.locator('#google-add-new').click();
+  await page.locator('#google-choose-back').click();
+  assert.equal(await page.locator('#google-account-list button').count(), 1);
+  await page.locator('#google-add-new').click();
+  await page.locator('#google-username').fill('browsergoogletwo');
+  await page.locator('#google-confirm-recovery').check(); await page.locator('#google-terms').check();
+  await page.locator('#google-create').click();
+  await page.waitForURL('**/u/1/me');
+  const second = await page.evaluate(async () => (await fetch('/api/auth/me')).json());
+  assert.notEqual(second.user.id, firstId); assert.equal(second.user.has_password, false);
+  await chooseGoogle();
+  assert.equal(await page.locator('#google-account-list button').count(), 2);
+  assert.equal(finishes, 1);
+  const rows = page.locator('#google-account-list button');
+  const lastRow = await rows.last().boundingBox(), addNew = await page.locator('#google-add-new').boundingBox();
+  assert.ok(addNew.y >= lastRow.y + lastRow.height, 'Existing accounts appear above Add new');
+  await rows.filter({ hasText: 'browsergoogletwo@' }).focus();
+  await page.keyboard.down('Enter'); await page.keyboard.down('Enter'); await page.keyboard.up('Enter');
+  await page.waitForURL('**/u/1/me');
+  assert.equal(finishes, 2);
+  assert.equal((await page.evaluate(async () => (await fetch('/api/auth/me')).json())).user.id, second.user.id);
+  await chooseGoogle();
+  await page.locator('#google-account-list button').filter({ hasText: 'browsergoogle@' }).click();
+  await page.waitForURL('**/u/0/me');
+  assert.equal((await page.evaluate(async () => (await fetch('/api/auth/me')).json())).user.id, firstId);
   assert.deepEqual(errors, []);
-  console.log('Google browser QA passed: passwordless onboarding, COOP-isolated reauth popup, Add → Change password, cookie-only storage.');
+  console.log('Google browser QA passed: passwordless onboarding, COOP-isolated reauth popup, Add → Change password, cookie-only storage, one/two-account chooser, Add new, keyboard selection and separate account data.');
 } finally {
   await browser.close(); restore(); rmSync(temp, { recursive: true, force: true });
 }

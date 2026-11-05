@@ -62,14 +62,15 @@ test('existing native users can explicitly link Google only after password verif
   assert.equal(signed.data.user.has_password, true);
 });
 
-test('a linked Google identity cannot be transferred to another existing account', async t => {
+test('explicit password-verified linking can share Google without transferring either existing account', async t => {
   mockGoogle(t); const env = googleEnv(); const owner = await googleAccount(env);
   const native = await seedAccount(env, { username: 'anotherowner', firstName: 'Another', lastName: 'Owner' });
   const jar = new GoogleJar(native.jar);
   const flow = await beginGoogle(env, jar, { purpose: 'link', current_password: native.password });
-  assert.match((await jar.fetch(env, flow.callback, { origin: null })).headers.get('Location'), /error=1/);
-  const identity = await env.DB.prepare('SELECT user_id FROM auth_external_identities').first();
-  assert.equal(identity.user_id, owner.data.user.id);
+  assert.doesNotMatch((await jar.fetch(env, flow.callback, { origin: null })).headers.get('Location'), /error=1/);
+  const links = (await env.DB.prepare('SELECT user_id FROM auth_external_account_links').all()).results;
+  assert.deepEqual(new Set(links.map(link => link.user_id)), new Set([owner.data.user.id, native.data.user.id]));
+  assert.equal((await owner.jar.fetch(env, '/api/auth/me')).status, 200);
 });
 
 test('Google-only users can enroll MFA without adding a password; Google and Add password both honor local MFA', async t => {
@@ -82,7 +83,7 @@ test('Google-only users can enroll MFA without adding a password; Google and Add
   const confirmed = await googlePost(env, owner.jar, 'mfa/confirm', { enrollment_id: setup.enrollment_id, code: mfaCode(setup.secret) });
   assert.equal(confirmed.status, 200); const codes = (await confirmed.json()).recovery_codes;
   const jar = new GoogleJar(); await verifyGoogle(env, jar);
-  const firstFactor = await googlePost(env, jar, 'google/finish'); assert.equal(firstFactor.status, 202);
+  const firstFactor = await googlePost(env, jar, 'google/finish', { action: 'select', account_id: owner.data.user.id }); assert.equal(firstFactor.status, 202);
   const challenge = (await firstFactor.json()).challenge;
   assert.equal((await jar.fetch(env, '/api/auth/me')).status, 401);
   const verified = await googlePost(env, jar, 'mfa/verify', { challenge, code: codes[0] });
@@ -105,7 +106,7 @@ test('Google-only users can change phone identifiers and delete their account wi
   await reauth(env, owner.jar);
   assert.equal((await googlePost(env, owner.jar, 'delete-account')).status, 200);
   assert.equal((await env.DB.prepare('SELECT COUNT(*) AS n FROM users').first()).n, 0);
-  assert.equal((await env.DB.prepare('SELECT COUNT(*) AS n FROM auth_external_identities').first()).n, 0);
+  assert.equal((await env.DB.prepare('SELECT COUNT(*) AS n FROM auth_external_account_links').first()).n, 0);
 });
 
 test('forgot/reset password cannot silently set a Google-only password or trust an unverified third-party recovery mailbox', async t => {
@@ -157,7 +158,7 @@ test('Google linking honors native local MFA and binds callback to unchanged sec
   const flow = await beginGoogle(env, jar, { purpose: 'link', current_password: native.password, mfa_code: codes[0] });
   await env.DB.prepare('UPDATE users SET password_hash = ? WHERE id = ?').bind('changed-credential-snapshot', native.data.user.id).run();
   assert.match((await jar.fetch(env, flow.callback, { origin: null })).headers.get('Location'), /error=1/);
-  assert.equal((await env.DB.prepare('SELECT COUNT(*) AS n FROM auth_external_identities').first()).n, 0);
+  assert.equal((await env.DB.prepare('SELECT COUNT(*) AS n FROM auth_external_account_links').first()).n, 0);
 });
 
 test('Google-only recovery replacement requires Google proof and email confirmation, not password creation', async t => {

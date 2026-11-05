@@ -80,17 +80,15 @@ test('onboarding requires explicit recovery and terms confirmation, valid unique
   assert.equal((await googlePost(env, jar, 'google/finish', onboarding())).status, 200);
 });
 
-test('concurrent onboarding proofs and same-subject signups never create orphan or duplicate users', async t => {
+test('separate fresh proofs can create distinct usernames for one Google identity without orphan rows', async t => {
   mockGoogle(t); const env = googleEnv(); const left = new GoogleJar(), right = new GoogleJar();
   await verifyGoogle(env, left); await verifyGoogle(env, right);
   const results = await Promise.all([googlePost(env, left, 'google/finish', onboarding('googleleft')),
     googlePost(env, right, 'google/finish', onboarding('googleright'))]);
-  assert.ok(results.some(r => r.status === 200));
-  for (const table of ['users', 'profiles', 'auth_external_identities']) {
-    assert.equal((await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${table}`).first()).n, 1);
+  assert.deepEqual(results.map(r => r.status), [200, 200]);
+  for (const table of ['users', 'profiles', 'auth_external_account_links']) {
+    assert.equal((await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${table}`).first()).n, 2);
   }
-  const loser = results.findIndex(r => r.status !== 200);
-  if (loser >= 0) assert.equal((await googlePost(env, [left, right][loser], 'google/finish')).status, 200);
 });
 
 test('identity uses issuer/subject, not matching email; returning Google users keep the same internal ID', async t => {

@@ -1,3 +1,4 @@
+import { bindFormSubmit } from '../../../js/form-submit.js';
 import { api } from '../../../js/api.js';
 import { setBusy, toast } from '../../../js/common.js';
 
@@ -11,8 +12,7 @@ export function initResetPassword(resetToken, showAlert, hideAlert) {
   const form = document.getElementById('reset-form');
   if (!form || !resetToken) return;
 
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
+  bindFormSubmit(form, async (_event, isCurrent) => {
     hideAlert('alert-reset');
 
     const password = document.getElementById('new-password').value;
@@ -27,6 +27,7 @@ export function initResetPassword(resetToken, showAlert, hideAlert) {
     const res = await api.post('/auth/reset-password', { password }, { token: resetToken });
     setBusy(btn, false);
 
+    if (!isCurrent()) return;
     if (!res.ok) {
       return showAlert('alert-reset', res.error || 'Reset link is invalid or expired. Please request a new one.');
     }
@@ -35,5 +36,6 @@ export function initResetPassword(resetToken, showAlert, hideAlert) {
     setTimeout(() => {
       location.href = '/signin';
     }, 900);
+    return true;
   });
 }

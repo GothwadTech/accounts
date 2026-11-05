@@ -27,8 +27,6 @@ if (new URLSearchParams(location.search).get('add') === '1') {
 }
 
 const suffixText = `@${GOTHWAD_CONFIG.APP_DOMAIN}`;
-const suffixEl = document.getElementById('domain-suffix');
-if (suffixEl) suffixEl.textContent = suffixText;
 document.querySelectorAll('.suffix-copy').forEach((el) => {
   el.textContent = suffixText;
 });
@@ -59,18 +57,8 @@ export function showMode(name) {
   }
 }
 
-const linkForgot = document.getElementById('link-forgot');
-if (linkForgot) linkForgot.addEventListener('click', () => showMode('forgot'));
-
-const btnForgotAction = document.getElementById('btn-forgot-action');
-if (btnForgotAction) btnForgotAction.addEventListener('click', () => showMode('forgot'));
-
 document.querySelectorAll('[data-goto]').forEach((btn) => {
   btn.addEventListener('click', () => showMode(btn.dataset.goto));
-});
-
-document.querySelectorAll('.btn-forgot-action').forEach((btn) => {
-  btn.addEventListener('click', () => showMode('forgot'));
 });
 
 export function showAlert(id, message) {

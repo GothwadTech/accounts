@@ -1,3 +1,4 @@
+import { bindFormSubmit } from '../../../js/form-submit.js';
 /**
  * Sign-In Form Module — Google-style Two-Step Flow (`Identifier -> Password`)
  * Zero tokens in `localStorage` / `sessionStorage`.
@@ -69,6 +70,7 @@ export function initSigninForm(showAlert, hideAlert) {
   const btn = document.getElementById('signin-btn');
   const btnText = btn?.querySelector('span') || btn;
 
+  let runAction;
   let currentStep = 'identifier';
   let verifiedIdentifier = '';
   let mfaChallenge = null;
@@ -84,23 +86,30 @@ export function initSigninForm(showAlert, hideAlert) {
     location.href = !next || isInternalAccountHubPath(next) ? defaultMe : safeNextUrl(next, defaultMe);
   }
   const passkeyButton = document.getElementById('signin-passkey');
+  const passkeyOptions = document.getElementById('signin-passkey-options');
+  const googleOptions = document.getElementById('google-entry-options');
   if (passkeyButton) {
     passkeyButton.classList.add('hidden');
     passkeyButton.disabled = !passkeysSupported();
-    passkeyButton.addEventListener('click', async () => {
-      const val = validateIdentifier(verifiedIdentifier || identifierInput?.value);
-      if (!val.ok) return showAlert('alert-signin', val.error);
-      setBusy(passkeyButton, true, 'Verifying...');
-      try {
-        const prepared = await api.post('/auth/passkeys/login/options', { identifier: val.identifier,
-          remember: true, add: new URLSearchParams(location.search).get('add') === '1' });
-        if (!prepared.ok) return showAlert('alert-signin', 'No available passkey. Try your password or another device.');
-        const response = await performPasskey(prepared.data.options);
-        const verified = await api.post('/auth/passkeys/login/verify', { challenge: prepared.data.challenge, response });
-        if (!verified.ok) return showAlert('alert-signin', verified.error || 'Passkey verification failed.');
-        complete(verified.data);
-      } catch { showAlert('alert-signin', 'Passkey verification was cancelled or failed. Your password is still available.'); }
-      finally { setBusy(passkeyButton, false); }
+    passkeyButton.addEventListener('click', () => {
+      if (currentStep !== 'password') return;
+      return runAction(async (_event, isCurrent) => {
+        const val = validateIdentifier(verifiedIdentifier || identifierInput?.value);
+        if (!val.ok) return showAlert('alert-signin', val.error);
+        setBusy(passkeyButton, true, 'Verifying...');
+        try {
+          const prepared = await api.post('/auth/passkeys/login/options', { identifier: val.identifier,
+            remember: true, add: new URLSearchParams(location.search).get('add') === '1' });
+          if (!prepared.ok) return showAlert('alert-signin', 'No available passkey. Try your password or another device.');
+          const response = await performPasskey(prepared.data.options);
+          const verified = await api.post('/auth/passkeys/login/verify', { challenge: prepared.data.challenge, response });
+          if (!verified.ok) return showAlert('alert-signin', verified.error || 'Passkey verification failed.');
+          if (!isCurrent()) return;
+          complete(verified.data);
+          return true;
+        } catch { showAlert('alert-signin', 'Passkey verification was cancelled or failed. Your password is still available.'); }
+        finally { setBusy(passkeyButton, false); }
+      });
     });
   }
   document.getElementById('signin-mfa-restart')?.addEventListener('click', () => goToIdentifierStep());
@@ -131,11 +140,13 @@ export function initSigninForm(showAlert, hideAlert) {
     if (identifierStep) identifierStep.classList.remove('hidden');
     if (passwordStep) passwordStep.classList.add('hidden');
     if (passkeyButton) passkeyButton.classList.add('hidden');
+    passkeyOptions?.classList.add('hidden');
+    googleOptions?.classList.remove('hidden');
     if (btnText) btnText.textContent = 'Next';
     if (identifierInput) identifierInput.focus();
   }
 
-  async function goToPasswordStep() {
+  async function goToPasswordStep(isCurrent) {
     const rawIdentifier = identifierInput?.value.trim();
     const val = validateIdentifier(rawIdentifier);
 
@@ -154,6 +165,7 @@ export function initSigninForm(showAlert, hideAlert) {
     setBusy(btn, true, 'Checking...');
     const lookup = await api.post('/auth/check-identifier', { identifier: val.identifier });
     setBusy(btn, false);
+    if (!isCurrent() || validateIdentifier(identifierInput?.value).identifier !== val.identifier) return;
 
     if (!lookup.ok || (lookup.data && lookup.data.exists === false)) {
       const msg =
@@ -176,6 +188,8 @@ export function initSigninForm(showAlert, hideAlert) {
     if (identifierStep) identifierStep.classList.add('hidden');
     if (passwordStep) passwordStep.classList.remove('hidden');
     if (passkeyButton) passkeyButton.classList.remove('hidden');
+    passkeyOptions?.classList.remove('hidden');
+    googleOptions?.classList.add('hidden');
     if (btnText) btnText.textContent = 'Sign In';
     if (passwordInput) passwordInput.focus();
   }
@@ -207,8 +221,7 @@ export function initSigninForm(showAlert, hideAlert) {
     });
   }
 
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
+  runAction = bindFormSubmit(form, async (_event, isCurrent) => {
     hideAlert('alert-signin');
 
     if (currentStep === 'mfa') {
@@ -217,11 +230,12 @@ export function initSigninForm(showAlert, hideAlert) {
       const verified = await api.post('/auth/mfa/verify', { challenge: mfaChallenge, code: mfaInput.value.trim() });
       setBusy(btn, false);
       if (!verified.ok) return showAlert('alert-signin', verified.error || 'Verification failed.');
+      if (!isCurrent()) return;
       complete(verified.data);
-      return;
+      return true;
     }
     if (currentStep === 'identifier') {
-      await goToPasswordStep();
+      await goToPasswordStep(isCurrent);
       return;
     }
 
@@ -246,6 +260,7 @@ export function initSigninForm(showAlert, hideAlert) {
     const res = await api.post(path, { identifier, password, remember, add: addMode });
     setBusy(btn, false);
 
+    if (!isCurrent()) return;
     if (!res.ok) {
       const msg = res.error || 'Incorrect password. Try again or use Forgot password.';
       if (/username doesn't exist|isn't registered|doesn't exist/i.test(msg)) {
@@ -259,6 +274,8 @@ export function initSigninForm(showAlert, hideAlert) {
     if (res.data.mfa_required) {
       mfaChallenge = res.data.challenge;
       currentStep = 'mfa';
+      googleOptions?.classList.add('hidden');
+      passkeyOptions?.classList.add('hidden');
       passwordInput.value = '';
       passwordInput.required = false;
       passwordStep?.classList.add('hidden');
@@ -268,5 +285,6 @@ export function initSigninForm(showAlert, hideAlert) {
       return;
     }
     complete(res.data);
+    return true;
   });
 }
