@@ -24,10 +24,24 @@ Changes:
   HTML and API responses retain their existing cache policies. Production Pages'
   revalidation policy and security headers are unchanged.
 
+## Google callback cache isolation
+
+The Google chooser now uses the same content-hashed build, rather than loading
+`/signin/google/google.js` at a stable URL. Its standalone bundle does not add
+shared chunks or requests to the native entry pages. Callback success, error and popup
+reauthentication documents use `?ui=accounts-v2`, avoiding the pre-chooser HTML
+cache/history key. This does not change the registered Google callback URI.
+Google callback HTML and the legacy source path have explicit `no-store` headers;
+Google API fetches also bypass browser caches. A fresh legacy source on old HTML
+refreshes once, preserving query flags and HttpOnly proofs; if the deployment is
+still outdated it shows an update message instead of looping or signing in.
+Publish matching Pages/Worker builds. Hashing cannot replace an actual frontend
+release or repair arbitrary cache rules/proxies that ignore origin headers.
+
 ## Editing and deployment
 
 Edit the existing source modules under `web/signin/js`, `web/signup/js` and shared
-`web/js`, not generated files under `web/assets/auth`. Small `entry.js` wrappers
+`web/js` and `web/signin/google`, not generated files under `web/assets/auth`. Small `entry.js` wrappers
 combine each screen with its existing Google-button initializer. Run:
 
 ```sh
@@ -35,7 +49,7 @@ npm run build
 ```
 
 The build writes hash-named assets and updates the matching entry/preload references
-in the two HTML files. Keep generated assets with the HTML when publishing; they
+in all three entry HTML files. Keep generated assets with the HTML when publishing; they
 are intentionally small and versioned together. Old generated outputs are removed
 from this dedicated directory only. Existing CSS link/cascade order is preserved.
 

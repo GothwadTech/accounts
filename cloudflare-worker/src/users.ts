@@ -41,7 +41,7 @@ export function presentUser(profile: Record<string, any> | null | undefined, env
 
 export async function fetchProfile(db: D1Database, userId: string): Promise<Record<string, any> | null> {
   return db.prepare(`SELECT p.*, (u.password_hash NOT LIKE '!no-password:%') AS has_password,
-    EXISTS (SELECT 1 FROM auth_external_account_links e WHERE e.user_id = p.id
+    EXISTS (SELECT 1 FROM auth_google_methods e WHERE e.user_id = p.id
       AND e.issuer = 'https://accounts.google.com') AS google_linked
     FROM profiles p JOIN users u ON u.id = p.id WHERE p.id = ?`).bind(userId).first();
 }

@@ -1,12 +1,15 @@
 /** Upstream Google redirects; state, PKCE, nonce and browser binding are server-owned. */
 import type { D1Database, Env, ResponseWrapper } from '../types.ts';
-import { b64url, randomToken, sha256Hex, verifyPassword } from '../crypto.ts';
+import { b64url, randomToken, sha256Hex } from '../crypto.ts';
+import { inspectBrowserAccounts } from '../browser-slots.ts';
+import { manageGoogleMethods } from '../google-method-management.ts';
+import { GOOGLE_METHOD_LIMIT, googleLinksSnapshot, googleMethodSnapshot, googleMethods, notifyGoogleChange } from '../google-methods.ts';
 import { getCookie, resolveSafeRedirectTarget } from '../cookies.ts';
 import { json, readJson } from '../http.ts';
 import { resolveSession } from '../sessions.ts';
 import { authorizeActionMfa, enabledMfa } from '../mfa-proofs.ts';
 import { exchangeGoogleCode, googleConfig, GOOGLE_ISSUER } from '../google-oidc.ts';
-import { googleCookie, googleCookieName, googleTicket, liveGoogleSession } from '../google-proofs.ts';
+import { googleCookie, googleCookieName, googleTicket, liveGoogleSession, confirmAccountCredential } from '../google-proofs.ts';
 import { authQuery } from '../db.ts';
 import { handleGoogleFinish } from '../google-signin.ts';
 
@@ -15,7 +18,9 @@ const liveFlow = `EXISTS (SELECT 1 FROM users u JOIN user_sessions s ON s.user_i
   WHERE u.id = auth_google_flows.user_id AND s.id = auth_google_flows.session_id
     AND u.password_hash = auth_google_flows.password_snapshot)
   AND (SELECT version FROM auth_mfa_factors WHERE user_id = auth_google_flows.user_id AND enabled = 1)
-    IS auth_google_flows.factor_version`;
+    IS auth_google_flows.factor_version
+  AND EXISTS (SELECT 1 FROM auth_google_flow_guards g WHERE g.state_hash = auth_google_flows.state_hash
+    AND g.links_snapshot = ${googleLinksSnapshot('auth_google_flows.user_id')})`;
 
 export async function handleGoogleRoute(request: Request, db: D1Database, env: Env,
   route: string, wrap: ResponseWrapper): Promise<Response | null> {
@@ -25,6 +30,8 @@ export async function handleGoogleRoute(request: Request, db: D1Database, env: E
 
 async function handleGoogleRequest(request: Request, db: D1Database, env: Env,
   route: string, wrap: ResponseWrapper): Promise<Response> {
+  const managed = await manageGoogleMethods(request, db, env, route, wrap);
+  if (managed) return managed;
   const config = googleConfig(env);
   if (route === '/auth/google/config' && request.method === 'GET') return wrap(json({ enabled: !!config }));
   if (!config) return wrap(json({ error: 'google_unavailable', message: 'Google sign-in is not configured yet.' }, 503));
@@ -35,7 +42,7 @@ async function handleGoogleRequest(request: Request, db: D1Database, env: Env,
     if (!['auth', 'reauth', 'link'].includes(purpose)) return wrap(json({ error: 'invalid_request' }, 400));
     let userId: string | null = null, sid: string | null = null, snapshot: string | null = null;
     let factorVersion: string | null = null;
-    let authuser = 0;
+    let authuser = 0, linksSnapshot = '';
     let cookies: string[] = [];
     let gate: { sql: string; bindings: unknown[] } = { sql: '1', bindings: [] };
     if (purpose !== 'auth') {
@@ -43,20 +50,21 @@ async function handleGoogleRequest(request: Request, db: D1Database, env: Env,
       if (!session.ok || !session.authUser?.sessionId) return wrap(json({ error: 'unauthorized' }, 401));
       userId = session.authUser.id; sid = session.authUser.sessionId;
       if (body.expected_user_id && body.expected_user_id !== userId) return wrap(json({ error: 'account_changed' }, 409));
-      authuser = session.slot ? 'abcdef'.indexOf(session.slot) : 0;
+      authuser = Math.max(0, (await inspectBrowserAccounts(request, db, env)).validSlots.findIndex(s => s.userId === userId));
+      linksSnapshot = await googleMethodSnapshot(db, userId);
       cookies = session.newCookies || [];
       const account = await db.prepare('SELECT password_hash FROM users WHERE id = ?').bind(userId).first();
       if (!account) return wrap(json({ error: 'unauthorized' }, 401));
       snapshot = account.password_hash;
       factorVersion = (await enabledMfa(db, userId))?.version || null;
-      const linked = await db.prepare('SELECT subject FROM auth_external_account_links WHERE issuer = ? AND user_id = ?')
+      const linked = await db.prepare('SELECT subject FROM auth_google_methods WHERE issuer = ? AND user_id = ?')
         .bind(GOOGLE_ISSUER, userId).first();
       if (purpose === 'reauth' && !linked) return wrap(json({ error: 'google_not_linked' }, 409));
       if (purpose === 'link') {
         const password = String(body.current_password || '');
-        if (linked) return wrap(json({ error: 'google_already_linked' }, 409));
-        if (!password || password.length > 128 || !(await verifyPassword(password, account.password_hash))) {
-          return wrap(json({ error: 'reauthentication_required', message: 'Confirm your current password.' }, 400));
+        if ((await googleMethods(db, userId)).length >= GOOGLE_METHOD_LIMIT) return wrap(json({ error: 'google_method_limit', message: 'You can connect up to three Google accounts.' }, 409));
+        if (!(await confirmAccountCredential(request, db, userId, sid, password, account.password_hash))) {
+          return wrap(json({ error: 'reauthentication_required', message: 'Confirm your current password or verify an already connected Google account.' }, 400));
         }
         const proof = await authorizeActionMfa(db, env, userId, String(body.mfa_code || '').trim());
         if (!proof) return wrap(json({ error: 'mfa_required', message: 'Enter a fresh authenticator or recovery code.' }, 400));
@@ -68,16 +76,21 @@ async function handleGoogleRequest(request: Request, db: D1Database, env: Env,
     }
     const state = randomToken(), browser = randomToken(), verifier = randomToken(), nonce = randomToken();
     const next = body.next ? resolveSafeRedirectTarget(String(body.next), request, env) : '';
-    const saved = await db.prepare(`INSERT INTO auth_google_flows
+    const stateHash = await sha256Hex(state);
+    const saved = await db.batch([db.prepare(`INSERT INTO auth_google_flows
       (state_hash, browser_hash, verifier, nonce, purpose, user_id, session_id, password_snapshot,
        factor_version, authuser, add_mode, remember_me, next_url, expires_at)
       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE (${gate.sql})
         AND (? IS NULL OR EXISTS (SELECT 1 FROM users u JOIN user_sessions s ON s.user_id = u.id
-          WHERE u.id = ? AND u.password_hash = ? AND s.id = ?)) RETURNING state_hash`)
-      .bind(await sha256Hex(state), await sha256Hex(browser), verifier, nonce, purpose, userId, sid,
+          WHERE u.id = ? AND u.password_hash = ? AND s.id = ?))
+        AND (? IS NULL OR ${googleLinksSnapshot('?')} = ?) RETURNING state_hash`)
+      .bind(stateHash, await sha256Hex(browser), verifier, nonce, purpose, userId, sid,
         snapshot, factorVersion, authuser, body.add === true ? 1 : 0, body.remember === false ? 0 : 1, next, ttl(),
-        ...gate.bindings, userId, userId, snapshot, sid).first();
-    if (!saved) return wrap(json({ error: 'verification_expired' }, 409));
+        ...gate.bindings, userId, userId, snapshot, sid, userId, userId, linksSnapshot),
+      db.prepare(`INSERT INTO auth_google_flow_guards (state_hash, links_snapshot)
+        SELECT ?, ? WHERE EXISTS (SELECT 1 FROM auth_google_flows WHERE state_hash = ?)`)
+        .bind(stateHash, linksSnapshot, stateHash)]);
+    if (!saved[0].results?.length) return wrap(json({ error: 'verification_expired' }, 409));
     await db.batch([
       db.prepare('DELETE FROM auth_google_flows WHERE state_hash IN (SELECT state_hash FROM auth_google_flows WHERE expires_at <= ? LIMIT 100)').bind(new Date().toISOString()),
       db.prepare('DELETE FROM auth_google_tickets WHERE token_hash IN (SELECT token_hash FROM auth_google_tickets WHERE expires_at <= ? LIMIT 100)').bind(new Date().toISOString()),
@@ -90,8 +103,10 @@ async function handleGoogleRequest(request: Request, db: D1Database, env: Env,
     return wrap(json({ ok: true, url: target.toString() }), [...cookies, googleCookie(env, 'flow', browser), googleCookie(env, 'result', 'pending')]);
   }
   if (route === '/auth/google/callback' && request.method === 'GET') {
+    // A new document URL avoids cached pre-chooser HTML/BFCache after provider navigation.
+    const googlePage = `${config.origin}/signin/google/?ui=accounts-v2`;
     const failed = () => wrap(new Response(null, { status: 303,
-      headers: { Location: `${config.origin}/signin/google/?error=1`, 'Referrer-Policy': 'no-referrer' } }),
+      headers: { Location: `${googlePage}&error=1`, 'Referrer-Policy': 'no-referrer' } }),
       [googleCookie(env, 'flow', '', 0), googleCookie(env, 'result', 'failed')]);
     const state = url.searchParams.get('state') || '';
     const browser = getCookie(request, googleCookieName('flow')) || '';
@@ -105,35 +120,46 @@ async function handleGoogleRequest(request: Request, db: D1Database, env: Env,
     let identity;
     try { identity = await exchangeGoogleCode(env, url.searchParams.get('code') || '', flow.verifier, flow.nonce); }
     catch { return failed(); } // Never log provider tokens or authorization codes.
+    // Email is display/notification metadata, never the identity key or recovery replacement.
+    await db.prepare('UPDATE auth_google_methods SET provider_email = ? WHERE issuer = ? AND subject = ?')
+      .bind(identity.email, GOOGLE_ISSUER, identity.subject).run();
     if (flow.purpose === 'link') {
+      const previous = await googleMethods(db, flow.user_id);
       try {
-        const linked = await db.prepare(`INSERT INTO auth_external_account_links (issuer, subject, user_id, provider_email, created_at)
-          SELECT ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM auth_google_flows WHERE state_hash = ? AND used_by = ? AND (${liveFlow}))
-          RETURNING user_id`).bind(GOOGLE_ISSUER, identity.subject, flow.user_id, identity.email, new Date().toISOString(),
-            flow.state_hash, marker).first();
+        const linked = await db.prepare(`INSERT INTO auth_google_methods (id, issuer, subject, user_id, provider_email, created_at)
+          SELECT ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM auth_google_flows WHERE state_hash = ? AND used_by = ? AND (${liveFlow}))
+          AND (SELECT COUNT(*) FROM auth_google_methods WHERE user_id = ? AND issuer = ?) < ?
+          RETURNING user_id`).bind(crypto.randomUUID(), GOOGLE_ISSUER, identity.subject, flow.user_id, identity.email, new Date().toISOString(),
+            flow.state_hash, marker, flow.user_id, GOOGLE_ISSUER, GOOGLE_METHOD_LIMIT).first();
         if (!linked) return failed();
       } catch { return failed(); } // Linking requires this account’s password/MFA proof; no email-based merge.
-      return wrap(new Response(null, { status: 303, headers: { Location: `${config.origin}/u/${flow.authuser}/me#security` } }),
+      const sent = await notifyGoogleChange(db, env, flow.user_id, 'added', identity.email, previous, request);
+      return wrap(new Response(null, { status: 303, headers: { Location: `${config.origin}/u/${flow.authuser}/me?google=linked${sent ? '' : '&notification=failed'}#security` } }),
         [googleCookie(env, 'flow', '', 0)]);
     }
     if (flow.purpose === 'reauth') {
-      const linked = await db.prepare('SELECT user_id FROM auth_external_account_links WHERE issuer = ? AND subject = ? AND user_id = ?')
+      const linked = await db.prepare('SELECT user_id FROM auth_google_methods WHERE issuer = ? AND subject = ? AND user_id = ?')
         .bind(GOOGLE_ISSUER, identity.subject, flow.user_id).first();
       if (!linked) return failed();
     }
     const ticket = randomToken();
-    const stored = await db.prepare(`INSERT INTO auth_google_tickets
+    const tokenHash = await sha256Hex(ticket);
+    const stored = await db.batch([db.prepare(`INSERT INTO auth_google_tickets
       (token_hash, purpose, subject, provider_email, authoritative, first_name, last_name, user_id,
        session_id, password_snapshot, factor_version, add_mode, remember_me, next_url, expires_at)
       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
       WHERE EXISTS (SELECT 1 FROM auth_google_flows WHERE state_hash = ? AND used_by = ?
         AND (purpose = 'auth' OR (${liveFlow}))) RETURNING token_hash`)
-      .bind(await sha256Hex(ticket), flow.purpose, identity.subject, identity.email, identity.authoritative ? 1 : 0,
+      .bind(tokenHash, flow.purpose, identity.subject, identity.email, identity.authoritative ? 1 : 0,
         identity.firstName, identity.lastName, flow.user_id, flow.session_id, flow.password_snapshot, flow.factor_version,
-        flow.add_mode, flow.remember_me, flow.next_url, ttl(), flow.state_hash, marker).first();
-    if (!stored) return failed();
-    const page = flow.purpose === 'reauth' ? '/signin/google/?reauth=1' : '/signin/google/';
-    return wrap(new Response(null, { status: 303, headers: { Location: config.origin + page, 'Referrer-Policy': 'no-referrer' } }),
+        flow.add_mode, flow.remember_me, flow.next_url, ttl(), flow.state_hash, marker),
+      db.prepare(`INSERT INTO auth_google_ticket_guards (token_hash, links_snapshot)
+        SELECT ?, g.links_snapshot FROM auth_google_flow_guards g WHERE g.state_hash = ?
+          AND EXISTS (SELECT 1 FROM auth_google_tickets WHERE token_hash = ?)`)
+        .bind(tokenHash, flow.state_hash, tokenHash)]);
+    if (!stored[0].results?.length) return failed();
+    const page = flow.purpose === 'reauth' ? `${googlePage}&reauth=1` : googlePage;
+    return wrap(new Response(null, { status: 303, headers: { Location: page, 'Referrer-Policy': 'no-referrer' } }),
       [googleCookie(env, 'flow', '', 0), googleCookie(env, flow.purpose === 'reauth' ? 'reauth' : 'pending', ticket, 300)]);
   }
   if (route === '/auth/google/status' && request.method === 'GET' && url.searchParams.get('reauth') === '1') {

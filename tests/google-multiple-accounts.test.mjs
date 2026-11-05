@@ -57,7 +57,7 @@ test('one browser-bound proof has one creation winner even though a subject may 
   const results = await Promise.all(['racefirst', 'racesecond'].map(username =>
     googlePost(env, jar, 'google/finish', onboarding(username))));
   assert.deepEqual(results.map(r => r.status).sort(), [200, 401]);
-  for (const table of ['users', 'profiles', 'auth_external_account_links']) {
+  for (const table of ['users', 'profiles', 'auth_google_methods']) {
     assert.equal((await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${table}`).first()).n, 1);
   }
 });

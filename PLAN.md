@@ -17,23 +17,31 @@ handoff in [HANDOVER.md](HANDOVER.md), and design details in [architecture](docs
 
 ## Next work
 
-1. Owner reviews the shorter Create New preview: optional birthday under name,
+0. Review many-to-many Google settings: three-method cap, passwordless/native
+   linking, per-account MFA, removal/last-method guards, backup sign-in, alerts,
+   recovery-email overlap and other-device/OAuth revocation. Back up D1 and review
+   SQL 13 with matching frontend/Worker and stopped legacy writes before release.
+1. Review/release the Google stale-UI fix with matching Pages/Worker builds. Test
+   returning users from normal Android Chrome and Incognito, including an old open
+   callback page. Keep explicit account selection; never restore implicit finish.
+
+2. Owner reviews the shorter Create New preview: optional birthday under name,
    combined email/password without confirmation or strength labels, then existing
    recovery details. Birthday is a joined Day / Month / Year field; new usernames
    are letters/numbers only. Verify the disclosure and numeric keyboard on a phone.
    Review Google Add new, two linked accounts and explicit selection of each;
    account-specific MFA/password state and stable browser indices must remain intact.
    Do not remove recovery requirements without instructions.
-2. Keep password acceptance independent of strength: at least 8 characters, with
+3. Keep password acceptance independent of strength: at least 8 characters, with
    the existing 128-character safety cap and no character-composition requirement.
-3. Review and release approved Pages/Worker changes separately. Merging is not
-   proof of deployment. The owner authorized merging the current changes, not a
-   manual production migration or deployment. Back up D1 and apply
-   SQL 11 then SQL 12 with old writes stopped and matching frontend/Worker; verify
+4. Review and release approved Pages/Worker changes separately. Merging is not
+   proof of deployment. The owner now authorizes this implementation’s commit/push/merge
+   after clean verification, not manual production migration/deployment. Back up D1 and apply
+   SQL 11 → 12 → 13 with old writes stopped and matching frontend/Worker; verify
    old links were imported. Do not roll only the Worker back to the legacy table.
-4. Follow the [owner security checklist](docs/SECURITY_OWNER_CHECKLIST.md) for real
+5. Follow the [owner security checklist](docs/SECURITY_OWNER_CHECKLIST.md) for real
    email delivery, restore drills, live headers/quotas, cross-app and device pilots.
-5. Re-check sibling repositories before using the dated handoff prompts in the
+6. Re-check sibling repositories before using the dated handoff prompts in the
    [documentation index](docs/README.md); they are not evidence of current bugs.
 
 Google sign-in is owner-confirmed working. Public branding/consent approval and

@@ -19,7 +19,7 @@ export async function handleGoogleFinish(request: Request, db: D1Database, env: 
   if (!ticket) return expired();
   if (request.method === 'GET') {
     const linked = await db.prepare(`SELECT u.id, u.username, p.first_name, p.last_name
-      FROM auth_external_account_links e JOIN users u ON u.id = e.user_id JOIN profiles p ON p.id = u.id
+      FROM auth_google_methods e JOIN users u ON u.id = e.user_id JOIN profiles p ON p.id = u.id
       WHERE e.issuer = ? AND e.subject = ? ORDER BY e.created_at, u.id`)
       .bind(GOOGLE_ISSUER, ticket.subject).all();
     const accounts = linked.results || [];
@@ -33,7 +33,7 @@ export async function handleGoogleFinish(request: Request, db: D1Database, env: 
   if (!['select', 'create'].includes(action)) return wrap(json({ error: 'selection_required',
     message: 'Choose a Gothwad Account or add a new account.' }, 400));
   let account = action === 'select' ? await db.prepare(`SELECT u.id, u.username, u.password_hash
-    FROM auth_external_account_links e JOIN users u ON u.id = e.user_id
+    FROM auth_google_methods e JOIN users u ON u.id = e.user_id
     WHERE e.issuer = ? AND e.subject = ? AND e.user_id = ?`)
     .bind(GOOGLE_ISSUER, ticket.subject, String(body.account_id || '')).first() : null;
   if (action === 'select' && !account) return wrap(json({ error: 'invalid_account',
@@ -68,16 +68,18 @@ export async function handleGoogleFinish(request: Request, db: D1Database, env: 
         db.prepare(`INSERT INTO profiles (id, username, first_name, last_name, recovery_email, date_of_birth, gender)
           SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM users WHERE id = ?)`)
           .bind(id, username, first, last, ticket.provider_email, dob || null, gender || null, id),
-        db.prepare(`INSERT INTO auth_external_account_links (issuer, subject, user_id, provider_email, created_at, created_passwordless)
-          SELECT ?, ?, ?, ?, ?, 1 WHERE EXISTS (SELECT 1 FROM users WHERE id = ?)`)
-          .bind(GOOGLE_ISSUER, ticket.subject, id, ticket.provider_email, now, id),
+        db.prepare(`INSERT INTO auth_google_methods (id, issuer, subject, user_id, provider_email, created_at)
+          SELECT ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM users WHERE id = ?)`)
+          .bind(crypto.randomUUID(), GOOGLE_ISSUER, ticket.subject, id, ticket.provider_email, now, id),
         db.prepare(`INSERT INTO verified_recovery_emails (user_id, email, verified_at)
           SELECT ?, ?, ? WHERE ? = 1 AND EXISTS (SELECT 1 FROM users WHERE id = ?)`)
           .bind(id, ticket.provider_email, now, ticket.authoritative, id),
+        db.prepare(`INSERT INTO auth_google_account_origins (user_id, created_passwordless)
+          SELECT ?, 1 WHERE EXISTS (SELECT 1 FROM users WHERE id = ?)`).bind(id, id),
         db.prepare(`UPDATE auth_google_tickets SET used_by = ? WHERE token_hash = ? AND used_by IS NULL
           AND EXISTS (SELECT 1 FROM users WHERE id = ?) RETURNING token_hash`).bind(marker, ticket.token_hash, id),
       ]);
-      if (!result[0].results?.length || !result[4].results?.length) return expired();
+      if (!result[0].results?.length || !result[5].results?.length) return expired();
     } catch (error) {
       // Do not mask storage outages as a username conflict.
       if (!/UNIQUE constraint failed/i.test(String(error))) throw error;
@@ -88,7 +90,7 @@ export async function handleGoogleFinish(request: Request, db: D1Database, env: 
   } else {
     const consumed = await db.prepare(`UPDATE auth_google_tickets SET used_by = ? WHERE token_hash = ?
       AND purpose = 'auth' AND used_by IS NULL AND expires_at > ?
-      AND EXISTS (SELECT 1 FROM auth_external_account_links WHERE issuer = ? AND subject = ? AND user_id = ?)
+      AND EXISTS (SELECT 1 FROM auth_google_methods WHERE issuer = ? AND subject = ? AND user_id = ?)
       RETURNING token_hash`)
       .bind(marker, ticket.token_hash, now, GOOGLE_ISSUER, ticket.subject, account.id).first();
     if (!consumed) return expired();
@@ -101,7 +103,7 @@ export async function handleGoogleFinish(request: Request, db: D1Database, env: 
   return completeSignIn(request, db, env, credentials, options, wrap, {
     statements: [], version: null, method: 'google',
     sql: `EXISTS (SELECT 1 FROM auth_google_tickets WHERE token_hash = ? AND used_by = ?)
-      AND EXISTS (SELECT 1 FROM auth_external_account_links WHERE issuer = ? AND subject = ? AND user_id = ?)
+      AND EXISTS (SELECT 1 FROM auth_google_methods WHERE issuer = ? AND subject = ? AND user_id = ?)
       AND NOT EXISTS (SELECT 1 FROM auth_mfa_factors WHERE user_id = ? AND enabled = 1)`,
     bindings: [ticket.token_hash, marker, GOOGLE_ISSUER, ticket.subject, account.id, account.id],
   });

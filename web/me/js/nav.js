@@ -12,6 +12,9 @@ export function initNav() {
   document.querySelectorAll('[data-goto-section]').forEach((el) => {
     el.addEventListener('click', () => showSection(el.dataset.gotoSection));
   });
+  // Security verification returns here after Google navigation. Honor only known sections.
+  const initial = location.hash.slice(1);
+  if (SECTIONS.includes(initial)) showSection(initial);
 }
 
 /**

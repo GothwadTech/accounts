@@ -17,7 +17,8 @@ Microsoft, Apple, a domain purchase and a future rebrand are out of scope.
 - One Google identity may create/link multiple Gothwad accounts. Returning users
   see every linked account plus **Add new account**; none is automatically selected.
   Add new opens passwordless onboarding, with Back to accounts when links exist.
-  Each Gothwad account has at most one Google link. The six-slot limit applies to
+  Each Gothwad account may connect up to three Google accounts in Security settings.
+  This is an Accounts product limit, not a Google restriction. The six-slot limit applies to
   simultaneous browser sessions, not the total number of Google-linked accounts.
 - New users choose an available 3–24-character Gothwad username, enter names,
   optionally supply gender, confirm the suggested Google recovery email,
@@ -38,16 +39,35 @@ Microsoft, Apple, a domain purchase and a future rebrand are out of scope.
 - Google-only users can enroll/manage MFA, register/remove passkeys, change phone
   or recovery details, and delete their account with fresh Google verification;
   existing local MFA and email-confirmation requirements still apply.
-- Existing native users may explicitly Connect Google after confirming their
-  password and local MFA. The same Google identity may authorize another account
-  without transferring/merging the original. A different Google identity cannot
-  replace an account's existing link. Matching recovery emails never link users.
-- Google unlinking, provider replacement and provider-loss account recovery are not
-  implemented. A registered passkey can sign in independently; Google-only
-  **security reauthentication currently still uses the linked Google account**.
-  Adding an optional native password while Google remains accessible provides an
-  additional credential for those actions. Never promise recovery from every
-  provider-loss scenario just because an email or MFA recovery code is stored.
+- Existing native users confirm their current password and local MFA to connect
+  Google. Passwordless users instead freshly verify an already linked Google
+  account, plus local MFA. Only then may they authenticate the new Google identity.
+  Matching email addresses never link, transfer, replace or merge Gothwad accounts.
+- Security → Google accounts lists last verified Google emails and connection dates,
+  and offers Add Google account / Remove. One Google identity can still belong to
+  several separate Gothwad accounts. Connecting another Google identity does not
+  copy profiles or modify recovery details. Keep linked Google accounts private;
+  they grant access to the same identity, not separate collaborator permissions.
+- Removal requires the account's current credential and MFA. The last Google method
+  cannot be removed until a usable native password is added, **even with a passkey**:
+  passkeys can sign in, but passkey-only security reauthentication is not implemented.
+- Removal atomically rotates the credential snapshot (a new disabled marker, or a
+  re-salted hash of the same native password), removes only the chosen method and
+  revokes other devices/refresh credentials. Pending Google/MFA/passkey proofs,
+  pending recovery changes/reset tokens and existing OAuth credential bindings are
+  invalidated. The current device keeps its session; other accounts are unaffected.
+- Adding a method invalidates older Google security proofs/flows through a snapshot
+  of the full link set, without signing out live devices. Removing then relinking
+  the same Google subject cannot resurrect an old proof. Duplicate, concurrent,
+  expired or changed-account/security-state callbacks fail closed.
+- Add/remove activity is recorded, and best-effort security alerts use the existing
+  Resend transport to linked Google addresses and a separately verified current
+  recovery address. Missing configuration/delivery failures are explicitly reported;
+  they do not silently roll back a completed security mutation. No tokens or codes
+  are included in alerts. Live email delivery is still an owner pilot requirement.
+- Provider-loss recovery is not guaranteed. An independently accessible backup
+  Google account helps; MFA recovery codes replace only the second factor. A stored
+  email alone does not prove mailbox ownership or restore a lost Google account.
 
 ## Recovery email truth
 
@@ -62,25 +82,43 @@ silently install the first password, bypass Add password, or trust an unverified
 third-party Google mailbox. Explicitly linking an existing native user preserves
 that user's pre-existing password-recovery behavior. Recovery replacement still
 requires confirming a mailed link; delivery requires the existing Resend setup.
+Unlinking Google does **not** change the recovery address. If the removed Google
+email remains the recovery address, it may still receive password-reset messages.
+The UI identifies this overlap and warns explicitly. Change/confirm the recovery
+address separately if that mailbox is compromised; do not assume unlinking alone
+removes email-recovery access. New Google methods do not automatically become
+recovery addresses or verify/replace an existing recovery address.
+
 Using the same Google mailbox is not an independent fallback when Google access
 is lost. Local MFA recovery codes replace the **second factor**, not Google itself.
 
 ## Protocol and storage
 
-Modules: `google-oidc.ts`, `google-proofs.ts`, `google-schema.ts`,
-`google-signin.ts`, `routes/auth-google.ts`, and the small frontend Google helpers.
-Migrations: `sql/11_google_identities.sql` then `sql/12_google_account_links.sql`,
-additive/idempotent and mirrored by Worker cold-start bootstrap after core tables.
-The canonical `auth_external_account_links` table has a unique `(issuer,user_id)`
-and nonunique indexed `(issuer,subject)`. SQL 12 preserves the legacy table and
-copies every existing link with its metadata. A transactional schema-version marker
-makes that import one-time, avoiding full legacy scans and resurrected removed links.
-New code reads/writes only the canonical table. Use a coordinated Worker/frontend
-release: old Worker writes after migration are not imported again. Rolling back
-only the Worker is not supported; preserve/back up both tables and roll forward.
-Existing users, profiles, sessions and recovery metadata are not rebuilt or merged. No runtime PRAGMA, user-table rebuild or primary-email
-column is introduced. `created_passwordless` is immutable identity-origin metadata,
-not the current password state (which always comes from the credential column).
+Modules: `google-oidc.ts`, `google-proofs.ts`, `google-signin.ts`,
+`google-method-schema.ts`, `google-methods.ts`, `google-method-management.ts`,
+`routes/auth-google.ts` and the frontend helpers/settings.
+Run SQL 11 → 12 → **13_google_signin_methods.sql** after the core migrations.
+Runtime bootstrap mirrors these additive/idempotent migrations after core tables.
+SQL 13 imports SQL 12 links once into `auth_google_methods`, uniquely keyed by
+`(issuer,subject,user_id)`, with opaque generation-specific IDs and indexed user
+and subject lookups. Both legacy tables remain intact. `auth_google_account_origins`
+preserves immutable `created_passwordless` classification even if the original
+method is removed. New code reads/writes only these current tables.
+Security flow/ticket guard rows bind proofs to the ordered method-ID set, user,
+session, credential snapshot, factor version and expiry. Pre-migration temporary
+security proofs have no matching guard and require fresh verification; existing
+users, profiles, data, browser sessions and passwords are not rebuilt or merged.
+One-time schema markers prevent recurring legacy scans and removed-link resurrection.
+Stop legacy Worker writes and release matching frontend/backend together. A
+Worker-only rollback to the old link tables is unsupported; back up and roll forward.
+No runtime PRAGMA or primary-email column is introduced.
+
+`GET /auth/google/links` is authenticated, selected-account-only and no-store; it
+returns only opaque IDs, emails, dates, recovery overlap and management limits.
+`POST /auth/google/unlink` enforces same-origin CSRF, explicit owned ID, fresh
+credential/MFA, live session, current credential state and the last-method guard.
+Failed delivery is returned as `notification_sent: false` or a public callback
+notice flag; it never changes authorization. Unlink has its own persistent rate limit.
 
 `POST /auth/google/start` creates a five-minute authorization flow with independent
 random state, browser binding, PKCE verifier and nonce. State/browser secrets are
@@ -98,6 +136,10 @@ for the verified ticket's subject. `POST /auth/google/finish` requires explicit
 `action: "select", account_id` or `action: "create"` with onboarding details. Missing,
 foreign and expired selections fail closed. Selection and final issuance both check
 subject membership; an absent new status contract also fails closed in the UI.
+The callback uses a versioned UI document URL, and Google HTML loads content-hashed
+bundled code. Callback documents and API requests use no-store. This prevents the
+pre-chooser script from reading an absent username or attempting implicit finish;
+an outdated deployment must be updated, not accommodated by server auto-selection.
 New-user/profile/link writes are atomic; one proof has one winner and cannot create
 or select twice. Distinct fresh proofs may create distinct usernames for the same
 Google identity. Duplicate usernames leave no orphan rows. The selected account's
@@ -146,7 +188,7 @@ flows fail closed. Expired rows are cleaned in bounded batches when flows start.
    These commands change production configuration; none were run here. Client ID is
    public by design, but both are read server-side. Never commit the client secret.
    Local `server.js` reads the same environment names. Do not commit local values.
-6. Back up D1 and review/apply SQL 11 then SQL 12 (after existing migrations), or
+6. Back up D1 and review/apply SQL 11, SQL 12 then SQL 13 (after existing migrations), or
    verify the reviewed Worker bootstrap creates/imports them. Stop old Worker writes
    during the migration and deploy matching reviewed backend/frontend together.
    Verify preserved links and Google config returns enabled; complete the pilot below.
@@ -162,7 +204,10 @@ flows fail closed. Expired rows are cleaned in bounded batches when flows start.
 - Fresh Google reauth for Add password and other settings; deny a different Google
   subject, expired/replayed proof, revoked session and changed MFA/password state.
 - Explicit password/MFA-verified linking of the same Google identity to two native
-  accounts; reject replacing an existing link or using email alone to merge users.
+  accounts, and three Google methods on one Gothwad account. Test native-password
+  and passwordless management, duplicate/fourth-link rejection, removal/last-method
+  protection, pending-proof invalidation, other-device/OAuth revocation and alerts.
+  Reject automatic link replacement or email-only merge.
 - Google consent cancellation, provider outage, popup blocking, mobile browser
   navigation, actual Google COOP behavior and exact callback routing/cookie scope.
 - Separate-email verification and recovery delivery where configured. Confirm that
@@ -179,5 +224,6 @@ Optional Chromium QA: `node --experimental-strip-types tools/test-google-browser
 with Playwright installed separately. `BROWSER_TOOLS_PATH` can select an external
 QA installation; `SERVERLESS_CHROMIUM=true` enables `@sparticuz/chromium`. This uses
 an isolated temporary database, synthetic credentials/provider and a COOP-isolated
-mock page. It covers Add new, two-account selection and actual UI/cookies, not a real Google account. No QA bypass exists
+mock page. It covers the chooser, passwordless/native backup-method settings,
+removal protection and backup Google sign-in with actual UI/cookies, not real Google. No QA bypass exists
 in production routes. Do not install QA dependencies into production dependencies.

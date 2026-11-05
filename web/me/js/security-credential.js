@@ -20,5 +20,5 @@ export async function securityPost(path, body, owner = getDialogUser()) {
     }
     return googleApi(path, body);
   }
-  return api.post(path, body);
+  return path.startsWith('/auth/google/') ? googleApi(path, body) : api.post(path, body);
 }

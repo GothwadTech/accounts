@@ -48,7 +48,12 @@ implicit submission, hidden-form rejection, pending/terminal locks, recovery,
 reset and Google consent/chooser/MFA, plus short-height disclosure geometry in both themes. It creates a synthetic local
 account only. Set `BROWSER_TOOLS_PATH` for an external Playwright installation and
 `SERVERLESS_CHROMIUM=true` when using `@sparticuz/chromium`. No production URL is
-accepted. Google provider integration has its separate synthetic browser QA.
+accepted. Google provider integration has its separate synthetic browser QA:
+`node --experimental-strip-types tools/test-google-browser.mjs`. It runs an isolated
+local server/database with a mock provider and covers chooser/COOP/cache isolation,
+passwordless/native backup linking, removal/final-method protection, account-change
+response rejection, alert-failure notices and backup Google sign-in. It never uses
+production, real provider tokens or actual email delivery.
 
 ## Lightweight entry bundles
 

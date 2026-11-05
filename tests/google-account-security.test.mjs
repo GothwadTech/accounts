@@ -68,7 +68,7 @@ test('explicit password-verified linking can share Google without transferring e
   const jar = new GoogleJar(native.jar);
   const flow = await beginGoogle(env, jar, { purpose: 'link', current_password: native.password });
   assert.doesNotMatch((await jar.fetch(env, flow.callback, { origin: null })).headers.get('Location'), /error=1/);
-  const links = (await env.DB.prepare('SELECT user_id FROM auth_external_account_links').all()).results;
+  const links = (await env.DB.prepare('SELECT user_id FROM auth_google_methods').all()).results;
   assert.deepEqual(new Set(links.map(link => link.user_id)), new Set([owner.data.user.id, native.data.user.id]));
   assert.equal((await owner.jar.fetch(env, '/api/auth/me')).status, 200);
 });
@@ -106,7 +106,7 @@ test('Google-only users can change phone identifiers and delete their account wi
   await reauth(env, owner.jar);
   assert.equal((await googlePost(env, owner.jar, 'delete-account')).status, 200);
   assert.equal((await env.DB.prepare('SELECT COUNT(*) AS n FROM users').first()).n, 0);
-  assert.equal((await env.DB.prepare('SELECT COUNT(*) AS n FROM auth_external_account_links').first()).n, 0);
+  assert.equal((await env.DB.prepare('SELECT COUNT(*) AS n FROM auth_google_methods').first()).n, 0);
 });
 
 test('forgot/reset password cannot silently set a Google-only password or trust an unverified third-party recovery mailbox', async t => {
@@ -158,7 +158,7 @@ test('Google linking honors native local MFA and binds callback to unchanged sec
   const flow = await beginGoogle(env, jar, { purpose: 'link', current_password: native.password, mfa_code: codes[0] });
   await env.DB.prepare('UPDATE users SET password_hash = ? WHERE id = ?').bind('changed-credential-snapshot', native.data.user.id).run();
   assert.match((await jar.fetch(env, flow.callback, { origin: null })).headers.get('Location'), /error=1/);
-  assert.equal((await env.DB.prepare('SELECT COUNT(*) AS n FROM auth_external_account_links').first()).n, 0);
+  assert.equal((await env.DB.prepare('SELECT COUNT(*) AS n FROM auth_google_methods').first()).n, 0);
 });
 
 test('Google-only recovery replacement requires Google proof and email confirmation, not password creation', async t => {

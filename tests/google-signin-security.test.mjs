@@ -86,7 +86,7 @@ test('separate fresh proofs can create distinct usernames for one Google identit
   const results = await Promise.all([googlePost(env, left, 'google/finish', onboarding('googleleft')),
     googlePost(env, right, 'google/finish', onboarding('googleright'))]);
   assert.deepEqual(results.map(r => r.status), [200, 200]);
-  for (const table of ['users', 'profiles', 'auth_external_account_links']) {
+  for (const table of ['users', 'profiles', 'auth_google_methods']) {
     assert.equal((await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${table}`).first()).n, 2);
   }
 });
