@@ -11,3 +11,89 @@
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+/* Inline text button styled identically to .auth-field-label (left-aligned, no button chrome) */
+.auth-inline-text-btn {
+  display: inline-block;
+  background: transparent;
+  border: none;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+  padding: 4px 0;
+  cursor: pointer;
+  text-align: left;
+  text-decoration: none;
+  transition: color 0.15s ease;
+  user-select: none;
+}
+
+.auth-inline-text-btn:hover {
+  color: var(--accent);
+}
+
+.auth-inline-text-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  border-radius: 4px;
+}
+
+/* Theme-adaptive Google button matching light and dark themes */
+.btn-google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  height: 48px;
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  user-select: none;
+  text-decoration: none;
+  margin-top: 14px;
+}
+
+.btn-google:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+.btn-google:active:not(:disabled) {
+  transform: scale(0.99);
+}
+
+.btn-google:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* "or" separator divider between primary and secondary sign-in actions */
+.auth-separator {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  width: 100%;
+  margin: 18px 0 14px;
+}
+
+.auth-separator::before,
+.auth-separator::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid var(--border);
+}
+
+.auth-separator span {
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: lowercase;
+}

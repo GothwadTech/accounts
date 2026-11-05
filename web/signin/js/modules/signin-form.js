@@ -85,9 +85,10 @@ export function initSigninForm(showAlert, hideAlert) {
   }
   const passkeyButton = document.getElementById('signin-passkey');
   if (passkeyButton) {
+    passkeyButton.classList.add('hidden');
     passkeyButton.disabled = !passkeysSupported();
     passkeyButton.addEventListener('click', async () => {
-      const val = validateIdentifier(identifierInput?.value);
+      const val = validateIdentifier(verifiedIdentifier || identifierInput?.value);
       if (!val.ok) return showAlert('alert-signin', val.error);
       setBusy(passkeyButton, true, 'Verifying...');
       try {
@@ -129,6 +130,7 @@ export function initSigninForm(showAlert, hideAlert) {
     setFieldError(null);
     if (identifierStep) identifierStep.classList.remove('hidden');
     if (passwordStep) passwordStep.classList.add('hidden');
+    if (passkeyButton) passkeyButton.classList.add('hidden');
     if (btnText) btnText.textContent = 'Next';
     if (identifierInput) identifierInput.focus();
   }
@@ -173,6 +175,7 @@ export function initSigninForm(showAlert, hideAlert) {
 
     if (identifierStep) identifierStep.classList.add('hidden');
     if (passwordStep) passwordStep.classList.remove('hidden');
+    if (passkeyButton) passkeyButton.classList.remove('hidden');
     if (btnText) btnText.textContent = 'Sign In';
     if (passwordInput) passwordInput.focus();
   }

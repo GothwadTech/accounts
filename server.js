@@ -104,15 +104,17 @@ const server = http.createServer(async (req, res) => {
   }
 
   const ext = path.extname(filePath).toLowerCase();
+  const rawCsp = fs.readFileSync(path.join(WEB_ROOT, '_headers'), 'utf8')
+    .match(/^  Content-Security-Policy: (.+)$/m)[1];
+  // Allow iframe preview in local development while maintaining all other strict CSP rules
+  const devCsp = rawCsp.replace("frame-ancestors 'none'", 'frame-ancestors *');
+
   const staticHeaders = {
     'Content-Type': MIME[ext] || 'application/octet-stream',
     'Cache-Control': 'no-store, max-age=0',
     'X-Content-Type-Options': 'nosniff',
-    'X-Frame-Options': 'DENY',
     'Referrer-Policy': 'strict-origin-when-cross-origin',
-    // Mirror Pages so CSP failures surface during development, not only after deploy.
-    'Content-Security-Policy': fs.readFileSync(path.join(WEB_ROOT, '_headers'), 'utf8')
-      .match(/^  Content-Security-Policy: (.+)$/m)[1],
+    'Content-Security-Policy': devCsp,
   };
   if (url.pathname.startsWith('/widget/')) {
     staticHeaders['Access-Control-Allow-Origin'] = '*';

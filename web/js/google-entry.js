@@ -5,10 +5,7 @@ import { setBusy } from './common.js';
 const button = document.getElementById('btn-google-entry');
 const error = document.getElementById('google-entry-error');
 if (button) {
-  googleApi('config').then(result => {
-    button.disabled = !result.ok || !result.data.enabled;
-    if (button.disabled && error) error.textContent = 'Google sign-in is not available yet. Native sign-in and sign-up remain available.';
-  });
+  button.disabled = false;
   button.addEventListener('click', async () => {
     const params = new URLSearchParams(location.search);
     setBusy(button, true, 'Connecting...');

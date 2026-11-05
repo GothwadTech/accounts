@@ -69,6 +69,10 @@ document.querySelectorAll('[data-goto]').forEach((btn) => {
   btn.addEventListener('click', () => showMode(btn.dataset.goto));
 });
 
+document.querySelectorAll('.btn-forgot-action').forEach((btn) => {
+  btn.addEventListener('click', () => showMode('forgot'));
+});
+
 export function showAlert(id, message) {
   const box = document.getElementById(id);
   if (!box) return;
