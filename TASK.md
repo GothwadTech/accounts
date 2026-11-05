@@ -7,7 +7,7 @@
 >
 > Engineering guide: [`AGENTS.md`](AGENTS.md) · Architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · Session archive (`1–30`): [`docs/TASK_HISTORY.md`](docs/TASK_HISTORY.md)
 
-**Last updated:** 2026-11-05 (Session 51 — Requested Google authentication pull request)
+**Last updated:** 2026-11-05 (Session 53 — Google sign-in confirmed working; requested merge)
 
 ---
 
@@ -23,11 +23,23 @@
 | 2.8 | **Universal Google-Style Shadow-DOM Account Menu (`v2.4`) + 100% Pure-English Codebase & Hygiene Gate** | ✅ **DONE (2026-10-22)** |
 | 3 | Roll out central `account-menu.js` + automatic silent SSO in `GothwadTech/store` & `GothwadTech/mail` | 🔜 NEXT |
 
-**Current state in one line:** Google authentication is implemented locally with true no-password onboarding, Add password state, explicit linking and Google-protected security settings. Local verification passes; owner Google OAuth configuration, actual Worker routing/deployment and a live-provider pilot remain pending. No production changes were made this session.
+**Current state in one line:** Google sign-in implementation is merged in PR #26, and the owner confirms it is working after resolving the redirect URI mismatch. Google setup/sign-in is marked DONE based on that confirmation. Public audience/branding approval and the remaining security/cross-app pilot checks are not independently verified.
 
 ---
 
-## ✅ DONE (Newest First — Sessions 31 to 51)
+## ✅ DONE (Newest First — Sessions 31 to 53)
+
+### Session 53 — 2026-11-05 — Google Sign-In Working; Owner Requests Merge
+- **DONE:** owner confirms Google sign-in is working after the reported `redirect_uri_mismatch` configuration issue. This is owner-reported live success, not an independently executed production test.
+- The Google implementation is already merged in [PR #26](https://github.com/GothwadTech/accounts/pull/26). The active `arena/0ec43cc7-accounts` branch contains only this task/status follow-up; no authentication code or production settings are changed.
+- Owner explicitly authorizes merging this status update. Preserve the distinction between working sign-in and unverified public-audience/branding approval, recovery delivery, mobile, MFA and cross-app pilot coverage.
+- **NEXT UP:** merge this documentation follow-up; carry out any remaining release checks before claiming complete production verification. No secret values are recorded.
+
+### Session 52 — 2026-11-05 — Continue With Google Console and Worker Setup
+- Verified with GitHub that [PR #26](https://github.com/GothwadTech/accounts/pull/26) is already merged at `184b4e56ef85e1b92dd5ef877de330979cdc6872`. The active `arena/0ec43cc7-accounts` branch starts at that merge with no implementation difference; no duplicate PR is needed.
+- Prepared owner instructions from repository configuration for the Accounts-host callback, Google OAuth web client, private Worker credentials, same-origin routing, public policy URLs, test audience and distinct domain/brand verification steps. Public landing-page suitability and live branding approval must not be assumed.
+- No production configuration, secret, DNS, deployment, commit or pull-request operation was performed. Only this handoff record changed; implementation verification remains the previously recorded 223-test gate, not a newly executed test run.
+- **NEXT UP:** owner verifies deployed API routing and public homepage/privacy/terms accessibility, configures Google and Worker values privately, and runs a controlled test-user pilot before public release. Google controls the exact app-name/domain display on its screens.
 
 ### Session 51 — 2026-11-05 — Requested Google Authentication Pull Request
 - Owner explicitly requested a pull request for the Google authentication changes on `arena/220dd98f-accounts`. Commit, push and PR publication are authorized; merging, deployment and production configuration are not.
