@@ -36,6 +36,7 @@ import { handleAuthAccountsRoute } from './routes/auth-accounts.ts';
 import { handleAuthProfileRoute } from './routes/auth-profile.ts';
 import { handleRecoveryChangeRoute } from './routes/auth-recovery-change.ts';
 import { handlePasskeyRoute } from './routes/auth-passkeys.ts';
+import { handleGoogleRoute } from './routes/auth-google.ts';
 import { handleMfaRoute } from './routes/auth-mfa.ts';
 import { handleOAuthRoute } from './routes/oauth.ts';
 
@@ -85,7 +86,7 @@ export default {
       corsHeaders.forEach((v, k) => res.headers.set(k, v));
       res.headers.set('X-Content-Type-Options', 'nosniff');
       res.headers.set('X-Frame-Options', 'DENY');
-      res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+      if (!res.headers.has('Referrer-Policy')) res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
       if (!res.headers.has('Content-Security-Policy')) {
         res.headers.set('Content-Security-Policy', "object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
       }
@@ -114,6 +115,7 @@ export default {
 
       // 3. Auth Entry, Session, Multi-Account Switcher, Profile & OAuth 2.0 Routes
       return (
+        (await handleGoogleRoute(request, db, env, route, withCors)) ??
         (await handleAuthEntryRoute(request, url, db, env, route, withCors)) ??
         (await handleAuthSessionRoute(request, url, db, env, route, withCors)) ??
         (await handleMfaRoute(request, db, env, route, withCors)) ??

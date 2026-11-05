@@ -1,5 +1,22 @@
 # Accounts Handover
 
+## Current work — Google authentication, 2026-11-05
+
+Branch `arena/220dd98f-accounts`. Google sign-in/signup and explicit linking are
+implemented locally. Google signup creates no password; Security accurately offers
+Add password. Fresh Google proof supports passwordless security settings without
+removing existing MFA/session/snapshot guards. Native auth and parent six-slot SSO
+remain. See [protocol, setup and recovery limitations](docs/GOOGLE_SIGN_IN.md).
+
+Verification: 223 local tests, CSS build, strict Worker types, dry-run, production
+dependency audits, and synthetic-provider Chromium onboarding/COOP-popup/Add password
+QA. No real Google login, Google project, production configuration or deployment
+is claimed. Configure both Google client credentials privately and verify callback
+routing after review. Historical deployed MFA/passkey 404 reports remain unresolved.
+Worker dev-tool dependency audit also reports 2 moderate/1 high advisories in
+Wrangler/Miniflare/Undici; production-only audits are clean. Lockfiles are unchanged.
+
+
 ## Deployment investigation and requested merge — 2026-10-30
 
 The owner requests merging the pending sender change. A separate PR from

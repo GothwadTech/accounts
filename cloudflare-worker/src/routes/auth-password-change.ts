@@ -1,14 +1,16 @@
 /** Password change, proof-state validation, and revocation commit atomically. */
+import { confirmAccountCredential, hasPassword } from '../google-proofs.ts';
+import { fetchProfile, presentUser } from '../users.ts';
 import type { D1Database, Env, ResponseWrapper } from '../types.ts';
 import { apiError, json, readJson } from '../http.ts';
-import { hashPassword, verifyPassword } from '../crypto.ts';
+import { hashPassword } from '../crypto.ts';
 import { resolveSession } from '../sessions.ts';
 import { authorizeActionMfa } from '../mfa-proofs.ts';
 import { logActivity } from '../users.ts';
 
 export async function handlePasswordChangeRoute(request: Request, db: D1Database, env: Env,
   route: string, withCors: ResponseWrapper): Promise<Response | null> {
-  if (route !== '/auth/change-password' || request.method !== 'POST') return null;
+  if (!['/auth/change-password', '/auth/add-password'].includes(route) || request.method !== 'POST') return null;
   const session = await resolveSession(request, db, env);
   if (!session.ok || !session.authUser) return withCors(apiError('Please sign in first', 401));
   const body = await readJson(request);
@@ -19,8 +21,12 @@ export async function handlePasswordChangeRoute(request: Request, db: D1Database
   const sid = session.authUser.sessionId;
   if (!sid) return withCors(apiError('Please sign in again before changing your password', 401));
   const account = await db.prepare('SELECT password_hash FROM users WHERE id = ?').bind(userId).first();
-  if (!current || current.length > 128 || !account || !(await verifyPassword(current, account.password_hash))) {
-    return withCors(apiError('Current password is incorrect', 400));
+  const adding = route === '/auth/add-password';
+  if (!account || adding === hasPassword(account.password_hash)) {
+    return withCors(apiError(adding ? 'A password is already set. Use Change password.' : 'No password is set. Use Add password.', 409));
+  }
+  if (!(await confirmAccountCredential(request, db, userId, sid, current, account.password_hash))) {
+    return withCors(apiError('Confirm your current password or verify with Google again.', 400));
   }
   const proof = await authorizeActionMfa(db, env, userId, String(body.mfa_code || '').trim());
   if (!proof) return withCors(json({ error: 'mfa_required', message: 'Enter a fresh authenticator code or unused recovery code.' }, 400));
@@ -39,6 +45,6 @@ export async function handlePasswordChangeRoute(request: Request, db: D1Database
     db.prepare(`UPDATE password_reset_tokens SET used = 1 WHERE user_id = ? AND used = 0 AND (${won})`).bind(userId, ...params),
   ]);
   if (!results[0].results?.length) return withCors(apiError('Security state changed. Verify again before retrying.', 409));
-  await logActivity(db, userId, 'password_change', 'Password changed', 'Your password was updated and other devices were signed out', request);
-  return withCors(json({ ok: true, message: 'Password changed. Other devices were signed out.' }), session.newCookies || []);
+  await logActivity(db, userId, 'password_change', adding ? 'Password added' : 'Password changed', 'Your password was updated and other devices were signed out', request);
+  return withCors(json({ ok: true, user: presentUser(await fetchProfile(db, userId), env), message: 'Password saved. Other devices were signed out.' }), session.newCookies || []);
 }

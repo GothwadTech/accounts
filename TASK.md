@@ -7,7 +7,7 @@
 >
 > Engineering guide: [`AGENTS.md`](AGENTS.md) · Architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · Session archive (`1–30`): [`docs/TASK_HISTORY.md`](docs/TASK_HISTORY.md)
 
-**Last updated:** 2026-10-30 (Session 49 — Requested sender merge and deployment guidance)
+**Last updated:** 2026-11-05 (Session 51 — Requested Google authentication pull request)
 
 ---
 
@@ -23,11 +23,28 @@
 | 2.8 | **Universal Google-Style Shadow-DOM Account Menu (`v2.4`) + 100% Pure-English Codebase & Hygiene Gate** | ✅ **DONE (2026-10-22)** |
 | 3 | Roll out central `account-menu.js` + automatic silent SSO in `GothwadTech/store` & `GothwadTech/mail` | 🔜 NEXT |
 
-**Current state in one line:** All security coding phases are implemented locally; **194 tests**, build/types/bundle/audits, actual workerd/D1 ES256/RS256/OAuth, Chromium virtual-passkey UI, and synthetic restore checks pass. No deployment/configuration occurred. One final owner checklist covers production email/keys/origins, backups, cross-app/device pilots, and release approval.
+**Current state in one line:** Google authentication is implemented locally with true no-password onboarding, Add password state, explicit linking and Google-protected security settings. Local verification passes; owner Google OAuth configuration, actual Worker routing/deployment and a live-provider pilot remain pending. No production changes were made this session.
 
 ---
 
-## ✅ DONE (Newest First — Sessions 31 to 49)
+## ✅ DONE (Newest First — Sessions 31 to 51)
+
+### Session 51 — 2026-11-05 — Requested Google Authentication Pull Request
+- Owner explicitly requested a pull request for the Google authentication changes on `arena/220dd98f-accounts`. Commit, push and PR publication are authorized; merging, deployment and production configuration are not.
+- Prepared the existing implementation, regression tests and setup/handover documentation for publication. No additional feature or production changes are included in this follow-up.
+- Re-ran verification before publication: **223/223 tests**, frontend build, strict Worker types, Worker deploy dry-run, live local single-flight cookie rotation, and whitespace checks pass. The temporary in-memory QA server was stopped.
+- **NEXT UP:** review the published PR and its independent GitHub/Cloudflare checks. Google OAuth configuration and real-provider/mobile/cross-app pilots remain pending; do not merge or deploy without owner approval.
+
+### Session 50 — 2026-11-05 — Google Sign-In Without Password Creation
+- Implemented Google authorization-code/OIDC with state/browser binding, PKCE, nonce, RS256/JWKS and strict claim checks; provider tokens remain server-only. SQL 11 and cold-start bootstrap are additive/idempotent.
+- Google onboarding chooses a unique Gothwad username, confirms recovery email/terms, and never creates a password. A disabled credential marker preserves existing non-null snapshot gates. Profile flags drive No password added / Add password; native accounts retain Change password.
+- Shared internal identity/session/slot contracts and local MFA are preserved. Existing users can explicitly Connect Google after password/MFA verification. No email-only merging, transfer or automatic mailbox creation.
+- Fresh, single-use, session/credential/MFA-bound Google proofs protect Add password, MFA/passkey settings, phone/recovery changes and deletion. Password creation is optional, not a prerequisite for these settings. Other-device revocation and existing atomic mutation gates remain intact.
+- Password reset cannot install a Google-only user's first password or trust an unverified third-party Google recovery mailbox. Existing native recovery behavior is preserved after explicit linking. Provider-loss limitations are documented rather than claiming stored email alone provides recovery.
+- Verification: **223/223 tests**, CSS build, strict Worker types, dry-run, clean production dependency audits, whitespace checks, and real Chromium UI with synthetic provider/COOP popup for passwordless onboarding and Add → Change password. Existing bootstrap performance assertions still enforce six parallel validations and seven profile queries.
+- Worker development-tool audit reports **2 moderate / 1 high** advisories (Wrangler/Miniflare/Undici); no production dependency findings and no lockfile changes. Separate dependency remediation is not silently applied.
+- **NEXT UP:** owner reviews Google project/consent/client setup, privately configures both client credentials, verifies Accounts same-origin callback routing, and authorizes deployment/live-provider/mobile/cross-app pilots. Google remains disabled without credentials. No production configuration, deployment, other-repository change, domain purchase, rename, commit or PR was performed.
+- Setup, protocol and limitations: [Google sign-in](docs/GOOGLE_SIGN_IN.md). Historical deployed MFA/passkey 404 reports still require independent Worker evidence.
 
 ### Session 49 — 2026-10-30 — Requested Sender Merge and Worker Build Guidance
 - Owner explicitly requests merging the pending configuration update. Preparing its PR from `arena/bfd51291-accounts`; no other branch is used.

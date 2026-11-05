@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="referrer" content="no-referrer" />
+  <title>Continue with Google — Gothwad Accounts</title>
+  <link rel="icon" href="/favicon.ico" />
+  <link rel="stylesheet" href="/css/legacy/variables.css" />
+  <link rel="stylesheet" href="/css/legacy/base.css" />
+  <link rel="stylesheet" href="/css/legacy/components.css" />
+  <link rel="stylesheet" href="/css/legacy/auth.css" />
+</head>
+<body>
+  <main class="auth-shell">
+    <div class="auth-container-modern" style="max-width:440px;margin:40px auto;padding:20px;">
+      <div class="auth-header-card">
+        <img src="/icon-192-maskable.png" alt="Gothwad Accounts" width="56" height="56" />
+        <h1 class="auth-header-title" id="google-title">Continue with Google</h1>
+        <p id="google-message" role="status">Checking your Google verification…</p>
+      </div>
+      <p id="google-error" class="text-danger" role="alert"></p>
+      <form id="google-onboarding" hidden>
+        <p>No password will be created. You can add one later in Security.</p>
+        <div class="auth-field-group"><label for="google-first">First name</label><input class="input" id="google-first" autocomplete="given-name" maxlength="100" required /></div>
+        <div class="auth-field-group"><label for="google-last">Last name</label><input class="input" id="google-last" autocomplete="family-name" maxlength="100" required /></div>
+        <div class="auth-field-group"><label for="google-username">Gothwad username</label><input class="input" id="google-username" autocomplete="username" minlength="3" maxlength="24" pattern="[a-z0-9][a-z0-9._\-]{1,22}[a-z0-9]" required /><p id="google-address"></p></div>
+        <div class="auth-field-group"><label for="google-dob">Date of birth (optional)</label><input class="input" id="google-dob" type="date" autocomplete="bday" /></div>
+        <div class="auth-field-group"><label for="google-gender">Gender (optional)</label><select class="input" id="google-gender"><option value="">Not set</option><option>Male</option><option>Female</option><option>Other</option><option>Rather not say</option></select></div>
+        <p id="google-recovery-address"></p>
+        <label><input type="checkbox" id="google-confirm-recovery" required /> Use this Google email as my recovery email.</label>
+        <p>Recovery through this address is not an independent fallback if you lose access to Google. Google-only accounts use Google or a registered passkey to sign in. Email password recovery requires an added password and a verified recovery address. Third-party email addresses may need separate verification.</p>
+        <p>Your chosen Gothwad address does not automatically create a mailbox.</p>
+        <label><input type="checkbox" id="google-terms" required /> I agree to the <a href="/terms/" target="_blank" rel="noopener">Terms</a> and <a href="/privacy/" target="_blank" rel="noopener">Privacy Policy</a>.</label>
+        <p><button class="btn btn-primary" type="submit" id="google-create">Create account</button></p>
+      </form>
+      <form id="google-mfa" hidden>
+        <label for="google-mfa-code">Authenticator or unused recovery code</label>
+        <input class="input" id="google-mfa-code" autocomplete="one-time-code" maxlength="128" required />
+        <button class="btn btn-primary" type="submit" id="google-verify">Verify</button>
+      </form>
+      <p><a href="/signin/">Back to sign in</a></p>
+    </div>
+  </main>
+  <script type="module" src="/signin/google/google.js"></script>
+</body>
+</html>

@@ -9,7 +9,7 @@ export type MfaFactor = {
   last_counter: number; last_proof: string | null;
 };
 export type MfaProof = { counter: number | null; recoveryHash: string | null };
-export type SignInGate = { statements: D1PreparedStatement[]; sql: string; bindings: unknown[]; version: string | null; method?: 'passkey' };
+export type SignInGate = { statements: D1PreparedStatement[]; sql: string; bindings: unknown[]; version: string | null; method?: 'passkey' | 'google' };
 export async function enabledMfa(db: D1Database, userId: string): Promise<MfaFactor | null> {
   return db.prepare('SELECT * FROM auth_mfa_factors WHERE user_id = ? AND enabled = 1').bind(userId).first<MfaFactor>();
 }

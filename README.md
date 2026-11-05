@@ -6,10 +6,18 @@
 > - **♾️ Unlimited Users ($0 MAU Forever)** — Native Worker WebCrypto `PBKDF2-SHA256` + `HS256` JWT engine
 > - **👥 Universal Google-Style Multi-Account Switcher (`a`..`f` + `/u/0..5`)** — Central Shadow-DOM widget (`web/widget/account-menu.js`) shared across `Accounts`, `Mail`, and `Kiwi Store` with **zero client storage tokens**
 > - **🚫 Never Sleeps / Zero 7-Day Pause** — Native Cloudflare D1 binding (`1–5ms` SQL) + D1 `BLOB` Edge-Cached Avatars (`0` card required)
-> - **🧬 100% Pure Username-Only DB (`Rule #2`)** — Zero email columns anywhere; changing `APP_DOMAIN` is a 1-line config edit
+> - **🧬 100% Pure Username-Only DB (`Rule #2`)** — No primary email column in users/profiles; provider and recovery addresses are secondary metadata
 > - **🧩 Strictly Modular & Clean Codebase (`Rule #0` + `Rule #8`)** — 100% pure English across all UI/code/docs and every file strictly `<= 500` lines, enforced automatically by `npm test`!
 
 ---
+
+## Google sign-in — 2026-11-05
+
+Implemented locally as an additional sign-in method. New Google users choose a
+Gothwad username **without creating a password**; Security shows **Add password**.
+Existing users can explicitly connect Google. No email-only merging or local-MFA
+bypass; shared Gothwad SSO remains unchanged. Google stays disabled until owner
+OAuth setup and reviewed deployment. See [Google setup and limitations](docs/GOOGLE_SIGN_IN.md).
 
 ## Security status — 2026-10-29
 

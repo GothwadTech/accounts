@@ -1,16 +1,17 @@
 /** Freshly authorized passkey enrollment; verification and storage have one atomic winner. */
+import { confirmAccountCredential } from './google-proofs.ts';
 import { generateRegistrationOptions, verifyRegistrationResponse } from '@simplewebauthn/server';
 import type { RegistrationResponseJSON } from '@simplewebauthn/server';
 import type { D1Database, Env } from './types.ts';
 import { authorizeActionMfa, reserveMfaAttempt } from './mfa-proofs.ts';
-import { randomToken, verifyPassword } from './crypto.ts';
+import { randomToken } from './crypto.ts';
 import { passkeyConfig, savePasskeyChallenge, takePasskeyAttempt, livePasskeySql, rejectsEmbeddedResponse } from './passkey-core.ts';
 
-export async function registrationOptions(db: D1Database, env: Env, userId: string, sid: string, body: Record<string, any>) {
+export async function registrationOptions(db: D1Database, env: Env, userId: string, sid: string, body: Record<string, any>, request: Request) {
   if (!(await reserveMfaAttempt(db, userId))) return null;
   const account = await db.prepare('SELECT id, username, password_hash FROM users WHERE id = ?').bind(userId).first();
   const password = String(body.current_password || '');
-  if (!account || !password || password.length > 128 || !(await verifyPassword(password, account.password_hash))) return null;
+  if (!account || !(await confirmAccountCredential(request, db, userId, sid, password, account.password_hash))) return null;
   const gate = await authorizeActionMfa(db, env, userId, String(body.mfa_code || '').trim());
   if (!gate) return null;
   const keys = (await db.prepare('SELECT credential_id FROM auth_passkeys WHERE user_id = ?').bind(userId).all()).results || [];

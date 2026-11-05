@@ -54,6 +54,8 @@ const server = http.createServer(async (req, res) => {
         AUTH_HUB_URL: process.env.AUTH_HUB_URL || origin,
         API_DOMAIN: process.env.API_DOMAIN || '',
         DEV_MODE: process.env.DEV_MODE || 'true',
+        GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
+        GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
         JWT_SECRET: process.env.JWT_SECRET || 'dev-only-jwt-secret-key',
         MAIL_INTERNAL_TOKEN: process.env.MAIL_INTERNAL_TOKEN || 'dev-mail-internal-token',
         MFA_ENCRYPTION_KEY: process.env.MFA_ENCRYPTION_KEY,

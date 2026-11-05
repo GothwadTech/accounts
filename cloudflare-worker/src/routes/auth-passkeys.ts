@@ -1,4 +1,5 @@
 /** Identity-origin-only WebAuthn endpoints. Private keys never reach the server. */
+import { confirmAccountCredential } from '../google-proofs.ts';
 import type { D1Database, Env, ResponseWrapper } from '../types.ts';
 import { json, readJson } from '../http.ts';
 import { passkeyOriginAllowed, passkeyConfig } from '../passkey-core.ts';
@@ -33,7 +34,7 @@ export async function handlePasskeyRoute(request: Request, db: D1Database, env: 
       return wrap(json({ ok: true, rp_id: passkeyConfig(env).rpID, passkeys: rows.results || [] }), session.newCookies || []);
     }
     if (route === '/auth/passkeys/register/options' && request.method === 'POST') {
-      const options = await registrationOptions(db, env, userId, sid, body);
+      const options = await registrationOptions(db, env, userId, sid, body, request);
       return options ? wrap(json({ ok: true, ...options }), session.newCookies || []) : invalid();
     }
     if (route === '/auth/passkeys/register/verify' && request.method === 'POST') {
@@ -47,7 +48,7 @@ export async function handlePasskeyRoute(request: Request, db: D1Database, env: 
       if (!(await reserveMfaAttempt(db, userId))) return invalid();
       const account = await db.prepare('SELECT password_hash FROM users WHERE id = ?').bind(userId).first();
       const password = String(body.current_password || '');
-      if (!password || password.length > 128 || !account || !(await verifyPassword(password, account.password_hash))) return invalid();
+      if (!account || !(await confirmAccountCredential(request, db, userId, sid, password, account.password_hash))) return invalid();
       const gate = await authorizeActionMfa(db, env, userId, String(body.mfa_code || '').trim());
       if (!gate) return invalid();
       const deleted = await db.prepare(`DELETE FROM auth_passkeys WHERE id = ? AND user_id = ? AND (${gate.sql})

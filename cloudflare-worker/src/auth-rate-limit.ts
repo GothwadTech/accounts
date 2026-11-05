@@ -10,7 +10,10 @@ export function authRateLimitPolicy(method: string, route: string): Policy | nul
   if (['GET', 'POST'].includes(method) && ['/auth/check-username', '/auth/check-identifier'].includes(route)) {
     return { group: 'discovery', limit: 120, seconds: 60 };
   }
+  if (method === 'GET' && route === '/auth/google/callback') return { group: 'google-callback', limit: 60, seconds: 600 };
   if (method !== 'POST') return null;
+  if (route === '/auth/google/start') return { group: 'google-start', limit: 30, seconds: 600 };
+  if (route === '/auth/google/finish') return { group: 'google-finish', limit: 10, seconds: 600 };
   if (route.startsWith('/auth/passkeys/')) return { group: 'passkeys', limit: 30, seconds: 300 };
   if (route.startsWith('/auth/mfa/')) return { group: 'mfa', limit: 30, seconds: 300 };
   switch (route) {
@@ -22,6 +25,7 @@ export function authRateLimitPolicy(method: string, route: string): Policy | nul
     case '/auth/reset-password': return { group: 'reset', limit: 30, seconds: 900 };
     case '/auth/update-profile': return { group: 'profile-update', limit: 60, seconds: 600 };
     case '/auth/delete-account': return { group: 'account-delete', limit: 10, seconds: 600 };
+    case '/auth/add-password':
     case '/auth/change-password': return { group: 'password-change', limit: 10, seconds: 600 };
     case '/oauth/token': return { group: 'oauth-token', limit: 120, seconds: 60 };
     default: return null;

@@ -9,12 +9,14 @@
 import type { D1Database, D1PreparedStatement, Env } from './types.ts';
 import { OAUTH_STATE_SCHEMA } from './oauth-schema.ts';
 import { PASSKEY_SCHEMA } from './passkey-schema.ts';
+import { GOOGLE_SCHEMA } from './google-schema.ts';
 import { MFA_SCHEMA } from './mfa-schema.ts';
 
 const initializedDbs = new WeakMap<object, Promise<void>>();
 
 const BOOTSTRAP_STATEMENTS: string[] = [
   ...MFA_SCHEMA,
+  ...GOOGLE_SCHEMA,
   ...PASSKEY_SCHEMA,
   ...OAUTH_STATE_SCHEMA,
   `CREATE TABLE IF NOT EXISTS recovery_email_changes (

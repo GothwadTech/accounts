@@ -1,7 +1,8 @@
 /** Password-verified, email-confirmed recovery replacement without silent activation. */
+import { confirmAccountCredential } from '../google-proofs.ts';
 import type { D1Database, Env, ResponseWrapper } from '../types.ts';
 import { apiError, isValidEmail, json, readJson } from '../http.ts';
-import { randomToken, sha256Hex, verifyPassword } from '../crypto.ts';
+import { randomToken, sha256Hex } from '../crypto.ts';
 import { resolveSession } from '../sessions.ts';
 import { logActivity } from '../users.ts';
 import { sendSecurityEmail } from '../security-email.ts';
@@ -19,12 +20,11 @@ export async function handleRecoveryChangeRoute(
     const newEmail = String(body.recovery_email || '').trim().toLowerCase();
     const password = String(body.current_password || '');
     if (!isValidEmail(newEmail) || newEmail.length > 254) return withCors(apiError('Enter a valid recovery email'));
-    if (!password || password.length > 128) return withCors(apiError('Your current password is required', 400));
     const account = await db.prepare(
       `SELECT u.password_hash, p.recovery_email FROM users u JOIN profiles p ON p.id = u.id WHERE u.id = ?`,
     ).bind(session.authUser.id).first();
-    if (!account || !(await verifyPassword(password, account.password_hash))) {
-      return withCors(apiError('Current password is incorrect', 400));
+    if (!account || !(await confirmAccountCredential(request, db, session.authUser.id, session.authUser.sessionId, password, account.password_hash))) {
+      return withCors(apiError('Credential verification failed', 400));
     }
     const proofGate = await authorizeActionMfa(db, env, session.authUser.id, String(body.mfa_code || '').trim());
     if (!proofGate) {

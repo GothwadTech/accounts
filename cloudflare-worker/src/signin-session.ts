@@ -67,7 +67,7 @@ export async function completeSignIn(
     return withCors(json({ error: slots.error, message: slots.message }, 409));
   }
   await logActivity(db, account.userId, 'signin', 'Signed in',
-    gate?.method === 'passkey' ? 'Passkey verification completed' : gate ? 'Authenticator or recovery-code verification completed' : `${ua.browser} on ${ua.os || 'unknown OS'}`, request);
+    gate?.method === 'google' ? 'Google verification completed' : gate?.method === 'passkey' ? 'Passkey verification completed' : gate ? 'Authenticator or recovery-code verification completed' : `${ua.browser} on ${ua.os || 'unknown OS'}`, request);
   return withCors(json(sessionResponse(request, env, { ok: true, activeId: slots.slot, authuser: slots.authuser, user: presentUser(profile, env),
     access_token: accessToken, refresh_token: refresh, session_id: sessionId }), 200,
     slots.cookies.map(c => ['Set-Cookie', c] as [string, string])));

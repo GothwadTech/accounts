@@ -1,7 +1,8 @@
 /** Authenticator enrollment, management, recovery codes, and the second sign-in step. */
+import { confirmAccountCredential } from '../google-proofs.ts';
 import type { D1Database, Env, ResponseWrapper } from '../types.ts';
 import { json, readJson } from '../http.ts';
-import { randomToken, verifyPassword } from '../crypto.ts';
+import { randomToken } from '../crypto.ts';
 import { mfaConfigured, newRecoveryCodes } from '../mfa-crypto.ts';
 import { enabledMfa, matchMfaProof, proofMarkerSql, proofStatement, reserveMfaAttempt } from '../mfa-proofs.ts';
 import { prepareMfaEnrollment, confirmMfaEnrollment } from '../mfa-enrollment.ts';
@@ -37,8 +38,8 @@ export async function handleMfaRoute(request: Request, db: D1Database, env: Env,
     const password = String(body.current_password || '');
     const account = await db.prepare('SELECT id, username, password_hash FROM users WHERE id = ?').bind(userId)
       .first<{ id: string; username: string; password_hash: string }>();
-    if (!password || password.length > 128 || !account || !(await verifyPassword(password, account.password_hash))) {
-      return withCors(json({ error: 'reauthentication_required', message: 'Confirm your current password.' }, 400));
+    if (!account || !(await confirmAccountCredential(request, db, userId, sid, password, account.password_hash))) {
+      return withCors(json({ error: 'reauthentication_required', message: 'Confirm your current password or verify with Google.' }, 400));
     }
     if (route === '/auth/mfa/enroll') {
       if (factor) return withCors(json({ error: 'already_enabled', message: 'Authenticator verification is already enabled.' }, 409));

@@ -71,6 +71,7 @@ async function parseJson(res) {
 }
 
 const SKIP_REFRESH_PREFIXES = [
+  '/auth/google/',
   '/auth/mfa/',
   '/auth/passkeys/',
   '/auth/signin',
