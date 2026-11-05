@@ -1,4 +1,5 @@
 /** Authenticator setup and code management. Secrets remain in the current modal only. */
+import { credentialField, securityPost } from './security-credential.js';
 import { api } from '../../js/api.js';
 import { parsePageAuthuser } from '../../js/authuser.js';
 import { escapeHtml, setBusy } from '../../js/common.js';
@@ -8,6 +9,7 @@ export async function openMfaSettings() {
   const owner = getDialogUser();
   const selector = parsePageAuthuser();
   if (!owner) return;
+  const post = (path, body) => securityPost(path, body, owner);
   let generation;
   const render = (options) => { const root = modal(options); generation = root.dataset.dialogGeneration; };
   const current = () => getDialogUser()?.id === owner.id && parsePageAuthuser() === selector &&
@@ -25,7 +27,7 @@ export async function openMfaSettings() {
     return;
   }
   const error = '<p id="mfa-error" role="alert"></p>';
-  const password = field('mfa-password', 'Current password', { type: 'password', autocomplete: 'current-password' });
+  const password = credentialField(owner, 'mfa-password');
   const codeField = field('mfa-code', 'Authenticator or unused recovery code', { autocomplete: 'one-time-code' });
   render({ title: 'Authenticator verification',
     sub: status.enabled ? `Enabled. ${status.recovery_codes_remaining} unused recovery codes remain.`
@@ -60,7 +62,7 @@ export async function openMfaSettings() {
         if (!current()) return;
         const button = el(id);
         setBusy(button, true, 'Verifying...');
-        const result = await api.post(`/auth/mfa/${route}`, { current_password: el('mfa-password').value, code: el('mfa-code').value.trim() });
+        const result = await post(`/auth/mfa/${route}`, { current_password: el('mfa-password').value, code: el('mfa-code').value.trim() });
         if (!current()) return;
         setBusy(button, false);
         if (!result.ok) return fail(result.error || 'Verification failed.');
@@ -75,7 +77,7 @@ export async function openMfaSettings() {
     const currentPassword = el('mfa-password').value;
     const button = el('mfa-start');
     setBusy(button, true, 'Preparing...');
-    const result = await api.post('/auth/mfa/enroll', { current_password: currentPassword });
+    const result = await post('/auth/mfa/enroll', { current_password: currentPassword });
     if (!current()) return;
     setBusy(button, false);
     if (!result.ok) return fail(result.error || 'Could not start setup.');
@@ -91,7 +93,7 @@ export async function openMfaSettings() {
       if (!current()) return;
       const confirm = el('mfa-confirm');
       setBusy(confirm, true, 'Verifying...');
-      const verified = await api.post('/auth/mfa/confirm', { current_password: currentPassword,
+      const verified = await post('/auth/mfa/confirm', { current_password: currentPassword,
         enrollment_id: enrollment.enrollment_id, code: el('mfa-code').value.trim() });
       if (!current()) return;
       setBusy(confirm, false);

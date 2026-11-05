@@ -43,6 +43,7 @@ export function initSecurity(currentUser, cb) {
         row.addEventListener('click', () => import('../dialogs.js').then((m) => m.openDialog('recovery'))),
       );
 
+    document.getElementById('btn-google-settings')?.addEventListener('click', () => import('../google-settings.js').then(m => m.openGoogleSettings()));
     document.getElementById('btn-passkey-settings')?.addEventListener('click', openPasskeySettings);
     document.getElementById('btn-mfa-settings')?.addEventListener('click', openMfaSettings);
 
@@ -67,6 +68,18 @@ export function initSecurity(currentUser, cb) {
 
 function refreshRows() {
   if (!user) return;
+  const passwordRow = document.querySelector('#section-security [data-dialog="password"]');
+  const passwordLabel = passwordRow?.querySelector('.setting-label');
+  if (passwordLabel) passwordLabel.textContent = user.has_password === false ? 'Add password' : 'Change password';
+  const passwordStatus = passwordRow?.querySelector('.setting-value');
+  if (passwordStatus && user.has_password === false) passwordStatus.textContent = 'No password added. You sign in with Google or a registered passkey.';
+  else if (passwordStatus && !passwordStatus.querySelector('#sec-pw-last')) {
+    passwordStatus.textContent = 'Last changed: ';
+    const last = document.createElement('span'); last.id = 'sec-pw-last'; last.textContent = '—';
+    passwordStatus.append(last);
+  }
+  const googleRow = document.getElementById('btn-google-settings');
+  if (googleRow) googleRow.querySelector('.setting-label').textContent = user.google_linked ? 'Google connected' : 'Connect Google';
   const el = document.getElementById('sec-recovery');
   if (el) el.textContent = user.recovery_email || 'Not set';
   const status = document.getElementById('sec-mfa-status');

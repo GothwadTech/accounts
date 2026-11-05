@@ -132,7 +132,7 @@
             <div class="legal-card-icon">🔑</div>
             <h3 class="legal-card-title">Account Security Data</h3>
             <p class="legal-card-desc">
-              Salted cryptographic password hashes (we never store plain-text passwords), optional recovery email, and recovery phone number.
+              Salted cryptographic password hashes when a password is added (we never store plain-text passwords), optional recovery email, and phone number. Google-only signup does not create a password.
             </p>
           </div>
 
@@ -155,6 +155,13 @@
       </section>
 
       <!-- Section 3 -->
+      <section class="legal-section" aria-labelledby="google-signin-privacy">
+        <h2 class="legal-section-title" id="google-signin-privacy">Optional Google sign-in</h2>
+        <p>If you choose Google sign-in, Google shares your stable account identifier, email verification status, and basic name information with Accounts. We use the identifier to connect your Google method to one Gothwad user, not to automatically merge accounts with matching emails. You choose your Gothwad username and explicitly confirm any suggested recovery address.</p>
+        <p>We request only openid, email and profile permissions, not access to Gmail messages, Drive files or contacts. Provider tokens are processed on the server and are not stored as browser credentials. Short-lived authorization proofs expire and are cleaned up as authentication flows run. Deleting your Gothwad Account removes its linked Google identity; it does not delete your Google account.</p>
+        <p>Google-only accounts have no password until you choose Add password in Security. Password recovery requires an added password and a verified recovery address. Using the same Google mailbox is not an independent fallback if you lose Google access. Google-only security changes currently require verification with the linked Google account.</p>
+      </section>
+
       <section id="why-we-collect" class="legal-section">
         <div class="legal-section-tag">Section 3</div>
         <h2 class="legal-section-title">3. Why We Collect It</h2>

@@ -3,7 +3,7 @@
  * /me — PHOTO UPLOAD, PASSWORD CHANGE & DELETE ACCOUNT DIALOGS
  * =============================================================================
  */
-
+import { credentialField, securityPost } from './security-credential.js';
 import { api, clearTokens } from '../../js/api.js';
 import { mfaActionField, mfaActionCode } from '../../js/mfa-ui.js';
 import { toast, escapeHtml, setBusy } from '../../js/common.js';
@@ -92,11 +92,13 @@ export function dialogPhoto() {
 }
 
 export function dialogPassword() {
+  const owner = getDialogUser();
+  const adding = owner?.has_password === false;
   modal({
-    title: 'Change password',
+    title: adding ? 'Add password' : 'Change password',
     sub: 'Choose a strong password with at least 8 characters. Other devices will be signed out.',
     body:
-      field('dlg-current-pw', 'Current password', { type: 'password', autocomplete: 'current-password', eye: true }) +
+      credentialField(getDialogUser(), 'dlg-current-pw') +
       field('dlg-new-pw', 'New password (min. 8 chars)', { type: 'password', autocomplete: 'new-password', eye: true }) +
       field('dlg-confirm-pw', 'Confirm new password', { type: 'password', autocomplete: 'new-password', eye: true }) +
       mfaActionField(getDialogUser(), 'dlg-password-mfa'),
@@ -123,10 +125,11 @@ export function dialogPassword() {
     if (next !== confirm) return toast('New passwords do not match.', 'error');
     const btn = el('dlg-save');
     setBusy(btn, true, 'Updating...');
-    const res = await api.post('/auth/change-password', { current_password: current, new_password: next, mfa_code: mfaActionCode('dlg-password-mfa') });
+    const res = await securityPost(adding ? '/auth/add-password' : '/auth/change-password', { current_password: current, new_password: next, mfa_code: mfaActionCode('dlg-password-mfa') }, owner);
     setBusy(btn, false);
     if (!res.ok) return toast(res.error || 'Could not change password.', 'error');
-    toast('Password changed. Other devices were signed out.');
+    toast(adding ? 'Password added. Other devices were signed out.' : 'Password changed. Other devices were signed out.');
+    if (res.data.user) notifyUpdated(res.data.user);
     closeDialog();
     import('./tabs/security.js').then((m) => m.markPasswordChanged());
   });
@@ -144,7 +147,7 @@ export function dialogDelete() {
       <div class="alert alert-error" style="margin-bottom:16px;">
         <b>${escapeHtml(email)}</b> will be permanently deleted.
       </div>
-      ${field('dlg-delete-pw', 'Confirm your password', { type: 'password', autocomplete: 'current-password', eye: true })}
+      ${credentialField(getDialogUser(), 'dlg-delete-pw')}
       ${mfaActionField(currentUser, 'dlg-delete-mfa')}`,
     actions: '<button type="button" class="btn btn-danger" id="dlg-confirm-delete">Delete my account</button>',
   });
@@ -161,11 +164,11 @@ export function dialogDelete() {
 
   el('dlg-confirm-delete').addEventListener('click', async () => {
     const pw = el('dlg-delete-pw').value;
-    if (!pw) return toast('Please enter your password to confirm.', 'error');
+    if (!pw && currentUser.has_password !== false) return toast('Please enter your password to confirm.', 'error');
     const btn = el('dlg-confirm-delete');
     setBusy(btn, true, 'Deleting...');
 
-    const res = await api.post('/auth/delete-account', { password: pw, mfa_code: mfaActionCode('dlg-delete-mfa') });
+    const res = await securityPost('/auth/delete-account', { password: pw, mfa_code: mfaActionCode('dlg-delete-mfa') }, currentUser);
     if (!res.ok) {
       setBusy(btn, false);
       return toast(res.error || 'Could not delete account.', 'error');

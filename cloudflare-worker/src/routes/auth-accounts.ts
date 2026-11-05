@@ -96,6 +96,12 @@ export async function handleAuthAccountsRoute(
       .bind(username)
       .first();
     if (!profile?.recovery_email) return genericOk();
+    const eligible = await db.prepare(`SELECT id FROM users WHERE id = ?
+      AND password_hash NOT LIKE '!no-password:%' AND (
+        NOT EXISTS (SELECT 1 FROM auth_external_identities WHERE user_id = users.id AND created_passwordless = 1) OR
+        EXISTS (SELECT 1 FROM verified_recovery_emails v JOIN profiles p ON p.id = v.user_id
+          WHERE v.user_id = users.id AND v.email = p.recovery_email))`).bind(profile.id).first();
+    if (!eligible) return genericOk();
 
     const rawReset = randomToken();
     const tokenHash = await sha256Hex(rawReset);
@@ -151,6 +157,10 @@ export async function handleAuthAccountsRoute(
     // write requires it, so a concurrent loser cannot revoke sessions or consume links.
     const results = await authQuery(() => db.batch([
       db.prepare(`UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?
+        AND password_hash NOT LIKE '!no-password:%' AND (
+          NOT EXISTS (SELECT 1 FROM auth_external_identities WHERE user_id = users.id AND created_passwordless = 1) OR
+          EXISTS (SELECT 1 FROM verified_recovery_emails v JOIN profiles p ON p.id = v.user_id
+            WHERE v.user_id = users.id AND v.email = p.recovery_email))
         AND EXISTS (SELECT 1 FROM password_reset_tokens WHERE token_hash = ?
           AND user_id = ? AND used = 0 AND expires_at > ?) RETURNING id`)
         .bind(newHash, applyTime, userId, tokenHash, userId, applyTime),

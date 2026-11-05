@@ -58,6 +58,8 @@ export interface Env {
   JWT_SECRET: string;
   RESEND_API_KEY?: string;
   MFA_ENCRYPTION_KEY?: string;
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
   WEBAUTHN_RP_ID?: string;
   SSO_PROXY_TOKEN?: string;
   MAIL_INTERNAL_TOKEN?: string;

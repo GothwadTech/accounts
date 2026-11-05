@@ -74,3 +74,16 @@ Every source, stylesheet, SQL migration, test, and active documentation file acr
 | **Account Access & Refresh** | `HS256` (`token_use: "session"`, 1h) + `SHA-256` refresh hash in D1 | Live session check in D1 + atomic single-winner rotation + 10s parallel tab grace window. |
 | **OAuth 2.0 + S256 PKCE** | `HS256` (`token_use: "oauth_access"`) + atomic `UPDATE ... RETURNING` | Public clients require S256 PKCE; OAuth tokens strictly rejected on `/api/auth/*`. |
 | **Internal Mail Lookup** | `GET https://api.<APP_DOMAIN>/api/internal/usernames/:username` | Called by Mail Worker **`mail`** (`client_id = gothwad-mail`) using constant-time `Bearer MAIL_INTERNAL_TOKEN`. |
+
+## Upstream Google authentication
+
+Accounts can also act as an OIDC client for Google, separately from its Gothwad
+OAuth-provider routes. `google-oidc.ts` verifies authorization-code/PKCE/nonce/RSA
+claims; `routes/auth-google.ts`, `google-signin.ts`, `google-proofs.ts` and SQL 11
+manage browser-bound single-use proofs, explicit identity links and passwordless
+onboarding. Existing internal user IDs, local MFA and session issuance are reused.
+Missing passwords use a disabled non-hash marker and a derived `has_password` flag;
+no fake password is generated. Only transient Google proof cookies are host-only;
+existing parent-domain SSO slot cookies are untouched. Fresh Google proof supports
+security actions without requiring a first password. Full design and owner setup:
+[Google sign-in](GOOGLE_SIGN_IN.md).

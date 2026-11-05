@@ -3,7 +3,7 @@
  * PROFILE, SESSIONS, SECURITY, AVATAR, EXPORT & DELETE ACCOUNT ROUTES (`/me`)
  * =============================================================================
  */
-
+import { confirmAccountCredential } from '../google-proofs.ts';
 import {
   ACCOUNTS_COOKIE_NAME,
   type AccountCookieEntry,
@@ -12,7 +12,7 @@ import {
   type ResponseWrapper,
 } from '../types.ts';
 import { apiError, GENDER_VALUES, json, parseJsonStringArray, readJson } from '../http.ts';
-import { sha256Hex, verifyPassword } from '../crypto.ts';
+import { sha256Hex } from '../crypto.ts';
 import {
   clearAllAuthCookies,
   getCookie,
@@ -66,8 +66,8 @@ export async function handleAuthProfileRoute(
       const password = String(body.current_password || '');
       const account = await db.prepare('SELECT password_hash FROM users WHERE id = ?')
         .bind(session.authUser.id).first();
-      if (!password || password.length > 128 || !account || !(await verifyPassword(password, account.password_hash))) {
-        return withCors(apiError('Confirm your current password to change your phone number', 400));
+      if (!account || !(await confirmAccountCredential(request, db, session.authUser.id, session.authUser.sessionId, password, account.password_hash))) {
+        return withCors(apiError('Verify your identity to change your phone number', 400));
       }
       const proofGate = await authorizeActionMfa(db, env, session.authUser.id, String(body.mfa_code || '').trim());
       if (!proofGate) {
@@ -349,15 +349,14 @@ export async function handleAuthProfileRoute(
 
     const body = await readJson(request);
     const password = String(body.password || '');
-    if (!password) return withCors(apiError('Password is required to delete your account'));
 
     const userId = session.authUser.id;
     const userRow = await db
       .prepare('SELECT password_hash FROM users WHERE id = ? LIMIT 1')
       .bind(userId)
       .first();
-    if (!userRow || !(await verifyPassword(password, String(userRow.password_hash)))) {
-      return withCors(apiError('Incorrect password', 400));
+    if (!userRow || !(await confirmAccountCredential(request, db, userId, session.authUser.sessionId || '', password, String(userRow.password_hash)))) {
+      return withCors(apiError('Credential verification failed', 400));
     }
 
     const proofGate = await authorizeActionMfa(db, env, userId, String(body.mfa_code || '').trim());

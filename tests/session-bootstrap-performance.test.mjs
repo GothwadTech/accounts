@@ -73,7 +73,7 @@ for (const selector of [null, '0', '5']) {
       Array.from({ length: 6 }, (_, index) => `bootstrap${index}`));
     assert.deepEqual(body.accounts.map((account) => account.authuser), [0, 1, 2, 3, 4, 5]);
     assert.equal(stats.queries.filter((sql) => sql.includes('JOIN user_sessions')).length, 6);
-    assert.equal(stats.queries.filter((sql) => sql.includes('SELECT * FROM profiles')).length, 7);
+    assert.equal(stats.queries.filter((sql) => sql.includes('FROM profiles p JOIN users u ON u.id = p.id')).length, 7);
     assert.equal(stats.peak, 6);
     // An explicit tab selector must not overwrite another tab's active cookie.
     assert.equal(browser.cookies.get('gothwad_active'), activeBefore);

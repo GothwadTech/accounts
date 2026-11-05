@@ -66,3 +66,12 @@ SELECT id, name, redirect_uris FROM ecosystem_apps WHERE redirect_uris != '[]';
 ### 🔹 Step 5: Verify Production Health
 1. Open **`https://api.gothwadtech.com/api/health`** → confirms `"engine": "cloudflare-d1-native"`.
 2. Open **`https://accounts.gothwadtech.com/signup`** and **`https://accounts.gothwadtech.com/u/0/me`** → verify sign-in, profile avatar upload, and instant multi-account switching.
+
+## Optional Google sign-in
+
+Google credentials are not configured by this repository. Follow the separate
+[Google OAuth setup and pilot guide](GOOGLE_SIGN_IN.md) after reviewing/deploying
+both Accounts components. It specifies the exact callback, same-origin API/proxy
+requirements, two private environment values, SQL 11 and passwordless behavior.
+Do not enable billing, paste secrets in chat, or assume a successful Pages build
+proves the Worker callback works. Other apps keep using Gothwad SSO.

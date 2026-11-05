@@ -65,3 +65,12 @@ actual delivery verification remain pending; no dashboard-only sender edit is ne
 
 Worker deployment follow-up: verify production branch/root/commands and the actual
 failed build log independently of Pages. See [the troubleshooting guide](docs/WORKER_BUILD_TROUBLESHOOTING.md); merging alone does not confirm API rollout.
+
+## Google authentication — 2026-11-05
+
+Local implementation complete: Google-only passwordless onboarding, explicit
+identity linking, optional first password and fresh Google-protected settings.
+Other apps keep using Accounts' existing SSO; no app-specific Google integration.
+Owner Google OAuth setup, reviewed deployment and real-provider/mobile/cross-app
+pilots remain release gates. See [Google sign-in](docs/GOOGLE_SIGN_IN.md).
+No Microsoft/Apple integration, domain purchase or rename is authorized.

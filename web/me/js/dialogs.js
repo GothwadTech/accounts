@@ -5,7 +5,7 @@
  * Security/account-lifecycle modals (photo upload, password change, delete
  * account) live in `./dialogs-security.js` and are re-exported seamlessly here.
  */
-
+import { credentialField, securityPost } from './security-credential.js';
 import { api } from '../../js/api.js';
 import { mfaActionField, mfaActionCode } from '../../js/mfa-ui.js';
 import { toast, escapeHtml, setBusy } from '../../js/common.js';
@@ -184,18 +184,20 @@ function dialogGender() {
 }
 
 function dialogPhone() {
+  const owner = currentUser;
+  const post = (path, body) => securityPost(path, body, owner);
   modal({
     title: 'Phone number',
-    sub: 'Confirm your password to change this sign-in identifier. Phone ownership is not verified.',
+    sub: 'Verify your identity to change this sign-in identifier. Phone ownership is not verified.',
     body: field('dlg-phone', 'Phone number', { type: 'tel', value: currentUser.phone_number || '', placeholder: '+91 98765 43210' }) +
-      field('dlg-phone-password', 'Current password', { type: 'password', autocomplete: 'current-password' }) + mfaActionField(currentUser, 'dlg-phone-mfa'),
+      credentialField(currentUser, 'dlg-phone-password') + mfaActionField(currentUser, 'dlg-phone-mfa'),
     actions:
       '<button type="button" class="btn btn-text" id="dlg-clear" style="margin-right:auto;color:var(--danger);">Remove</button>' +
       '<button type="button" class="btn btn-primary" id="dlg-save">Save</button>',
   });
   el('dlg-phone').focus();
   el('dlg-clear').addEventListener('click', async () => {
-    const res = await api.post('/auth/update-profile', { phone_number: '', current_password: el('dlg-phone-password').value, mfa_code: mfaActionCode('dlg-phone-mfa') });
+    const res = await post('/auth/update-profile', { phone_number: '', current_password: el('dlg-phone-password').value, mfa_code: mfaActionCode('dlg-phone-mfa') });
     if (!res.ok) return toast(res.error || 'Could not remove.', 'error');
     toast('Phone number removed');
     notifyUpdated(res.data.user);
@@ -204,7 +206,7 @@ function dialogPhone() {
   el('dlg-save').addEventListener('click', async () => {
     const btn = el('dlg-save');
     setBusy(btn, true, 'Saving...');
-    const res = await api.post('/auth/update-profile', { phone_number: el('dlg-phone').value.trim(), current_password: el('dlg-phone-password').value, mfa_code: mfaActionCode('dlg-phone-mfa') });
+    const res = await post('/auth/update-profile', { phone_number: el('dlg-phone').value.trim(), current_password: el('dlg-phone-password').value, mfa_code: mfaActionCode('dlg-phone-mfa') });
     setBusy(btn, false);
     if (!res.ok) return toast(res.error || 'Could not save.', 'error');
     toast('Phone number updated');
@@ -214,11 +216,13 @@ function dialogPhone() {
 }
 
 function dialogRecovery() {
+  const owner = currentUser;
+  const post = (path, body) => securityPost(path, body, owner);
   modal({
     title: 'Recovery email',
-    sub: 'Confirm your password and verify the replacement address. Your current recovery email stays active until verification.',
+    sub: 'Verify your identity and the replacement address. Your current recovery email stays active until verification.',
     body: field('dlg-recovery', 'Replacement recovery email', { type: 'email', value: '', placeholder: 'yourname@example.com' }) +
-      field('dlg-recovery-password', 'Current password', { type: 'password', autocomplete: 'current-password' }) + mfaActionField(currentUser, 'dlg-recovery-mfa'),
+      credentialField(currentUser, 'dlg-recovery-password') + mfaActionField(currentUser, 'dlg-recovery-mfa'),
     actions: '<button type="button" class="btn btn-primary" id="dlg-save">Send verification</button>',
   });
   el('dlg-recovery').focus();
@@ -229,7 +233,7 @@ function dialogRecovery() {
     }
     const btn = el('dlg-save');
     setBusy(btn, true, 'Sending...');
-    const res = await api.post('/auth/recovery-email/request', {
+    const res = await post('/auth/recovery-email/request', {
       recovery_email: rec, current_password: el('dlg-recovery-password').value, mfa_code: mfaActionCode('dlg-recovery-mfa'),
     });
     setBusy(btn, false);

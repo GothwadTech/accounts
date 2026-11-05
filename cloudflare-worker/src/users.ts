@@ -31,6 +31,8 @@ export function presentUser(profile: Record<string, any> | null | undefined, env
     date_of_birth: profile.date_of_birth || null,
     gender: profile.gender || null,
     two_factor_enabled: !!profile.two_factor_enabled,
+    has_password: profile.has_password !== 0 && profile.has_password !== false,
+    google_linked: !!profile.google_linked,
     storage_used_bytes: Number(profile.storage_used_bytes || 0),
     storage_limit_bytes: Number(profile.storage_limit_bytes ?? 16106127360),
     created_at: profile.created_at || null,
@@ -38,7 +40,10 @@ export function presentUser(profile: Record<string, any> | null | undefined, env
 }
 
 export async function fetchProfile(db: D1Database, userId: string): Promise<Record<string, any> | null> {
-  return db.prepare('SELECT * FROM profiles WHERE id = ?').bind(userId).first();
+  return db.prepare(`SELECT p.*, (u.password_hash NOT LIKE '!no-password:%') AS has_password,
+    EXISTS (SELECT 1 FROM auth_external_identities e WHERE e.user_id = p.id
+      AND e.issuer = 'https://accounts.google.com') AS google_linked
+    FROM profiles p JOIN users u ON u.id = p.id WHERE p.id = ?`).bind(userId).first();
 }
 
 export async function lookupAccount(

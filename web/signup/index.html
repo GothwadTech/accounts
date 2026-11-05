@@ -41,6 +41,8 @@
           </div>
 
           <!-- ═══════════════ MULTI-STEP FORM ═══════════════ -->
+          <button type="button" class="btn btn-tonal" id="btn-google-entry" disabled>Continue with Google</button>
+          <p id="google-entry-error" class="auth-helper" role="status"></p>
           <form id="signup-form" novalidate style="width: 100%;">
             <div id="alert-signup" class="alert alert-error hidden" style="margin-bottom: 14px;"></div>
 
@@ -180,6 +182,7 @@
     </main>
   </div>
 
+  <script type="module" src="/js/google-entry.js"></script>
   <script type="module" src="/signup/js/signup.js"></script>
 </body>
 </html>

@@ -11,7 +11,7 @@ const SETTINGS_INDEX = [
   { title: 'Phone number', sub: 'Personal info · Contact info', icon: 'call', section: 'personal', dialog: 'phone' },
   { title: 'Recovery email', sub: 'Personal info · Security', icon: 'mark_email_read', section: 'personal', dialog: 'recovery' },
   { title: 'Your Gothwad email', sub: 'Personal info', icon: 'alternate_email', section: 'personal' },
-  { title: 'Change password', sub: 'Security', icon: 'password', section: 'security', dialog: 'password' },
+  { title: 'Add or change password', sub: 'Security', icon: 'password', section: 'security', dialog: 'password' },
   { title: '2-Step Verification', sub: 'Security', icon: 'phonelink_lock', section: 'security' },
   { title: 'Recent security activity', sub: 'Security', icon: 'history', section: 'security' },
   { title: 'Your devices', sub: 'Security', icon: 'devices', section: 'security' },

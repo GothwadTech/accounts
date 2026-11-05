@@ -1,4 +1,5 @@
 /** Optional passkey enrollment and removal. Password fallback remains available. */
+import { credentialField, securityPost } from './security-credential.js';
 import { api } from '../../js/api.js';
 import { performPasskey, passkeysSupported } from '../../js/passkeys.js';
 import { parsePageAuthuser } from '../../js/authuser.js';
@@ -10,6 +11,7 @@ export async function openPasskeySettings() {
   const owner = getDialogUser();
   const selector = parsePageAuthuser();
   if (!owner) return;
+  const post = (path, body) => securityPost(path, body, owner);
   let generation;
   const render = options => { generation = modal(options).dataset.dialogGeneration; };
   const current = () => owner.id === getDialogUser()?.id && selector === parsePageAuthuser() &&
@@ -22,11 +24,11 @@ export async function openPasskeySettings() {
     return;
   }
   const keys = list.data.passkeys;
-  render({ title: 'Passkeys', sub: 'Use a fingerprint, face, device PIN, or security key. Keep a password and offline recovery method available.',
+  render({ title: 'Passkeys', sub: 'Use a fingerprint, face, device PIN, or security key. Keep another sign-in method and offline recovery codes available.',
     body: `<p>Account site: ${escapeHtml(list.data.rp_id)}</p>` +
       (keys.length ? '<ul>' + keys.map((key, index) => `<li>${escapeHtml(key.name)} <button type="button" class="btn btn-tonal" data-passkey-remove="${index}">Remove</button></li>`).join('') + '</ul>' : '<p>No passkeys registered.</p>') +
       field('passkey-name', 'Passkey name', { value: 'My passkey' }) +
-      field('passkey-password', 'Current password', { type: 'password', autocomplete: 'current-password' }) +
+      credentialField(owner, 'passkey-password') +
       mfaActionField(owner, 'passkey-mfa') + '<p id="passkey-error" role="alert"></p>',
     actions: '<button type="button" class="btn btn-primary" id="passkey-add">Add a passkey</button>',
   });
@@ -39,7 +41,7 @@ export async function openPasskeySettings() {
     const name = el('passkey-name').value;
     setBusy(button, true, 'Preparing...');
     try {
-      const options = await api.post('/auth/passkeys/register/options', proof());
+      const options = await post('/auth/passkeys/register/options', proof());
       if (!current()) return;
       if (!options.ok) return fail(options.error || 'Could not prepare a passkey.');
       // Erase the password before opening the platform authenticator.
@@ -58,7 +60,7 @@ export async function openPasskeySettings() {
     const key = keys[Number(button.dataset.passkeyRemove)];
     if (!key || !confirm(`Remove ${key.name}? You will need another sign-in method.`)) return;
     setBusy(button, true, 'Removing...');
-    const result = await api.post('/auth/passkeys/delete', { id: key.id, ...proof() });
+    const result = await post('/auth/passkeys/delete', { id: key.id, ...proof() });
     if (!current()) return;
     if (result.ok) await openPasskeySettings();
     else { fail(result.error || 'Could not remove passkey.'); setBusy(button, false); }
