@@ -27,6 +27,9 @@ export function presentUser(profile: Record<string, any> | null | undefined, env
     last_name: profile.last_name || '',
     recovery_email: profile.recovery_email || '',
     phone_number: profile.phone_number || '',
+    password_changed_at: profile.password_changed_at || null,
+    recovery_email_verified: profile.recovery_email_verified == null
+      ? null : profile.recovery_email_verified === 1 || profile.recovery_email_verified === true,
     avatar_url: resolveAvatarUrl(profile.avatar_url, env),
     date_of_birth: profile.date_of_birth || null,
     gender: profile.gender || null,
@@ -41,6 +44,10 @@ export function presentUser(profile: Record<string, any> | null | undefined, env
 
 export async function fetchProfile(db: D1Database, userId: string): Promise<Record<string, any> | null> {
   return db.prepare(`SELECT p.*, (u.password_hash NOT LIKE '!no-password:%') AS has_password,
+    (SELECT MAX(a.created_at) FROM account_activity a WHERE a.user_id = p.id
+      AND a.type IN ('password_change', 'password_reset')) AS password_changed_at,
+    EXISTS (SELECT 1 FROM verified_recovery_emails v WHERE v.user_id = p.id
+      AND lower(v.email) = lower(p.recovery_email)) AS recovery_email_verified,
     EXISTS (SELECT 1 FROM auth_google_methods e WHERE e.user_id = p.id
       AND e.issuer = 'https://accounts.google.com') AS google_linked
     FROM profiles p JOIN users u ON u.id = p.id WHERE p.id = ?`).bind(userId).first();

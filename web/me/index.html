@@ -23,9 +23,12 @@
   <link rel="stylesheet" href="/css/legal-content.css" />
   <link rel="stylesheet" href="/css/root.css" />
   <link rel="stylesheet" href="/me/css/me.css" />
+  <link rel="stylesheet" href="/me/css/review-polish.css" />
+  <link rel="stylesheet" href="/me/css/reliability.css" />
 </head>
 <body>
-  <div id="auth-loading" class="me-loading">
+  <a class="skip-link" id="skip-to-content" href="#me-content">Skip to account settings</a>
+  <div id="auth-loading" class="me-loading" role="status">
     <span class="spinner" style="width:28px;height:28px;"></span>
     <p>Loading your account…</p>
   </div>
@@ -33,15 +36,17 @@
     <!-- App Bar -->
     <header class="me-appbar">
       <div class="me-appbar-inner">
-        <button type="button" class="me-menu-btn" id="btn-menu" aria-label="Open menu">
+        <button type="button" class="me-menu-btn" id="btn-menu" aria-label="Open navigation" aria-controls="me-sidebar" aria-expanded="false">
           <span class="msym">menu</span>
         </button>
-        <span class="me-appbar-title">Gothwad Account</span>
+        <span class="me-appbar-title"><span class="desktop-brand">Gothwad Account</span><span class="mobile-context" id="current-section-context">Home</span></span>
         <div class="me-search" id="me-search">
           <span class="msym search-icon">search</span>
           <input type="text" id="search-input" placeholder="Search Gothwad Account"
-                 autocomplete="off" aria-label="Search Gothwad Account" />
-          <div class="me-search-results hidden" id="search-results"></div>
+                 autocomplete="off" aria-label="Search Gothwad Account" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="search-results" aria-keyshortcuts="Control+k Meta+k" />
+          <kbd class="search-shortcut" id="search-shortcut" aria-hidden="true">Ctrl K</kbd>
+          <div class="me-search-results hidden" id="search-results" role="listbox" aria-label="Account settings"></div>
+          <span class="sr-only" id="search-status" role="status"></span>
         </div>
         <div class="me-appbar-actions">
           <button type="button" class="theme-toggle" data-theme-toggle>
@@ -77,12 +82,13 @@
     <div class="me-backdrop" id="me-backdrop"></div>
     <div class="me-body">
       <!-- Sidebar Nav -->
-      <aside class="me-sidebar" id="me-sidebar">
+      <aside class="me-sidebar" id="me-sidebar" aria-label="Account navigation">
         <div class="me-sidebar-head">
+          <button type="button" class="me-menu-btn" id="btn-close-nav" aria-label="Close navigation"><span class="msym">close</span></button>
           <span class="msym" style="font-size:26px;color:var(--accent);">ac_unit</span>
           <span>Gothwad Account</span>
         </div>
-        <nav class="me-nav" id="me-nav">
+        <nav class="me-nav" id="me-nav" aria-label="Account sections">
           <button type="button" class="me-nav-item active" data-section="home">
             <span class="msym">home</span><span>Home</span>
           </button>
@@ -104,7 +110,8 @@
         </nav>
       </aside>
       <!-- Main Sections -->
-      <main class="me-content" id="me-content">
+      <main class="me-content" id="me-content" tabindex="-1">
+        <div class="page-status" id="page-status" role="status" tabindex="0" hidden></div>
         <!-- HOME -->
         <section class="me-section" id="section-home">
           <div class="dash-header">
@@ -113,8 +120,7 @@
               <h1 class="dash-title" id="home-name">Welcome</h1>
               <div class="email-chip">
                 <span id="home-email" class="mono">…</span>
-                <span class="tag tag-accent">Unified ID</span>
-                <span class="tag tag-success"><span class="msym" style="font-size:13px;">check_circle</span> Active</span>
+                <button type="button" class="copy-email" id="btn-copy-email" aria-label="Copy account email address" title="Copy email address"><span class="msym">content_copy</span></button>
               </div>
             </div>
           </div>
@@ -134,13 +140,13 @@
             <div class="quick-grid">
               <button type="button" class="quick-item" data-goto-section="personal">
                 <span class="setting-icon"><span class="msym">person</span></span>
-                <span>Personal info<span class="quick-item-sub">Name, photo, birthday, gender</span></span>
+                <span>Personal info<span class="quick-item-sub">Name, photo and contact details</span></span>
               </button>
-              <button type="button" class="quick-item" data-goto-section="security">
-                <span class="setting-icon"><span class="msym">password</span></span>
-                <span>Password<span class="quick-item-sub">Change your password</span></span>
+              <button type="button" class="quick-item" data-goto-section="security" data-focus-target="btn-mfa-settings">
+                <span class="setting-icon"><span class="msym">shield_lock</span></span>
+                <span>Sign-in &amp; recovery<span class="quick-item-sub">Methods, recovery and devices</span></span>
               </button>
-              <button type="button" class="quick-item" data-goto-section="data">
+              <button type="button" class="quick-item" data-goto-section="data" data-focus-target="dp-storage-card">
                 <span class="setting-icon"><span class="msym">cloud</span></span>
                 <span>Storage<span class="quick-item-sub">Drive &amp; Mail quota</span></span>
               </button>
@@ -150,29 +156,30 @@
               </button>
             </div>
           </div>
-          <div class="card">
-            <div class="card-title"><span class="msym">cloud</span> Storage</div>
+          <div class="card storage-summary">
+            <div class="card-header-row"><div class="card-title"><span class="msym">cloud</span> Storage</div><button type="button" class="btn btn-text" data-goto-section="data" data-focus-target="dp-storage-card">Details</button></div>
             <div class="card-subtitle">Shared across Gothwad Drive &amp; Mail.</div>
             <div class="storage-bar">
-              <div class="storage-fill" id="home-storage-fill" style="width:1%"></div>
+              <div class="storage-fill" id="home-storage-fill" style="width:0%"></div>
             </div>
             <div class="flex justify-between text-xs text-muted">
               <span id="home-storage-used">0 B used</span>
-              <span id="home-storage-limit">15 GB total</span>
+              <span id="home-storage-limit">Limit unavailable</span>
             </div>
           </div>
           <div class="card">
             <div class="card-header-row">
               <div class="card-title"><span class="msym">history</span> Recent activity</div>
-              <button type="button" class="btn btn-text" data-goto-section="data">See all</button>
+              <button type="button" class="btn btn-text" data-goto-section="data" data-focus-target="dp-activity">See all</button>
             </div>
             <div class="activity-list" id="home-activity">
               <div class="text-muted text-sm">Loading…</div>
             </div>
           </div>
+          <details class="account-details"><summary>Account details</summary>
           <div class="stat-grid">
             <div class="stat">
-              <div class="stat-label">Gothwad Email</div>
+              <div class="stat-label">Account email</div>
               <div class="stat-value mono" id="home-stat-email">—</div>
             </div>
             <div class="stat">
@@ -184,6 +191,7 @@
               <div class="stat-value" id="home-stat-created">—</div>
             </div>
           </div>
+          </details>
         </section>
 
         <!-- PERSONAL INFO -->
@@ -192,19 +200,19 @@
           <h1 class="me-section-title">Personal info</h1>
           <div class="card">
             <div class="card-title">Photo</div>
-            <div class="card-subtitle">Your profile photo appears across Gothwad services. PNG, JPEG, or WebP up to 2 MB.</div>
+            <div class="card-subtitle">Your profile photo appears across Gothwad services. PNG, JPEG or WebP input up to 8 MB; the saved image is a 256 × 256 JPEG under 2 MB. Preview the framing before saving.</div>
             <div class="photo-preview-wrap" style="justify-content:flex-start;">
               <span class="avatar-photo-wrap">
                 <span class="avatar lg" id="pi-photo">?</span>
-                <span class="avatar-photo-overlay" id="pi-photo-edit" role="button" tabindex="0" aria-label="Change photo">
+                <button type="button" class="avatar-photo-overlay" id="pi-photo-edit" aria-label="Change photo">
                   <span class="msym">photo_camera</span>
-                </span>
+                </button>
               </span>
             </div>
           </div>
           <div class="card">
-            <div class="card-title">Basic info</div>
-            <div class="card-subtitle">Some info may be visible to other people using Gothwad services.</div>
+            <div class="card-title">Profile details</div>
+            <div class="card-subtitle">Manage your profile and contact details. Sharing depends on the service you use.</div>
             <div id="alert-personal" class="alert alert-error hidden" style="margin-bottom:10px;"></div>
             <button type="button" class="setting-row" data-dialog="name">
               <span class="setting-icon"><span class="msym">person</span></span>
@@ -214,6 +222,7 @@
               </span>
               <span class="msym setting-chevron">chevron_right</span>
             </button>
+            <details class="optional-profile"><summary>Optional profile details</summary><p class="card-subtitle">Birthday and gender are optional. Saving them does not change sharing permissions.</p>
             <button type="button" class="setting-row" data-dialog="dob">
               <span class="setting-icon"><span class="msym">cake</span></span>
               <span class="setting-main">
@@ -230,15 +239,17 @@
               </span>
               <span class="msym setting-chevron">chevron_right</span>
             </button>
+            </details>
           </div>
           <div class="card">
             <div class="card-title">Contact info</div>
-            <div class="card-subtitle">Ways we can reach you to help keep your account secure.</div>
-            <div class="setting-row" disabled title="Username cannot be changed">
+            <div class="card-subtitle">Your account identifier and recovery contact methods.</div>
+            <div class="setting-row" aria-label="Fixed account identifier">
               <span class="setting-icon"><span class="msym">alternate_email</span></span>
               <span class="setting-main">
-                <span class="setting-label">Gothwad email</span>
+                <span class="setting-label">Account email address</span>
                 <span class="setting-value mono" id="pi-email">—</span>
+                <span class="setting-hint">Username-based identifier. This address does not confirm that a Mail mailbox has been created.</span>
               </span>
               <span class="tag">Fixed</span>
             </div>
@@ -247,6 +258,7 @@
               <span class="setting-main">
                 <span class="setting-label">Phone number</span>
                 <span class="setting-value" id="pi-phone">Not set</span>
+                <span class="setting-hint">Optional sign-in identifier. Phone ownership is not verified; SMS recovery is not available.</span>
               </span>
               <span class="msym setting-chevron">chevron_right</span>
             </button>
@@ -255,16 +267,20 @@
               <span class="setting-main">
                 <span class="setting-label">Recovery email</span>
                 <span class="setting-value" id="pi-recovery">Not set</span>
+                <span class="setting-hint">A separate recovery address, not your account email.</span>
               </span>
               <span class="msym setting-chevron">chevron_right</span>
             </button>
           </div>
+          <div class="card" id="profile-visibility"><div class="card-title">Profile visibility</div><p class="card-subtitle">Sharing is managed by the service where you use your profile. This page has no public/private sharing switch and does not change those permissions.</p></div>
         </section>
 
         <!-- SECURITY -->
         <section class="me-section hidden" id="section-security">
           <div class="me-section-label">Sign in &amp; safety</div>
           <h1 class="me-section-title">Security</h1>
+          <p class="card-subtitle" id="security-account-context"></p>
+          <div class="card"><div class="card-title">Backup access</div><div id="security-readiness" class="text-sm text-muted">Open Security to check recovery and registered-method metadata.</div></div>
           <div class="card">
             <div class="card-title"><span class="msym">key</span> How you sign in</div>
             <div class="card-subtitle">Make sure you can always access your Gothwad Account.</div>
@@ -273,7 +289,7 @@
               <span class="setting-icon"><span class="msym">password</span></span>
               <span class="setting-main">
                 <span class="setting-label">Password</span>
-                <span class="setting-value">Last changed: <span id="sec-pw-last">—</span></span>
+                <span class="setting-value">Last recorded change: <span id="sec-pw-last">—</span></span>
               </span>
               <span class="msym setting-chevron">chevron_right</span>
             </button>
@@ -281,49 +297,50 @@
               <span class="setting-icon"><span class="msym">phonelink_lock</span></span>
               <span class="setting-main">
                 <span class="setting-label">2-Step Verification</span>
-                <span class="setting-value" id="sec-mfa-status">Authenticator verification</span>
+                <span class="setting-value" id="sec-mfa-status">Checking availability…</span>
               </span>
-              <span class="tag" id="sec-mfa-badge">Off</span>
+              <span class="tag" id="sec-mfa-badge">Checking</span>
             </button>
             <button type="button" class="setting-row" id="btn-google-settings">
               <span class="setting-icon"><span class="msym">login</span></span>
-              <span class="setting-main"><span class="setting-label">Connect Google</span><span class="setting-value">Another way to sign in to this account</span></span>
+              <span class="setting-main"><span class="setting-label">Google accounts</span><span class="setting-value" id="sec-google-count">Open to check connected methods</span></span>
               <span class="msym setting-chevron">chevron_right</span>
             </button>
             <button type="button" class="setting-row" id="btn-passkey-settings">
-              <span class="msym">key</span>
-              <div class="setting-info"><span class="setting-label">Passkeys</span><span class="setting-value">Device verification and security keys</span></div>
-              <span class="msym">chevron_right</span>
+              <span class="setting-icon"><span class="msym">key</span></span>
+              <span class="setting-main"><span class="setting-label">Passkeys</span><span class="setting-value" id="sec-passkey-count">Open to check registered passkeys</span></span>
+              <span class="msym setting-chevron">chevron_right</span>
             </button>
             <button type="button" class="setting-row" data-dialog="recovery">
               <span class="setting-icon"><span class="msym">mark_email_read</span></span>
               <span class="setting-main">
                 <span class="setting-label">Recovery email</span>
                 <span class="setting-value" id="sec-recovery">Not set</span>
+                <span class="setting-value" id="sec-recovery-status"></span>
               </span>
               <span class="msym setting-chevron">chevron_right</span>
             </button>
           </div>
           <div class="card">
             <div class="card-header-row">
-              <div class="card-title"><span class="msym">history</span> Recent security activity</div>
-              <button type="button" class="btn btn-text" data-goto-section="data">See all</button>
+              <div>
+                <div class="card-title"><span class="msym">devices</span> Your devices</div>
+                <div class="card-subtitle">A browser or app may create multiple sessions on the same device. Times use your browser timezone.</div>
+              </div>
+              <button type="button" class="btn btn-danger-text" id="btn-revoke-others" disabled>Sign out other sessions</button>
             </div>
-            <div class="card-subtitle">Review recent sign-ins and security updates on your account.</div>
-            <div class="activity-list" id="sec-activity">
-              <div class="text-muted text-sm">Loading…</div>
+            <div class="device-list" id="device-list">
+              <div class="text-muted text-sm">Loading sessions…</div>
             </div>
           </div>
           <div class="card">
             <div class="card-header-row">
-              <div>
-                <div class="card-title"><span class="msym">devices</span> Your devices</div>
-                <div class="card-subtitle">Where you are currently signed in.</div>
-              </div>
-              <button type="button" class="btn btn-danger-text" id="btn-revoke-others">Sign out other devices</button>
+              <div class="card-title"><span class="msym">history</span> Recent security activity</div>
+              <button type="button" class="btn btn-text" data-goto-section="data" data-focus-target="dp-activity">See all</button>
             </div>
-            <div class="device-list" id="device-list">
-              <div class="text-muted text-sm">Loading sessions…</div>
+            <div class="card-subtitle">Review recent sign-ins and security updates on your account.</div>
+            <div class="activity-list" id="sec-activity">
+              <div class="text-muted text-sm">Loading…</div>
             </div>
           </div>
           <div class="card">
@@ -343,37 +360,37 @@
           <div class="me-section-label">Data &amp; customisation</div>
           <h1 class="me-section-title">Data &amp; privacy</h1>
           <div class="card">
+            <div class="card-header-row">
+              <div>
+                <div class="card-title"><span class="msym">download</span> Export your data</div>
+                <div class="card-subtitle">Accounts-only JSON: profile, session records, app grants and up to 100 recent activity records. Not Mail messages, Drive files, other-service content or sign-in secrets. Keep the download private.</div>
+              </div>
+              <button type="button" class="btn btn-tonal" id="btn-export">Download</button>
+            </div>
+          </div>
+          <div class="card" id="dp-storage-card">
             <div class="card-title"><span class="msym">cloud</span> Your Gothwad data</div>
-            <div class="card-subtitle">Storage usage and account activity summary.</div>
+            <div class="card-subtitle">Account quota snapshot. The measurement time is not provided; Mail and Drive usage may update separately.</div>
             <div class="storage-bar">
-              <div class="storage-fill" id="dp-storage-fill" style="width:1%"></div>
+              <div class="storage-fill" id="dp-storage-fill" style="width:0%"></div>
             </div>
             <div class="flex justify-between text-xs text-muted">
               <span id="dp-storage-used">0 B used</span>
-              <span id="dp-storage-limit">15 GB total</span>
+              <span id="dp-storage-limit">Limit unavailable</span>
             </div>
           </div>
           <div class="card">
             <div class="card-title"><span class="msym">history</span> Recent activity</div>
-            <div class="card-subtitle">Only visible to you in your account (latest 30 events).</div>
+            <div class="card-subtitle">Review recent retained Accounts events. Dates show your browser’s local timezone.</div>
             <div class="activity-list" id="dp-activity">
               <div class="text-muted text-sm">Loading…</div>
-            </div>
-          </div>
-          <div class="card">
-            <div class="card-header-row">
-              <div>
-                <div class="card-title"><span class="msym">download</span> Export your data</div>
-                <div class="card-subtitle">Download a copy of your account data (profile, devices, apps, and activity) as JSON.</div>
-              </div>
-              <button type="button" class="btn btn-tonal" id="btn-export">Download</button>
             </div>
           </div>
           <div class="card card-danger">
             <div class="card-title"><span class="msym">warning</span> Delete your Gothwad Account</div>
             <div class="card-subtitle">
-              Permanently delete your Gothwad Account, including your username, email address, profile,
-              and associated data. This action cannot be undone.
+              Permanently delete this Accounts identity and its sign-in/session/grant records. Other services
+              keep separate data; manage their content and backups first. Export Accounts data before continuing.
             </div>
             <button type="button" class="btn btn-danger" id="btn-open-delete">Delete your account</button>
           </div>
@@ -387,13 +404,12 @@
             <div class="card-header-row">
               <div>
                 <div class="card-title"><span class="msym">contacts</span> Gothwad Contacts</div>
-                <div class="card-subtitle">Contacts saved to your Gothwad Account sync across devices.</div>
+                <div class="card-subtitle">Contacts is not available in Accounts yet.</div>
               </div>
               <span class="tag">Coming soon</span>
             </div>
             <div class="text-sm text-muted">
-              Gothwad Contacts is currently in development. Once available, you can manage your contacts here
-              and access them seamlessly across Mail, Drive, and Chat.
+              Gothwad Contacts is in development. No contact sync, storage or sharing controls are available here.
             </div>
           </div>
           <div class="card">
@@ -423,26 +439,26 @@
           <div class="card">
             <div class="card-title">Gothwad Services</div>
             <div class="card-subtitle">
-              First-party services automatically enabled with your account.
-              Core services cannot be disconnected separately.
+              Included identity services, not optional OAuth grants. Availability and mailbox provisioning
+              are not confirmed here. Included identity access cannot be disconnected separately.
             </div>
             <div class="device-list" id="gothwad-services-list">
               <div class="text-muted text-sm">Loading…</div>
             </div>
           </div>
           <div class="card">
-            <div class="card-title">Gothwad products (other brands)</div>
+            <div class="card-title">Apps with permission grants</div>
             <div class="card-subtitle">
-              Additional apps powered by Sign in with Gothwad (such as PlusTube, GrixChat, and Indogram).
-              You can revoke their access at any time from here.
+              Only apps with an actual Accounts permission grant appear here. Review permissions, publisher
+              information and disconnect effects before removing access.
             </div>
             <div class="device-list" id="connected-list">
               <div class="text-muted text-sm">Loading…</div>
             </div>
           </div>
           <div class="card">
-            <div class="card-title">All products</div>
-            <div class="card-subtitle">Explore all products across the Gothwad ecosystem.</div>
+            <div class="card-title">Other catalog entries</div>
+            <div class="card-subtitle">Not connected to this account. A catalog listing is not an availability or publisher-verification guarantee.</div>
             <div class="apps-grid" id="apps-grid">
               <div class="text-muted text-sm">Loading…</div>
             </div>

@@ -289,8 +289,8 @@
   flex-shrink: 0;
 }
 .setting-main { flex: 1; min-width: 0; }
-.setting-label { font-size: 14px; font-weight: 500; color: var(--text); }
-.setting-value { font-size: 13px; color: var(--text-muted); margin-top: 1px; overflow-wrap: anywhere; }
+.setting-label { display: block; font-size: 14px; font-weight: 500; color: var(--text); }
+.setting-value { display: block; font-size: 13px; color: var(--text-muted); margin-top: 1px; overflow-wrap: anywhere; }
 .setting-chevron { color: var(--text-faint); flex-shrink: 0; }
 
 /* Info row without click (plain) */
@@ -339,10 +339,11 @@
 /* Quick-links grid (home page) */
 .quick-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 .quick-item {
+  text-align: left;
   display: flex;
   align-items: center;
   gap: 14px;

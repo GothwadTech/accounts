@@ -1,3 +1,8 @@
+// Icons load independently so optional artwork does not inflate the sign-in entry.
+if (typeof document !== 'undefined') {
+  const iconsSource = new URL('/js/icons.js', import.meta.url).href;
+  import(iconsSource).catch(() => {});
+}
 /**
  * =============================================================================
  * COMMON HELPERS — shared UI + Google-style `authuser` auth logic
@@ -17,6 +22,10 @@ export { getSession } from './session.js';
 import { isInternalAccountHubPath, mePathForAuthuser } from './authuser.js';
 
 export function toast(message, type = 'success') {
+  const inline = document.getElementById('modal-error');
+  if (type === 'error' && inline) { inline.textContent = message; inline.hidden = false; inline.focus?.(); return; }
+  const status = document.getElementById('page-status');
+  if (status) { status.textContent = message; status.hidden = false; status.setAttribute('role', type === 'error' ? 'alert' : 'status'); status.dataset.kind = type; return; }
   let wrap = document.querySelector('.toast-wrap');
   if (!wrap) {
     wrap = document.createElement('div');
@@ -25,6 +34,7 @@ export function toast(message, type = 'success') {
   }
   const el = document.createElement('div');
   el.className = `toast ${type}`;
+  el.setAttribute('role', type === 'error' ? 'alert' : 'status');
   const hasMaterialIcons = !!document.querySelector('link[href*="Material+Symbols"]');
   const icon = hasMaterialIcons
     ? `<span class="msym" style="font-size:18px;">${type === 'error' ? 'error' : 'check_circle'}</span>`
@@ -62,10 +72,13 @@ export function carryNextOnAuthLinks() {
 export function setBusy(btn, busy, busyText = 'Please wait...') {
   if (!btn) return;
   if (busy) {
+    if (btn.dataset.busy === 'true') return;
+    btn.dataset.busy = 'true'; btn.setAttribute('aria-busy', 'true');
     btn.dataset.originalText = btn.innerHTML;
     btn.disabled = true;
     btn.innerHTML = `<span class="spinner"></span> ${escapeHtml(busyText)}`;
   } else {
+    delete btn.dataset.busy; btn.removeAttribute('aria-busy');
     btn.disabled = false;
     if (btn.dataset.originalText) btn.innerHTML = btn.dataset.originalText;
   }

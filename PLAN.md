@@ -1,6 +1,6 @@
 # Accounts Plan
 
-Updated 2026-11-05. Implementation history belongs in [TASK.md](TASK.md), operational
+Updated 2026-11-06. Implementation history belongs in [TASK.md](TASK.md), operational
 handoff in [HANDOVER.md](HANDOVER.md), and design details in [architecture](docs/ARCHITECTURE.md).
 
 ## Scope and architecture
@@ -16,6 +16,30 @@ handoff in [HANDOVER.md](HANDOVER.md), and design details in [architecture](docs
   HttpOnly cookies, live revocation, English-only text and the 500-line file limit.
 
 ## Next work
+
+### Required owner review gates — latest instruction
+
+1. **Latest owner direction:** use visual simulation, not actual sandbox authentication.
+   `npm run preview:ui` serves the shared UI on port 3002 with simulated login/data,
+   no banners and no real sessions/database/production API. Keep credentials private.
+   Cloudflare/backend/provider/security verification is a separate pilot, not a gate
+   that should keep blocking visual review.
+2. **Completed initial twelve:** **1, 2, 3, 9, 11, 13, 21, 26, 31, 52, 54, 99**.
+   These remain complete alongside the latest approved batch.
+3. The remaining **98** items are allocated exactly once into **five phases** of
+   **20 / 20 / 20 / 20 / 18**. Full IDs, scope and acceptance gates are in
+   [UI_REVIEW_PHASES.md](docs/UI_REVIEW_PHASES.md).
+4. **Owner explicitly approved Phases 1–2 together, then Phases 3–5 together.**
+   All 110 scoped UI recommendations are addressed. The owner now authorizes commit,
+   push and merge if checks pass; do not bypass failures or start unrelated features
+   or manual production operations.
+5. Final checks pass: **309 tests**, build, strict Worker types, responsive/theme and
+   keyboard/dialog/history/scroll/race browser QA. Displayed MFA QR is independently
+   decoded; scoped axe-core A/AA scans pass. Manual accessibility, actual provider,
+   ownership/MFA/revocation and production authentication validation remain separate.
+
+The review gates above take precedence over the older suggestions below.
+
 
 0. Review many-to-many Google settings: three-method cap, passwordless/native
    linking, per-account MFA, removal/last-method guards, backup sign-in, alerts,
@@ -47,3 +71,21 @@ handoff in [HANDOVER.md](HANDOVER.md), and design details in [architecture](docs
 Google sign-in is owner-confirmed working. Public branding/consent approval and
 full production security verification are not independently established.
 Microsoft/Apple sign-in, domain purchase and product renaming remain deferred.
+
+## Dashboard UI review — implemented, awaiting owner visual review
+
+- Preview review covers all six sections at desktop/mobile sizes, light/dark,
+  search and a representative edit dialog. The conversation contains a numbered
+  110-item improvement backlog. All scoped items are now addressed after owner
+  approval; recommendations were not represented as 110 confirmed bugs.
+- Completed first pass: resilient local icons; stacked label/value rows; consistent Passkeys
+  markup; true security recommendations (not optional DOB); useful mobile search;
+  section URLs/back behavior; Google/passkey search results; explicit API errors.
+- Completed second pass: task-focused Home, compact mobile cards, accurate method/recovery
+  status, device/activity filtering and a nonduplicated app-management view.
+- Completed third pass: accessible focus/announcements, unsaved-edit handling, truthful
+  storage/service metadata, delayed-response account UI guards and regressions.
+- Preserve 6/12/48 entry spacing, alphanumeric usernames, optional DOB, native
+  password policy, explicit Google choice, account-local MFA and six-slot SSO.
+  Do not weaken verification or redesign the approved account sheet. Backend/data
+  enhancements need separate scoped implementation; do not invent provider status.
