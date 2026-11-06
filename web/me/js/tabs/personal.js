@@ -1,3 +1,4 @@
+import { formatProfileBirthday } from '../profile-date.js';
 /**
  * /me — PERSONAL INFO section (photo, name, dob, gender, contact rows + dialogs).
  */
@@ -16,7 +17,7 @@ export function syncPersonalUser(nextUser) {
     user = updated;
     onUserUpdated(updated);
     refreshRows();
-  });
+  }, 'personal');
   refreshRows();
 }
 
@@ -49,7 +50,7 @@ export function refreshRows() {
   const name = `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username;
   document.getElementById('pi-name').textContent = name;
   document.getElementById('pi-email').textContent = gothwadEmail(user.username);
-  document.getElementById('pi-dob').textContent = user.date_of_birth || 'Not set';
+  document.getElementById('pi-dob').textContent = formatProfileBirthday(user.date_of_birth);
   document.getElementById('pi-gender').textContent = user.gender || 'Not set';
   document.getElementById('pi-phone').textContent = user.phone_number || 'Not set';
   document.getElementById('pi-recovery').textContent = user.recovery_email || 'Not set';

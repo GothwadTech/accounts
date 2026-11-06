@@ -5,18 +5,23 @@
   "type": "module",
   "scripts": {
     "dev": "npm run build && node --experimental-strip-types server.js",
-    "build": "node tools/bundle-css.js && node tools/bundle-auth.mjs",
+    "build": "node tools/bundle-css.js && node tools/bundle-auth.mjs && node tools/bundle-ui-qr.mjs",
     "test": "node --experimental-strip-types --test tests/*.test.mjs tools/test-oauth-*.mjs",
     "start": "npm run build && node --experimental-strip-types server.js",
     "preview:menu": "node tools/widget-preview/server.mjs",
     "test:mfa:worker": "node tools/test-mfa-worker.mjs",
     "test:passkeys:worker": "node tools/test-passkeys-worker.mjs",
     "test:passkeys:browser": "node tools/test-passkeys-browser.mjs",
-    "security:check": "node tools/check-security-release.mjs"
+    "security:check": "node tools/check-security-release.mjs",
+    "preview:local": "npm run build && node --experimental-strip-types tools/preview-local.mjs",
+    "preview:ui": "npm run build && node tools/visual-preview/server.mjs --visual-preview"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
+    "axe-core": "4.11.0",
     "esbuild": "0.28.2",
+    "jsqr": "1.4.0",
+    "qrcode-generator": "2.0.4",
     "typescript": "^7.0.2"
   },
   "dependencies": {

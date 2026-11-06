@@ -1,0 +1,121 @@
+/* Approved dashboard review phases 1–2 only. Keep sign-in and sign-up dimensions unchanged. */
+body {
+  --text-faint: #5f6368;
+  --accent: #185abc;
+  --dashboard-header-height: 64px;
+  --review-card-radius: 16px;
+}
+[data-theme='dark'] body { --text-faint: #adb3ba; --accent: #8ab4f8; }
+.me-body { max-width: 1200px; }
+.me-content { max-width: 920px; width: 100%; }
+.me-section { line-height: 1.5; }
+.me-section-title { font-size: clamp(24px, 2.2vw, 28px); line-height: 1.25; margin-bottom: 24px; }
+.card { border-radius: var(--review-card-radius); }
+.card-title { font-size: 18px; line-height: 1.4; }
+.card-subtitle, .setting-hint { font-size: 14px; line-height: 1.5; color: var(--text-muted); }
+.card-subtitle { max-width: 66ch; }
+.card-header-row > div { min-width: 0; flex: 1; }
+.card-header-row { align-items: center; }
+.setting-label, .quick-item { font-size: 15px; }
+.setting-value, .quick-item-sub, .activity-detail { font-size: 14px; }
+.activity-time, .me-search-item-sub { font-size: 13px; }
+.setting-hint { display: block; margin-top: 4px; font-size: 13px; font-weight: 400; }
+.setting-row { min-height: 72px; }
+.setting-row, .quick-item { border-radius: 12px; }
+.setting-main, .quick-item > span:last-child, .activity-item > div, .device-info { min-width: 0; }
+.setting-value, .setting-hint, .stat-value, .activity-detail, .device-info, .dash-title, .email-chip, .mono { overflow-wrap: anywhere; }
+.me-section .btn, .me-nav-item, .theme-toggle, .me-menu-btn, .acct-switch-btn { min-height: 48px; }
+.theme-toggle, .me-menu-btn, .acct-switch-btn { min-width: 48px; }
+.me-section button:focus-visible, .me-nav-item:focus-visible, .copy-email:focus-visible,
+.me-menu-btn:focus-visible, summary:focus-visible, .me-search input:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 3px;
+}
+.me-section h1:focus { outline: none; }
+[id] { scroll-margin-top: calc(var(--dashboard-header-height) + 16px); }
+.dash-header { gap: 16px; margin-bottom: 24px; flex-wrap: nowrap; }
+.dash-header > div { min-width: 0; flex: 1; }
+.dash-header .avatar { width: 64px; height: 64px; font-size: 26px; flex-shrink: 0; }
+.dash-title { font-size: clamp(22px, 2.3vw, 28px); }
+.email-chip { gap: 4px; margin-top: 2px; flex-wrap: nowrap; }
+.email-chip .mono { min-width: 0; font-size: 14px; }
+.copy-email {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 48px; height: 48px; flex-shrink: 0; border: 0; border-radius: 50%;
+  background: transparent; color: var(--text-muted); cursor: pointer;
+}
+.copy-email:hover { background: var(--bg-hover); color: var(--accent); }
+.copy-email .msym { font-size: 20px; }
+.home-recommendation { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border); }
+.home-recommendation > div { min-width: 0; }
+.home-recommendation strong { font-size: 15px; font-weight: 500; color: var(--text); }
+.home-recommendation p { margin: 4px 0 0; max-width: 55ch; font-size: 14px; }
+.home-recommendation .btn { flex-shrink: 0; white-space: normal; }
+.storage-summary { padding-top: 16px; padding-bottom: 16px; }
+.storage-summary .card-header-row { margin-bottom: 0; }
+.storage-summary .card-subtitle { margin-bottom: 8px; }
+.account-details, .optional-profile { border-top: 1px solid var(--border); }
+.account-details { margin-top: 8px; }
+summary { min-height: 48px; padding: 12px 4px; cursor: pointer; font-size: 15px; font-weight: 500; color: var(--text); }
+.account-details .stat-grid { margin-top: 8px; }
+.account-details .stat { padding: 16px; border-radius: 12px; }
+.optional-profile .card-subtitle { margin: 0 4px 8px; }
+.mobile-context { display: none; }
+.me-search { min-width: 0; }
+.me-search input { padding-right: 88px; }
+.search-shortcut { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; font: 13px var(--font); color: var(--text-muted); pointer-events: none; }
+.me-search input::placeholder, .modal input::placeholder { color: var(--text-muted); opacity: 1; }
+.modal .btn { min-height: 48px; }
+.avatar-photo-overlay { inset: 0; min-width: 48px; min-height: 48px; border: 0; border-radius: 50%; background: transparent; align-items: flex-end; padding-bottom: 4px; }
+.avatar-photo-overlay .msym { background: rgba(0, 0, 0, 0.65); border-radius: 50%; width: 28px; height: 28px; padding: 6px; }
+.avatar-photo-overlay:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.me-search-results { max-height: min(380px, calc(100dvh - 154px)); }
+.me-search-item { min-height: 60px; }
+.me-search-item-title, .me-search-item-sub { display: block; line-height: 1.5; }
+.me-search-item-title { font-size: 15px; }
+.me-search-item.search-active { background: var(--accent-soft); outline: 2px solid var(--accent); outline-offset: -2px; }
+.me-search-empty { padding: 16px; font-size: 14px; color: var(--text-muted); }
+.profile-birthday { display: grid; grid-template-columns: 1fr 1fr 1fr; overflow: hidden; padding: 0; height: 48px; }
+.profile-birthday .input { min-width: 0; width: 100%; height: 48px; padding: 0 8px; text-align: center; border-radius: 0; }
+.profile-birthday .input + .input { border-left: 1px solid var(--border); }
+.profile-birthday .input:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+.profile-birthday-note { margin-top: 6px; font-size: 13px; color: var(--text-muted); }
+.photo-crop-canvas { width: min(256px, 100%); height: auto; border-radius: 50%; display: block; margin: 0 auto 16px; }
+.photo-crop-controls { margin-top: 16px; }
+.photo-crop-controls label { display: block; font-size: 14px; margin-top: 12px; }
+.photo-crop-controls input { width: 100%; height: 48px; accent-color: var(--accent); margin: 0; }
+.photo-editor-error { color: var(--danger); font-size: 14px; margin-top: 12px; }
+.photo-editor-note { font-size: 13px; color: var(--text-muted); margin-top: 12px; line-height: 1.5; }
+@media (max-width: 960px) {
+  .me-sidebar { max-width: calc(100vw - 16px); }
+  .me-sidebar-head { font-size: 17px; gap: 8px; padding: 0 0 16px; }
+  .me-sidebar-head > .msym { display: none; }
+  .me-sidebar-head .me-menu-btn { flex-shrink: 0; }
+  .me-appbar-title { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .desktop-brand { display: none; }
+  .mobile-context { display: inline; font-size: 17px; color: var(--text); }
+}
+@media (max-width: 720px) {
+  body { --dashboard-header-height: 124px; }
+  .search-shortcut { display: none; }
+  .me-search input { padding-right: 20px; }
+  .me-content { padding-top: 24px; }
+  .card { padding: 20px 16px; margin-bottom: 16px; }
+  .me-section-title { margin-bottom: 20px; }
+  .setting-row { gap: 12px; padding: 12px 4px; }
+  .setting-row .setting-icon { width: 32px; height: 32px; }
+  .card-header-row { gap: 8px; }
+  .quick-item { padding: 12px 8px; gap: 8px; }
+  .quick-item-sub { font-size: 13px; }
+  .home-recommendation { flex-wrap: wrap; gap: 4px; }
+  .home-recommendation .btn { margin-left: -12px; }
+  .dash-header { align-items: flex-start; gap: 12px; }
+  .dash-header .avatar { width: 48px; height: 48px; font-size: 20px; }
+  .dash-title { font-size: 23px; }
+  .storage-summary { padding-top: 12px; padding-bottom: 16px; }
+  .device { min-width: 0; }
+  .stat-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .me-section, .dash-header { animation: none; }
+  .me-sidebar, .storage-fill { transition: none; }
+}

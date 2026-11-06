@@ -1,4 +1,5 @@
 /** Password-bearing accounts keep passwords; Google-only accounts use a fresh proof. */
+import { captureView } from './view-context.js';
 import { api } from '../../js/api.js';
 import { googleApi, verifyWithGoogle } from '../../js/google-auth.js';
 import { field, getDialogUser } from './dialogs.js';
@@ -10,12 +11,14 @@ export function credentialField(user, id) {
     : field(id, 'Current password', { type: 'password', autocomplete: 'current-password', eye: true });
 }
 export async function securityPost(path, body, owner = getDialogUser()) {
-  const selector = parsePageAuthuser();
+  const selector = parsePageAuthuser(), valid = captureView();
+  const generation = document.getElementById('dialog-root')?.dataset.dialogGeneration;
+  const current = () => valid() && owner?.id === getDialogUser()?.id && generation === document.getElementById('dialog-root')?.dataset.dialogGeneration;
   if (!owner || owner.id !== getDialogUser()?.id) return { ok: false, error: 'The selected account changed. Please try again.' };
   if (owner?.has_password === false) {
-    const proof = await verifyWithGoogle(owner.id);
+    const proof = await verifyWithGoogle(owner.id, { isCurrent: current });
     if (!proof.ok) return proof;
-    if (owner.id !== getDialogUser()?.id || selector !== parsePageAuthuser()) {
+    if (!current() || selector !== parsePageAuthuser()) {
       return { ok: false, error: 'The selected account changed. Please try again.' };
     }
     return googleApi(path, body);

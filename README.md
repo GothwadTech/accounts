@@ -42,6 +42,24 @@ npm test
 npm start
 ```
 
+For **visual login/dashboard review**, use **`npm run preview:ui`** (port 3002).
+This is an explicitly simulated backend serving the same shared UI files, with no
+extra preview strip/buttons. It uses private `.env.preview` settings for the visual
+identifier/password flow, fabricated profile/activity data and a single in-memory
+display state. No cookies, real sessions, database or production API are involved.
+It is not authentication or account-isolation testing; changes affect sample data only.
+Use the authorized Arena preview panel, not a raw external sandbox link.
+
+Keep configured credentials private and out of code, committed docs and Cloudflare.
+`npm run preview:local` remains separate for actual Worker/local-database testing;
+the previous Arena cookie-transport problem is not a prerequisite for visual review.
+All 110 scoped UI review items are addressed after explicit approval of all five
+phases, including Phases 3–5 together. 309 automated tests, build/types, extended
+visual/race checks and scoped automated accessibility scans pass. Stop for owner review;
+production authentication/security and manual accessibility validation remain separate. See [preview instructions](tools/README.md) and the
+[full UI plan and acceptance checks](docs/UI_REVIEW_PHASES.md).
+The first 12 improvements are implemented. Stop for owner review before any remaining
+phase; real Cloudflare/provider/security validation remains a separate pilot.
 The server binds to `0.0.0.0:3000`, serves `web/` and runs the Worker against an
 ignored local SQLite database. Dev/start builds once; rebuild after source edits.
 Do not hand-edit generated `web/assets/auth` bundles; ship entry HTML and bundles
