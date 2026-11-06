@@ -8,6 +8,10 @@ Read [AGENTS.md](AGENTS.md) for constraints and [TASK.md](TASK.md) for session h
 - **Latest merge authorization:** the owner permits committing, pushing and merging
   the reviewed UI batch if checks are clean. Remote CI must be inspected first;
   this is not permission to bypass failures or run manual production operations.
+  **PR #30 is open and NOT merged.** Implementation commit 735138b passed fresh
+  build/types and 309 tests; Cloudflare Pages passed, but Workers Builds failed.
+  GitHub exposes no cause/annotations, only build ade77f2b-b4ba-44c9-96b1-b3eb77bbc9cb.
+  Inspect that Cloudflare log before merging; do not assume an infrastructure cause.
 
 - **Latest owner direction: visuals only; stop trying to prove real login in Arena.**
   Run **`npm run preview:ui`**, labelled **Accounts visual preview — login and dashboard**,
