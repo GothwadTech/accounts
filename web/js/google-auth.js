@@ -4,7 +4,7 @@ import { buildAuthHeaders } from './api.js';
 export async function googleApi(path, body) {
   try {
     const response = await fetch(path.startsWith('/') ? `/api${path}` : `/api/auth/google/${path}`, { method: body === undefined ? 'GET' : 'POST',
-      credentials: 'same-origin', headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+      credentials: 'same-origin', cache: 'no-store', headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
       ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
     const data = await response.json();
     return { ok: response.ok, data, error: data.message || data.error };

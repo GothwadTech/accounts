@@ -10,7 +10,9 @@ service is required by the core stack. Provider quotas still apply.
 - Native password authentication and passwordless Google onboarding with explicit
   identity linking; one Google identity may authorize multiple separate accounts.
   Returning users choose an existing account or Add new; no implicit sign-in or
-  automatic email-based merge. SQL 12 preserves existing links.
+  automatic email-based merge. Each Gothwad account can also connect up to three
+  Google accounts, with verified add/remove controls in Security. SQL 12/13 preserve
+  existing links; removal protects the last method and signs out other devices.
 - Optional authenticator MFA, recovery codes and user-verified passkeys.
 - Six HttpOnly parent-domain account slots, `/u/0..5` per-tab routing and the
   shared Universal Account Menu in `web/widget/`.
@@ -43,7 +45,8 @@ npm start
 The server binds to `0.0.0.0:3000`, serves `web/` and runs the Worker against an
 ignored local SQLite database. Dev/start builds once; rebuild after source edits.
 Do not hand-edit generated `web/assets/auth` bundles; ship entry HTML and bundles
-together. See [entry performance](docs/AUTH_ENTRY_PERFORMANCE.md).
+together, including the Google callback chooser. Google returns to a versioned
+UI URL to avoid old automatic-sign-in code. See [entry performance](docs/AUTH_ENTRY_PERFORMANCE.md).
 
 Check Worker types and, with Worker dependencies installed, the production bundle:
 

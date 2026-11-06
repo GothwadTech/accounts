@@ -7,7 +7,7 @@
 >
 > Engineering guide: [`AGENTS.md`](AGENTS.md) · Architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · Session archive (`1–30`): [`docs/TASK_HISTORY.md`](docs/TASK_HISTORY.md)
 
-**Last updated:** 2026-11-05 (Session 63 — Username policy, segmented birthday and dependency fixes)
+**Last updated:** 2026-11-05 (Session 66 — Authorized Google methods merge)
 
 ---
 
@@ -23,11 +23,33 @@
 | 2.8 | **Universal Google-Style Shadow-DOM Account Menu (`v2.4`) + 100% Pure-English Codebase & Hygiene Gate** | ✅ **DONE (2026-10-22)** |
 | 3 | Roll out central `account-menu.js` + automatic silent SSO in `GothwadTech/store` & `GothwadTech/mail` | 🔜 NEXT |
 
-**Current state in one line:** Google sign-in implementation is merged in PR #26, and the owner confirms it is working after resolving the redirect URI mismatch. Google setup/sign-in is marked DONE based on that confirmation. Public audience/branding approval and the remaining security/cross-app pilot checks are not independently verified.
+**Current state in one line:** Many-to-many Google methods (three per Gothwad account), verified add/remove settings, revocation/lockout protections and SQL 13 are implemented locally alongside the earlier cache-isolation fix. The owner now authorizes commit/push/merge after final verification; production release/migration and live provider/email/device pilots remain separate.
 
 ---
 
-## ✅ DONE (Newest First — Sessions 31 to 63)
+## ✅ DONE (Newest First — Sessions 31 to 66)
+
+### Session 66 — 2026-11-05 — Authorized Google Methods Merge
+- The owner authorized committing, pushing and merging the completed many-to-many Google methods and preserved stale-frontend fix, conditional on clean final verification.
+- Final local verification passed: build, **275/275 tests**, strict Worker types, Worker bundle dry-run, dependency audits (zero vulnerabilities), native/Google Chromium and patch hygiene. Initial parallel Chromium startup hit a shared temporary-binary extraction race; serial Google rerun passed. Use only `arena/5916479c-accounts`; inspect the resulting PR checks/mergeability before the explicit merge.
+- Production migration, manual deployment, secrets/DNS changes and sibling apps remain outside this authorization. SQL 13 requires coordinated matching frontend/Worker rollout, preserved legacy rows and stopped legacy writes. Real Google/email/mobile/cross-app pilots remain owner follow-up work.
+- Actual commit, PR, CI and merge outcomes are recorded in Git/GitHub, not inferred from local tests. Naming/domain work remains paused.
+
+### Session 65 — 2026-11-05 — Many-to-Many Google Sign-In Methods
+- **DONE locally:** one Gothwad account can connect up to three Google accounts, while each Google subject may still sign in to multiple separate Gothwad accounts. Existing chooser/MFA/SSO and no-email-merge contracts remain. No account duplication or profile replacement.
+- Additive/idempotent SQL 13 imports SQL 12 links and passwordless-origin classification once, retaining both legacy tables. Current methods have opaque generation IDs and unique issuer/subject/user triples. Flow/ticket guards bind security proofs to the full method set; old temporary proofs fail closed, while existing accounts, sessions and data are preserved.
+- Authenticated Security settings list methods and connection dates, support Add/Remove, share visible-form/pending/Enter locks and bind requests to the selected account/modal generation. Passwordless users verify an already linked Google account; password users confirm their current password. Local MFA remains mandatory when enabled. Duplicate, fourth, foreign, replayed, expired, changed-account and stale-state mutations are rejected.
+- Removal atomically rotates credential state without changing the native password's value, removes only the owned method, revokes other-device sessions/refresh credentials and invalidates OAuth bindings plus pending Google/MFA/passkey/recovery/reset proofs. Concurrent independent proofs cannot remove the final passwordless method. The last Google method requires an added password even with a passkey, because passkey-only security reauthentication is not implemented.
+- Added best-effort security alerts through existing Resend configuration, add/remove activity, explicit delivery-failure notices, current Google-email metadata and recovery-address overlap warnings. Removal does not change email recovery; a compromised recovery mailbox must be replaced separately. Security return links now honor the dashboard's known section fragment.
+- Verification: build, **275/275 tests**, strict Worker types, native/Google Chromium, Worker deployment dry-run, full root/Worker dependency audits (zero findings) and whitespace/file-size gates pass. New security regressions cover method caps/races, backup sign-in/MFA, lockout prevention, stale proofs, OAuth/session revocation, immutable recovery origin, alerts and migration preservation. Google browser QA verifies passwordless and native backup linking, removal/protection and actual backup-account sign-in, alongside prior cache-isolation checks. It also rejects stale account responses and verifies mobile dialog fit and explicit alert-failure notices. A simulated post-commit notification-lookup outage stays a successful mutation with an alert warning.
+- Updated README/HANDOVER/PLAN and existing setup/schema/security docs. The earlier stale-frontend fix is preserved. No production migration, deployment, commit, push or merge performed; the current owner request authorizes implementation, not a production release.
+
+### Session 64 — 2026-11-05 — Google Stale-Frontend Recovery
+- **DONE locally:** matched the screenshot's "Signing in as undefined" to the pre-chooser frontend from owner commit `6f41d56`: it expects the removed single-user `username` response and automatically calls finish without an explicit choice. PR #28 production Pages/Worker build checks report success, but actual live cache/proxy responses were not independently inspected.
+- Google callback documents now use a fresh `?ui=accounts-v2` URL for auth/error/reauth; the registered provider callback URI and all HttpOnly proof/session contracts remain unchanged. Google HTML uses a standalone content-hashed entry, rather than the stable pre-chooser script URL.
+- Explicit no-store callback-document/legacy-source headers and Google API fetch policy prevent future reuse. Fresh source on old markup refreshes once with flags/proofs intact, then shows an update message rather than looping if the deployment remains outdated. No implicit sign-in fallback or weakened backend checks.
+- Verification: build and **259/259 tests** pass, including callback URL/cache headers and bounded legacy-markup regressions. Synthetic Google Chromium verifies normal onboarding/COOP settings, one/two-account choice, deliberately stale old HTML/JS URLs, and recovery from old markup without implicit finish. Native Chromium keyboard/layout checks, strict Worker types, deployment dry-run and whitespace gates also pass. Native entry pages retain their existing two-module request count.
+- Updated README/HANDOVER/PLAN and existing Google/performance docs. No production release, migration, commit, push or merge performed for this follow-up. New Incognito sign-in is a temporary diagnostic that does not clear existing browser sessions.
 
 ### Session 63 — 2026-11-05 — Username Policy, Segmented Birthday and Dependency Fixes
 - **DONE:** new usernames in native signup, availability checks and Google signup accept only 3–24 lowercase letters/numbers; dots, underscores and dashes are rejected server-side and removed from native entry. Updated hints/patterns. Historical usernames remain supported for sign-in, recovery and internal lookup; no renaming or destructive migration.
@@ -274,6 +296,10 @@
 ---
 
 ## 🔜 NEXT UP
+
+- Owner reviews many-to-many Google settings and SQL 13; coordinate an authorized Pages/Worker release, email/Google/mobile pilots and method-removal recovery warnings.
+
+- Review and release the Google callback cache-isolation fix, then verify normal/Incognito Android sign-in against matching Pages/Worker builds.
 
 0. Owner reviews Google chooser/Add new/two accounts and joined Day / Month / Year entry on an actual phone. Before authorized release, coordinate SQL 12 and matching Pages/Worker with old writes stopped; keep existing recovery details.
 1. Continue the [security hardening phases](docs/ACCOUNTS_SECURITY_HARDENING.md): recovery verification, MFA/passkeys, scoped SSO trust, browser credential migration, and production evidence. Phase 1 is locally verified, not a completed security certification.

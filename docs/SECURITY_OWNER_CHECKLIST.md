@@ -93,7 +93,7 @@ and reassess transport rather than enabling billing or weakening verification.
 - Obtain a protected backup and prove restore into an isolated test database using
   facilities actually available on the free plan. Keep real exports outside Git/chat.
   Store the MFA encryption key separately. Document snapshot/retention and access.
-- Review additive migrations **06–10** and runtime bootstrap against representative
+- Review additive migrations **06–13** and runtime bootstrap against representative
   existing data. Do not delete tables or declare historic recovery addresses verified.
 - Verify `DEV_MODE=false`, proper D1 binding, existing signing secret, exact origins,
   provider/key presence, and absence of credentials from public Pages variables/logs.
@@ -102,6 +102,10 @@ and reassess transport rather than enabling billing or weakening verification.
 - Pilot all six slots/parallel tabs, cross-app switching and rotated cookies, password
   changes/resets, session revocation, real email, TOTP/recovery, passkeys, OAuth
   exchange/refresh/disconnect/re-consent, and denied untrusted-origin requests.
+- Pilot many-to-many Google linking/removal: three-method cap, fresh verification,
+  local MFA, last-method protection, other-device/OAuth revocation, stale proof
+  denial, recovery-address overlap and delivered/missing security alerts. Never
+  remove the last Google method before a native password is established.
 - Test physical/mobile passkeys and user-verifying security keys on intended browsers.
   Virtual-authenticator success is not evidence for every device or sync provider.
 - Monitor available free-plan error/CPU/D1/rate-limit/quota metrics before expansion;

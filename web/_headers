@@ -37,3 +37,9 @@
   Access-Control-Allow-Origin: *
   Cross-Origin-Resource-Policy: cross-origin
 
+# Google callback documents and the compatibility source must never be reused from cache.
+/signin/google
+  Cache-Control: no-store, max-age=0
+
+/signin/google/*
+  Cache-Control: no-store, max-age=0

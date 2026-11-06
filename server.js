@@ -111,7 +111,7 @@ const server = http.createServer(async (req, res) => {
 
   const staticHeaders = {
     'Content-Type': MIME[ext] || 'application/octet-stream',
-    'Cache-Control': /^\/assets\/auth\/(?:signin|signup|shared)-[A-Z0-9]{8}\.js$/.test(url.pathname)
+    'Cache-Control': /^\/assets\/auth\/(?:signin|signup|google|shared)-[A-Z0-9]{8}\.js$/.test(url.pathname)
       ? 'public, max-age=31536000, immutable' : 'no-store, max-age=0',
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'strict-origin-when-cross-origin',

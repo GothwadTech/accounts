@@ -9,6 +9,7 @@
 import type { D1Database, D1PreparedStatement, Env } from './types.ts';
 import { OAUTH_STATE_SCHEMA } from './oauth-schema.ts';
 import { PASSKEY_SCHEMA } from './passkey-schema.ts';
+import { GOOGLE_METHOD_SCHEMA } from './google-method-schema.ts';
 import { GOOGLE_SCHEMA, GOOGLE_ACCOUNT_SCHEMA } from './google-schema.ts';
 import { MFA_SCHEMA } from './mfa-schema.ts';
 
@@ -227,6 +228,7 @@ export async function getDb(env: Env): Promise<D1Database> {
     const statements = [
       ...BOOTSTRAP_STATEMENTS.map((sql) => env.DB.prepare(sql)),
       ...GOOGLE_ACCOUNT_SCHEMA.map((sql) => env.DB.prepare(sql)),
+      ...GOOGLE_METHOD_SCHEMA.map((sql) => env.DB.prepare(sql)),
       ...buildDefaultCallbackSeedStatements(env.DB, env.APP_DOMAIN),
     ];
     pending = env.DB.batch(statements)

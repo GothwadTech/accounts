@@ -33,9 +33,19 @@ try {
   // The server uses an isolated temporary database and synthetic credentials only.
   await import('../server.js');
   const context = await browser.newContext();
+  const identities = [], backupGoogle = { sub: 'browser-backup-google', email: 'browserbackup@gmail.com' };
+  // Simulate old browser cache keys. New callbacks/assets must never touch these.
+  let staleDocuments = 0, staleScripts = 0;
+  const legacyHtml = '<!doctype html><title>Old Google page</title><p id="google-message">Checking your Google verification</p><script type="module" src="/signin/google/google.js"></script>';
+  const staleDocument = route => { staleDocuments++; return route.fulfill({ contentType: 'text/html', body: legacyHtml }); };
+  const staleScript = route => { staleScripts++; return route.fulfill({ contentType: 'text/javascript',
+    body: "document.getElementById('google-message').textContent = 'Signing in as undefined';" }); };
+  await context.route(origin + '/signin/google/', staleDocument);
+  await context.route(origin + '/signin/google/google.js', staleScript);
+
   await context.route('https://accounts.google.com/o/oauth2/v2/auth?**', async route => {
     const auth = new URL(route.request().url()); const code = randomToken();
-    planGoogleCode(code, env, auth.searchParams.get('code_challenge'), claims(env, { nonce: auth.searchParams.get('nonce') }));
+    planGoogleCode(code, env, auth.searchParams.get('code_challenge'), claims(env, { nonce: auth.searchParams.get('nonce'), ...(identities.shift() || {}) }));
     const callback = origin + '/api/auth/google/callback?' + new URLSearchParams({ code, state: auth.searchParams.get('state') });
     // A real cross-origin document with COOP simulates Google's opener isolation.
     await route.fulfill({ status: 200, headers: { 'Content-Type': 'text/html', 'Cross-Origin-Opener-Policy': 'same-origin' },
@@ -51,7 +61,7 @@ try {
   await page.locator('#btn-google-entry').waitFor({ state: 'visible' });
   await page.waitForFunction(() => !document.getElementById('btn-google-entry').disabled);
   await page.locator('#btn-google-entry').click();
-  await page.waitForURL('**/signin/google/');
+  await page.waitForURL(url => url.pathname === '/signin/google/' && url.searchParams.get('ui') === 'accounts-v2');
   await page.locator('#google-onboarding').waitFor({ state: 'visible' });
   assert.equal(await page.locator('input[type="password"]').count(), 0);
   await page.locator('#google-username').fill('browsergoogle');
@@ -59,6 +69,43 @@ try {
   await page.locator('#google-create').click();
   await page.waitForURL('**/u/0/me');
   await page.locator('.me-nav-item[data-section="security"]').click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  async function openMethods() {
+    await page.locator('#btn-google-settings').click();
+    await page.locator('#google-method-form').waitFor({ state: 'visible' });
+    assert.equal(await page.locator('.modal').evaluate(node => node.scrollWidth <= node.clientWidth), true, 'Methods dialog must not overflow on mobile');
+  }
+  async function addBackup(passwordless) {
+    if (passwordless) identities.push({}, backupGoogle); // Existing authority, then new Google account.
+    else { identities.push(backupGoogle); await page.locator('#google-method-password').fill('SyntheticGooglePassword!123'); }
+    await page.locator('#google-method-add').click();
+    await page.locator('#google-method-form').waitFor({ state: 'detached' });
+    await page.waitForURL(url => url.pathname === '/u/0/me');
+    await page.getByText('Google account connected, but the email alert could not be delivered.', { exact: true }).waitFor({ state: 'visible' });
+    await openMethods();
+    assert.equal(await page.locator('[data-google-remove]').count(), 2);
+    assert.equal(await page.locator('#google-method-form').getByText(backupGoogle.email, { exact: true }).isVisible(), true);
+  }
+  // A stale selected-account response must not render another account's methods.
+  const methodsUrl = origin + '/api/auth/google/links';
+  await context.route(methodsUrl, async route => {
+    const response = await route.fetch(), data = await response.json();
+    await route.fulfill({ response, json: { ...data, user_id: 'changed-account' } });
+  });
+  await page.locator('#btn-google-settings').click();
+  await page.getByText('The selected account changed. Please reopen Google settings.', { exact: true }).waitFor({ state: 'visible' });
+  assert.equal(await page.locator('#google-method-form').count(), 0);
+  await context.unroute(methodsUrl);
+  await openMethods();
+  assert.equal(await page.locator('[data-google-remove]').count(), 1);
+  assert.equal(await page.locator('[data-google-remove]').isDisabled(), true, 'Last Google is protected without a password');
+  await addBackup(true);
+  assert.equal(await page.locator('#google-method-password').getAttribute('type'), 'hidden', 'Backups do not require adding a password');
+  page.once('dialog', dialog => dialog.accept());
+  await page.locator('.device').filter({ hasText: backupGoogle.email }).locator('[data-google-remove]').click();
+  await page.waitForFunction(() => document.querySelectorAll('[data-google-remove]').length === 1);
+  assert.equal(await page.locator('[data-google-remove]').isDisabled(), true);
+  await page.locator('[data-close-modal]').click();
   await page.locator('[data-dialog="password"]').filter({ hasText: 'Add password' }).first().click();
   assert.equal(await page.locator('#dlg-current-pw').getAttribute('type'), 'hidden');
   await page.locator('#dlg-new-pw').fill('SyntheticGooglePassword!123');
@@ -72,6 +119,9 @@ try {
   assert.equal(profile.user.has_password, true); assert.equal(profile.user.google_linked, true);
   const storage = await page.evaluate(() => ({ local: { ...localStorage }, session: { ...sessionStorage }, cookies: document.cookie }));
   assert.doesNotMatch(JSON.stringify(storage), /access_token|refresh_token|gothwad_google_|gothwad_sess_|SyntheticGooglePassword/);
+  await openMethods();
+  await addBackup(false);
+  await page.locator('[data-close-modal]').click();
   const firstId = profile.user.id;
   let finishes = 0;
   page.on('request', request => {
@@ -80,7 +130,7 @@ try {
   async function chooseGoogle() {
     await page.goto(origin + '/signin/?add=1');
     await page.locator('#btn-google-entry').click();
-    await page.waitForURL('**/signin/google/');
+    await page.waitForURL(url => url.pathname === '/signin/google/' && url.searchParams.get('ui') === 'accounts-v2');
     await page.locator('#google-chooser').waitFor({ state: 'visible' });
   }
   await page.setViewportSize({ width: 390, height: 844 });
@@ -112,8 +162,30 @@ try {
   await page.locator('#google-account-list button').filter({ hasText: 'browsergoogle@' }).click();
   await page.waitForURL('**/u/0/me');
   assert.equal((await page.evaluate(async () => (await fetch('/api/auth/me')).json())).user.id, firstId);
+
+  identities.push(backupGoogle);
+  await chooseGoogle();
+  assert.equal(await page.locator('#google-account-list button').count(), 1, 'Backup Google sees only its linked Gothwad account');
+  await page.locator('#google-account-list button').click();
+  await page.waitForURL('**/u/0/me');
+  assert.equal((await page.evaluate(async () => (await fetch('/api/auth/me')).json())).user.id, firstId);
+
+  assert.equal(staleDocuments, 0, 'Versioned callback avoids the cached old HTML URL');
+  assert.equal(staleScripts, 0, 'Hashed entry avoids the cached old JavaScript URL');
+  await context.unroute(origin + '/signin/google/', staleDocument);
+  await context.unroute(origin + '/signin/google/google.js', staleScript);
+  // Cached old HTML plus fresh compatibility source must recover with the same HttpOnly proof.
+  await chooseGoogle();
+  const beforeRecovery = finishes;
+  const oldDocumentUrl = origin + '/signin/google/?legacy-test=1';
+  await context.route(oldDocumentUrl, route => route.fulfill({ contentType: 'text/html', body: legacyHtml }));
+  await page.goto(oldDocumentUrl);
+  await page.waitForURL(url => url.searchParams.get('refresh') === '1');
+  await page.locator('#google-chooser').waitFor({ state: 'visible' });
+  assert.equal(await page.locator('#google-account-list button').count(), 2);
+  assert.equal(finishes, beforeRecovery, 'Legacy document recovery never signs in automatically');
   assert.deepEqual(errors, []);
-  console.log('Google browser QA passed: passwordless onboarding, COOP-isolated reauth popup, Add → Change password, cookie-only storage, one/two-account chooser, Add new, keyboard selection and separate account data.');
+  console.log('Google browser QA passed: passwordless onboarding, COOP-isolated reauth popup, Add → Change password, cookie-only storage, one/two-account chooser, Add new, keyboard selection and separate account data, stale-cache isolation, legacy-document recovery, Google method list, backup linking/removal, last-method protection and backup sign-in.');
 } finally {
   await browser.close(); restore(); rmSync(temp, { recursive: true, force: true });
 }

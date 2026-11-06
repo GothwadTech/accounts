@@ -12,6 +12,7 @@ export function authRateLimitPolicy(method: string, route: string): Policy | nul
   }
   if (method === 'GET' && route === '/auth/google/callback') return { group: 'google-callback', limit: 60, seconds: 600 };
   if (method !== 'POST') return null;
+  if (route === '/auth/google/unlink') return { group: 'google-unlink', limit: 10, seconds: 600 };
   if (route === '/auth/google/start') return { group: 'google-start', limit: 30, seconds: 600 };
   if (route === '/auth/google/finish') return { group: 'google-finish', limit: 10, seconds: 600 };
   if (route.startsWith('/auth/passkeys/')) return { group: 'passkeys', limit: 30, seconds: 300 };

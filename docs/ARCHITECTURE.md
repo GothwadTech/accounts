@@ -82,11 +82,14 @@ Every source, stylesheet, SQL migration, test, and active documentation file acr
 
 Accounts can also act as an OIDC client for Google, separately from its Gothwad
 OAuth-provider routes. `google-oidc.ts` verifies authorization-code/PKCE/nonce/RSA
-claims; `routes/auth-google.ts`, `google-signin.ts`, `google-proofs.ts` and SQL 11/12
+claims; `routes/auth-google.ts`, `google-signin.ts`, `google-proofs.ts` and SQL 11–13
 manage browser-bound single-use proofs, explicit identity links and passwordless
-onboarding. Canonical account links support many users per verified Google subject
-but one Google link per user. Returning users explicitly select an account or Add
-new; legacy links are preserved/imported once. Internal user IDs, account-specific
+onboarding. Canonical `auth_google_methods` supports many users per Google subject
+and up to three Google methods per user, with immutable origin metadata. Returning users
+explicitly select an account or Add new; legacy links are preserved/imported once. Versioned link-set snapshots, fresh
+credential/MFA guards, atomic unlink/credential rotation and last-method protection
+prevent stale proofs and account lockout. Removal also revokes other devices/OAuth.
+Internal user IDs, account-specific
 local MFA and shared session issuance are reused.
 Missing passwords use a disabled non-hash marker and a derived `has_password` flag;
 no fake password is generated. Only transient Google proof cookies are host-only;

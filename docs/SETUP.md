@@ -72,6 +72,6 @@ SELECT id, name, redirect_uris FROM ecosystem_apps WHERE redirect_uris != '[]';
 Google credentials are not configured by this repository. Follow the separate
 [Google OAuth setup and pilot guide](GOOGLE_SIGN_IN.md) after reviewing/deploying
 both Accounts components. It specifies the exact callback, same-origin API/proxy
-requirements, two private environment values, SQL 11/12 and passwordless multi-account behavior.
+requirements, two private environment values, SQL 11–13 and passwordless multi-account behavior.
 Do not enable billing, paste secrets in chat, or assume a successful Pages build
 proves the Worker callback works. Other apps keep using Gothwad SSO.

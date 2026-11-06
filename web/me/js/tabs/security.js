@@ -10,6 +10,8 @@ import { setDialogUser, dialogPassword } from '../dialogs.js';
 import { openPasskeySettings } from '../passkey-settings.js';
 import { openMfaSettings } from '../mfa-settings.js';
 
+let googleLinkNotice = new URLSearchParams(location.search).get('google') === 'linked'
+  ? (new URLSearchParams(location.search).get('notification') === 'failed' ? 'failed' : 'sent') : null;
 let user = null;
 let onUserUpdated = () => {};
 let bound = false;
@@ -64,6 +66,13 @@ export function initSecurity(currentUser, cb) {
   }
 
   syncSecurityUser(currentUser);
+  if (googleLinkNotice) {
+    toast(googleLinkNotice === 'failed' ? 'Google account connected, but the email alert could not be delivered.' : 'Google account connected.');
+    googleLinkNotice = null;
+    const clean = new URL(location.href); clean.searchParams.delete('google'); clean.searchParams.delete('notification');
+    history.replaceState(history.state, '', clean.pathname + clean.search + clean.hash);
+  }
+
 }
 
 function refreshRows() {
@@ -79,7 +88,7 @@ function refreshRows() {
     passwordStatus.append(last);
   }
   const googleRow = document.getElementById('btn-google-settings');
-  if (googleRow) googleRow.querySelector('.setting-label').textContent = user.google_linked ? 'Google connected' : 'Connect Google';
+  if (googleRow) googleRow.querySelector('.setting-label').textContent = user.google_linked ? 'Google accounts' : 'Connect Google';
   const el = document.getElementById('sec-recovery');
   if (el) el.textContent = user.recovery_email || 'Not set';
   const status = document.getElementById('sec-mfa-status');
@@ -103,7 +112,7 @@ export async function loadActivity() {
     'session_revoked',
     'app_authorized',
     'app_revoked',
-    'signup', 'mfa_enabled', 'mfa_disabled', 'mfa_codes_regenerated', 'recovery_email_verified',
+    'google_method_added', 'google_method_removed', 'signup', 'mfa_enabled', 'mfa_disabled', 'mfa_codes_regenerated', 'recovery_email_verified',
   ];
   renderActivity('sec-activity', rows.filter((r) => securityTypes.includes(r.type)).slice(0, 10));
 }

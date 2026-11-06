@@ -6,7 +6,7 @@ All database tables live inside the dedicated **Cloudflare D1** database (`accou
 
 ---
 
-## 📁 Numbered SQL Files (Order: `00` → `12`)
+## 📁 Numbered SQL Files (Order: `00` → `13`)
 
 | # | File | Purpose |
 |---|------|---------|
@@ -24,11 +24,16 @@ All database tables live inside the dedicated **Cloudflare D1** database (`accou
 | 10 | `10_oauth_credential_bindings.sql` | OAuth credential snapshots and revocation bindings |
 | 11 | `11_google_identities.sql` | Google flow/proof tickets and legacy identity metadata |
 | 12 | `12_google_account_links.sql` | Many accounts per Google subject; non-destructive, one-time legacy import |
+| 13 | `13_google_signin_methods.sql` | Many-to-many Google methods, immutable origins and versioned security proofs; preserves SQL 12 rows |
 
 SQL 12 runs after core tables and SQL 11. It retains all legacy identity rows and
 copies their metadata to `auth_external_account_links`. A schema-version marker
 prevents repeat imports/legacy scans. Stop old Worker writes and release matching
 frontend/backend together; Worker-only rollback to legacy writes is unsupported.
+SQL 13 then imports SQL 12 methods/origins once into the current Google method
+tables, retaining stable imported IDs on repeat execution. Old temporary security
+proofs require fresh verification; existing accounts/sessions remain. Current code
+uses only the new method/origin tables. Stop old writes and coordinate the release.
 See [Google setup](../docs/GOOGLE_SIGN_IN.md) before an authorized production migration.
 
 > Generate exact OAuth callback SQL for any configured `APP_DOMAIN`:
