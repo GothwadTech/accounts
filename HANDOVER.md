@@ -1,9 +1,75 @@
 # Accounts Handover
 
-Updated 2026-11-05. Current branch: `arena/5916479c-accounts`.
+Updated 2026-11-06. Current branch: `arena/1be12b88-accounts`.
 Read [AGENTS.md](AGENTS.md) for constraints and [TASK.md](TASK.md) for session history.
 
 ## Current state
+
+- **Latest merge authorization:** the owner permits committing, pushing and merging
+  the reviewed UI batch if checks are clean. Remote CI must be inspected first;
+  this is not permission to bypass failures or run manual production operations.
+  **PR #30 is open and NOT merged.** Implementation commit 735138b passed fresh
+  build/types and 309 tests; Cloudflare Pages passed, but Workers Builds failed.
+  GitHub exposes no cause/annotations, only build ade77f2b-b4ba-44c9-96b1-b3eb77bbc9cb.
+  Inspect that Cloudflare log before merging; do not assume an infrastructure cause.
+
+- **Latest owner direction: visuals only; stop trying to prove real login in Arena.**
+  Run **`npm run preview:ui`**, labelled **Accounts visual preview — login and dashboard**,
+  on port **3002**. This separate simulator serves shared real UI files with no strip,
+  preview buttons or alternate page design. It privately reads local credentials for
+  a simulated input comparison, uses invented profile/activity data and a shared
+  server-memory display flag. No database, cookies, tokens, browser-storage session or
+  production API is involved. This is NOT real authentication or isolation testing.
+  Real Cloudflare/provider/security verification stays separate; do not keep asking
+  for browser details/password retries before visual work.
+- **Initial twelve completed:** IDs 1, 2, 3, 9, 11, 13, 21, 26, 31, 52, 54, 99.
+  Shared UI has local SVGs, stacked/unified rows, balanced shortcuts, truthful Home,
+  account-preserving section URLs, method search, mobile search layout, recorded-event
+  password dates, verified-address recovery state and failed-data/Retry UI.
+  Password history is labelled Last recorded change, not a guarantee of the latest
+  actual change if audit delivery failed. Recovery metadata matches the current address.
+  Read [the completed 98-item phase allocation](docs/UI_REVIEW_PHASES.md): five phases of 20/20/20/20/18.
+  **Earlier approval combined UI Phases 1 and 2; both are implemented.**
+  Home/mobile/contrast polish, honest storage, keyboard search/drawer, account-preserving
+  history/scroll, profile clarity/optional editing and explicit photo framing are complete.
+  At that earlier checkpoint, 300/300 tests and extended browser QA passed.
+  **Latest owner approval also combined Phases 3–5; those 58 items are now implemented.**
+  All 110 scoped UI IDs are addressed. Shared safe dialogs, truthful method metadata,
+  local MFA QR/manual setup, session/activity/grant/data clarity, lazy loading and stale
+  account guards pass **309/309 tests**, build, Worker types and extended browser QA.
+  Displayed QR decoding, synthetic account-switch races and scoped axe-core A/AA scans
+  pass. Stop for owner visual review; no further phase approval is needed for this batch.
+
+- Baseline now includes PR #29, merged as `408481e`. Its Worker build failure was
+  not resolved by merging; successful production rollout remains unverified.
+- Actual authentication testing only (not needed for UI review): run `npm ci`, then **`npm run preview:local`** using the
+  background process tool. See [local preview instructions](tools/README.md).
+  The private ignored `.env.preview` contains current local credentials; never
+  echo, commit or copy it to production. The opt-in tool creates/reuses an account
+  only in ignored `.local-d1.sqlite`; normal start/build/Worker paths do not seed.
+  Preserve these ignored files across chats; a fresh checkout needs the owner's
+  private configuration again. A changed password must be reflected in that file,
+  not silently reset. The launcher now pins this sandbox's exact HTTPS public
+  origin to survive proxy Host/protocol rewriting; never weaken Worker CSRF.
+  Use Arena's authorized embedded preview, not raw new-tab links: the private
+  E2B gateway requires a platform header before the app runs. The obsolete new-tab
+  prompt has been removed. The Node transport now adapts only explicit local Arena
+  host-only cookies to SameSite=None/Secure/HttpOnly/Partitioned (CHIPS), allowing
+  embedded native login without leaking traffic/session tokens. Production Worker
+  SameSite=Lax/parent-domain SSO and exact-origin CSRF remain unchanged.
+  Browser checks cover actual partition keys, third-party restrictions, dashboard
+  reload, six sections at desktop/mobile sizes, cross-top-site isolation and logout.
+  Owner verification FAILED: dashboard loading still returns to sign-in. The actual
+  preview remains unresolved despite loopback tests. Local-only redacted auth trace
+  is enabled; inspect the next owner retry before another speculative fix. Logs
+  include known cookie names/counts only, never values or traffic/account secrets.
+  Actual owner retry captured: signin 200/emitted six cookies, then auth/me 401 with
+  NO Cookie header at all. Browser blocking vs proxy stripping remains undetermined.
+  Temporary marker probe did not execute in the real panel and was removed; no
+  frontend diagnostic loader remains. Do not keep asking for password retries.
+- Current gate: owner reviews all 110 scoped UI improvements in the visual preview.
+  Phases 3–5 were explicitly approved together and are implemented. Further feature
+  work or any production release requires new owner direction.
 
 - Baseline: owner's UI commit `6f41d56`, following merged Google PRs #26/#27.
   PR #28 merged into baseline `1163d90`. Earlier owner confirmation of Google

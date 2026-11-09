@@ -121,7 +121,7 @@ export async function apiCall(path, { method = 'GET', body = null, token = null 
       ok: false,
       status: 0,
       data: null,
-      error: 'Cannot reach the Gothwad API. Check API_URL in js/config.js (and that the Worker is running).',
+      error: 'Cannot reach Accounts. Check your connection and try again.',
     };
   }
 }

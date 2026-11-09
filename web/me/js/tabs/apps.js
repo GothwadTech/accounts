@@ -1,155 +1,49 @@
-/**
- * /me — CONNECTED APPS section.
- * Links carry Google-style `authuser=<n>` handoff via `/api/auth/switch` so
- * opening Gothwad Mail / Drive / Kiwi Store from `/u/1/me` opens into Account 1!
- */
-
+/** Included services, actual app grants and optional catalog entries are three distinct things. */
 import { api } from '../../../js/api.js';
-import { toast, escapeHtml, formatDate } from '../../../js/common.js';
-import { buildEcosystemAppHref } from '../../../js/authuser.js';
+import { escapeHtml } from '../../../js/common.js';
+import { buildEcosystemAppHref, parsePageAuthuser } from '../../../js/authuser.js';
 import { getAuthorizations } from '../store.js';
-import { GOTHWAD_SERVICES, GOTHWAD_PRODUCTS, isCoreApp } from '../../../js/gothwad-apps.js';
-
-const APP_ICONS = {
-  mail: 'mail',
-  'hard-drive': 'cloud',
-  'message-circle': 'chat',
-  'file-text': 'description',
-  calendar: 'calendar_month',
-  compass: 'explore',
-  video: 'videocam',
-  store: 'storefront',
-  users: 'group',
-  play: 'play_circle',
-  send: 'send',
-};
-
-function iconFor(key) {
-  return APP_ICONS[key] || 'key';
+import { beginView } from '../view-context.js';
+import { renderDataFailure } from '../data-failure.js';
+import { buildAppGroups, safeAppUrl } from '../catalog-view.js';
+import { fullDate, permissionLabel } from '../display-data.js';
+import { modal } from '../dialogs.js';
+import { bindDialogForm } from '../dialog-form.js';
+const icons = { mail: 'mail', 'hard-drive': 'cloud', video: 'videocam', store: 'storefront', users: 'group', play: 'play_circle', send: 'send', 'message-circle': 'chat', calendar: 'calendar_month', 'file-text': 'description' };
+function appInfo(app) {
+  return `<div class="device-info"><div class="device-icon"><span class="msym">${icons[app.icon] || 'apps'}</span></div><div><div class="device-name">${escapeHtml(app.name || app.id)}</div><div class="device-meta">${escapeHtml(app.description || '')}</div></div></div>`;
 }
-
-function hostOf(url) {
-  return String(url || '').replace('https://', '').replace('http://', '');
+function includedRow(app, authuser) {
+  const development = app.id === 'gothwad-contacts', url = safeAppUrl(app.url);
+  return `<div class="device">${appInfo(app)}<div class="app-access"><span class="tag">${development ? 'In development' : 'Included identity service'}</span>
+    ${!development && url ? `<a class="btn btn-text" href="${escapeHtml(buildEcosystemAppHref(url, authuser))}" target="_blank" rel="noopener">Visit service<span class="sr-only"> (opens a new tab)</span></a>` : ''}</div></div>`;
 }
-
-function mergeCatalog(apiApps) {
-  const byId = new Map((apiApps || []).map((a) => [a.id, a]));
-  const fill = (row) => {
-    const extra = byId.get(row.id) || {};
-    return {
-      ...row,
-      ...extra,
-      name: extra.name || row.name,
-      description: extra.description || row.description,
-      icon: extra.icon || row.icon,
-      url: row.url || extra.homepage || extra.url,
-    };
-  };
-  return {
-    services: GOTHWAD_SERVICES.map(fill),
-    products: GOTHWAD_PRODUCTS.map(fill),
-  };
+function grantRow(app) {
+  const grant = app.grant;
+  return `<div class="device app-grant">${appInfo(app)}<details class="app-permissions"><summary>Permissions and connection details</summary>
+    <p>Publisher: ${escapeHtml(app.publisher || 'Not provided by the app registry')}. A listed publisher name is not independent verification.</p>
+    <ul>${(grant.scopes || []).map(scope => `<li>${escapeHtml(permissionLabel(scope))}</li>`).join('') || '<li>Permission metadata unavailable</li>'}</ul>
+    <p>Connected: ${escapeHtml(fullDate(grant.granted_at))}<br />Last used: ${escapeHtml(fullDate(grant.last_used_at))}</p></details>
+    <button type="button" class="btn btn-text" data-disconnect="${escapeHtml(app.id)}">Disconnect app</button></div>`;
 }
-
-function serviceRow(a, authuser) {
-  const host = hostOf(a.url);
-  const href = a.url ? buildEcosystemAppHref(a.url, authuser) : '';
-  const link = a.url
-    ? ` · <a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(host)}</a>`
-    : '';
-  return `
-    <div class="device">
-      <div class="device-info">
-        <div class="device-icon"><span class="msym">${iconFor(a.icon)}</span></div>
-        <div>
-          <div class="device-name">${escapeHtml(a.name)}</div>
-          <div class="device-meta">${escapeHtml(a.description || '')}${link}</div>
-        </div>
-      </div>
-      <span class="tag tag-success"><span class="msym" style="font-size:13px;">check_circle</span> Always on</span>
-    </div>`;
+export function confirmDisconnect(app) {
+  modal({ title: 'Disconnect this app?', sub: `Remove the selected account’s permission grant for ${app.name || app.id}.`,
+    body: '<p>This revokes its Accounts grant and refresh access. Data already copied to the app is not deleted, and an app’s own signed-in session may remain. Visit the app to manage that data or delete its separate account.</p>',
+    actions: '<button type="button" class="btn btn-danger" id="confirm-disconnect">Disconnect confirmed app</button>' });
+  bindDialogForm({ buttonId: 'confirm-disconnect', read: () => ({ app_id: app.id }), unchanged: false,
+    submit: body => api.post('/oauth/revoke', body), success: 'App grant revoked. Previously shared data must be managed with the app.' });
 }
-
-function productRow(a, connected) {
-  const c = connected.find((x) => x.app_id === a.id);
-  return `
-    <div class="device">
-      <div class="device-info">
-        <div class="device-icon"><span class="msym">${iconFor(a.icon)}</span></div>
-        <div>
-          <div class="device-name">${escapeHtml(a.name)}</div>
-          <div class="device-meta">${escapeHtml(a.description || '')}${c ? ` · Last used ${escapeHtml(formatDate(c.last_used_at))}` : ' · Not connected yet'}</div>
-        </div>
-      </div>
-      ${c
-        ? `<button class="btn btn-ghost btn-sm btn-disconnect" data-app="${escapeHtml(a.id)}">Disconnect</button>`
-        : '<span class="tag">Optional</span>'}
-    </div>`;
-}
-
-function appCard(a, authuser) {
-  const host = hostOf(a.url);
-  const href = a.url ? buildEcosystemAppHref(a.url, authuser) : '';
-  return `
-    <div class="app-card">
-      <div class="app-icon"><span class="msym">${iconFor(a.icon)}</span></div>
-      <div style="font-weight:500;margin-bottom:2px;">${escapeHtml(a.name)}</div>
-      <div class="text-muted text-xs" style="margin-bottom:8px;">${escapeHtml(a.description || '')}</div>
-      ${a.url ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener" class="text-xs">${escapeHtml(host)}</a>` : ''}
-    </div>`;
-}
-
-export async function loadConnectedApps(authuser = 0) {
-  const servicesList = document.getElementById('gothwad-services-list');
-  const connectedList = document.getElementById('connected-list');
-  const appsGrid = document.getElementById('apps-grid');
-  if (!connectedList) return;
-
-  const data = await getAuthorizations();
-  const connected = (data.connected || []).filter((c) => !isCoreApp(c.app_id) && !c.core);
-  const { services, products } = mergeCatalog(data.apps || []);
-
-  if (servicesList) servicesList.innerHTML = services.map((s) => serviceRow(s, authuser)).join('');
-
-  const extraConnected = connected.filter((c) => !products.some((p) => p.id === c.app_id));
-  connectedList.innerHTML =
-    products.map((p) => productRow(p, connected)).join('') +
-    extraConnected
-      .map((c) =>
-        productRow(
-          {
-            id: c.app_id,
-            name: c.name,
-            icon: c.icon,
-            description: `Scopes: ${(c.scopes || []).join(', ')}`,
-          },
-          connected,
-        ),
-      )
-      .join('');
-
-  if (appsGrid) {
-    appsGrid.innerHTML = [...services, ...products].map((a) => appCard(a, authuser)).join('');
-  }
-
-  connectedList.querySelectorAll('.btn-disconnect').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      if (isCoreApp(btn.dataset.app)) {
-        toast('Gothwad Services cannot be disconnected.', 'error');
-        return;
-      }
-      btn.disabled = true;
-      btn.textContent = '...';
-      const r = await api.post('/oauth/revoke', { app_id: btn.dataset.app });
-      if (r.ok) {
-        toast('App disconnected');
-        getAuthorizations(true);
-        loadConnectedApps(authuser);
-      } else {
-        btn.disabled = false;
-        btn.textContent = 'Disconnect';
-        toast(r.error || 'Could not disconnect.', 'error');
-      }
-    });
-  });
+export async function loadConnectedApps(authuser = Number(parsePageAuthuser() || 0)) {
+  const current = beginView('apps');
+  try {
+    const data = await getAuthorizations(); if (!current()) return;
+    const { included, connected, available } = buildAppGroups(data);
+    const services = document.getElementById('gothwad-services-list'), grants = document.getElementById('connected-list'), catalog = document.getElementById('apps-grid');
+    if (services) services.innerHTML = included.map(app => includedRow(app, authuser)).join('') || '<p>No included services were returned.</p>';
+    if (grants) {
+      grants.innerHTML = connected.map(grantRow).join('') || '<p>No optional apps have a permission grant for this account.</p>';
+      grants.querySelectorAll('[data-disconnect]').forEach(button => button.addEventListener('click', () => confirmDisconnect(connected.find(app => app.id === button.dataset.disconnect))));
+    }
+    if (catalog) catalog.innerHTML = available.map(app => `<div class="app-card">${appInfo(app)}<p class="text-sm text-muted">Not connected. Availability has not been checked.</p></div>`).join('') || '<p>No other catalog entries.</p>';
+  } catch { if (current()) ['connected-list', 'gothwad-services-list', 'apps-grid'].forEach(id => renderDataFailure(id, () => loadConnectedApps(authuser))); }
 }

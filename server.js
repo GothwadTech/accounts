@@ -3,6 +3,9 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createLocalD1 } from './tools/local-d1.mjs';
+import { arenaPreviewOrigin } from './tools/preview-origin.mjs';
+import { previewSetCookie } from './tools/preview-cookies.mjs';
+import { previewAuthTrace } from './tools/preview-auth-trace.mjs';
 import workerModule from './cloudflare-worker/src/index.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -10,6 +13,7 @@ const __dirname = path.dirname(__filename);
 
 const PORT = Number(process.env.PORT || 3000);
 const HOST = '0.0.0.0';
+const PUBLIC_PREVIEW_ORIGIN = arenaPreviewOrigin(process.env);
 const WEB_ROOT = path.join(__dirname, 'web');
 const DB_FILE = process.env.LOCAL_D1_PATH || path.join(__dirname, '.local-d1.sqlite');
 
@@ -40,7 +44,9 @@ const server = http.createServer(async (req, res) => {
       const body = chunks.length > 0 ? Buffer.concat(chunks) : undefined;
 
       const proto = req.headers['x-forwarded-proto'] || 'http';
-      const origin = `${proto}://${req.headers.host || `localhost:${PORT}`}`;
+      // Arena can rewrite Host/protocol at its proxy. Use only this process's exact
+      // public preview URL, not Origin/X-Forwarded-Host or a wildcard CSRF allowance.
+      const origin = PUBLIC_PREVIEW_ORIGIN || `${proto}://${req.headers.host || `localhost:${PORT}`}`;
       const webReq = new Request(`${origin}${url.pathname}${url.search}`, {
         method: req.method,
         headers: req.headers,
@@ -69,8 +75,10 @@ const server = http.createServer(async (req, res) => {
       webRes.headers.forEach((v, k) => {
         if (k.toLowerCase() !== 'set-cookie') res.setHeader(k, v);
       });
-      const cookies = webRes.headers.getSetCookie?.() || [];
+      const cookies = (webRes.headers.getSetCookie?.() || []).map(cookie => previewSetCookie(cookie, process.env));
       if (cookies.length) res.setHeader('Set-Cookie', cookies);
+      const trace = previewAuthTrace(req, url.pathname, webRes.status, cookies, process.env);
+      if (trace) console.log('[preview-auth]', JSON.stringify(trace));
       const resBuf = await webRes.arrayBuffer();
       res.end(Buffer.from(resBuf));
       return;
@@ -121,6 +129,8 @@ const server = http.createServer(async (req, res) => {
     staticHeaders['Access-Control-Allow-Origin'] = '*';
     staticHeaders['Cross-Origin-Resource-Policy'] = 'cross-origin';
   }
+  const trace = previewAuthTrace(req, url.pathname, 200, [], process.env);
+  if (trace) console.log('[preview-auth]', JSON.stringify(trace));
   res.writeHead(200, staticHeaders);
   fs.createReadStream(filePath).pipe(res);
 });

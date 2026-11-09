@@ -1,186 +1,41 @@
-/**
- * =============================================================================
- * /me — PHOTO UPLOAD, PASSWORD CHANGE & DELETE ACCOUNT DIALOGS
- * =============================================================================
- */
+/** Security mutations keep existing password/Google/MFA proof and server-side protections. */
 import { credentialField, securityPost } from './security-credential.js';
-import { api, clearTokens } from '../../js/api.js';
+import { clearTokens } from '../../js/api.js';
 import { mfaActionField, mfaActionCode } from '../../js/mfa-ui.js';
-import { toast, escapeHtml, setBusy } from '../../js/common.js';
+import { toast, escapeHtml } from '../../js/common.js';
 import { gothwadEmail } from '../../js/config.js';
-import { initialsFor, clearAllAccounts } from '../../js/accounts.js';
-import { el, modal, field, closeDialog, notifyUpdated, getDialogUser } from './dialogs.js';
-
-export function dialogPhoto() {
-  const currentUser = getDialogUser();
-  if (!currentUser) return;
-  const avatarHtml = currentUser.avatar_url
-    ? `<img src="${escapeHtml(currentUser.avatar_url)}" alt="" style="width:96px;height:96px;border-radius:50%;object-fit:cover;" />`
-    : `<span class="avatar xl">${escapeHtml(initialsFor(currentUser))}</span>`;
-  modal({
-    title: 'Profile photo',
-    sub: 'PNG, JPEG, or WebP up to 2 MB. Automatically cropped and resized to 256×256 in your browser.',
-    body: `
-      <div class="photo-preview-wrap" id="photo-preview">${avatarHtml}</div>
-      <input type="file" id="photo-file" accept="image/png,image/jpeg,image/webp" class="photo-input-hidden" />
-      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
-        <button type="button" class="btn btn-tonal" id="btn-pick-photo">
-          <span class="msym" style="font-size:18px;">upload</span> Select photo
-        </button>
-        ${currentUser.avatar_url ? '<button type="button" class="btn btn-danger-text" id="btn-remove-photo">Remove photo</button>' : ''}
-      </div>
-      <div class="photo-drop-note">Your selected photo saves automatically.</div>`,
-    actions: '<button type="button" class="btn btn-text" data-close-modal>Done</button>',
-  });
-
-  el('btn-pick-photo').addEventListener('click', () => el('photo-file').click());
-  el('photo-file').addEventListener('change', () => {
-    const file = el('photo-file').files?.[0];
-    if (!file) return;
-    if (file.size > 8 * 1024 * 1024) {
-      return toast('Photo is too large. Please pick one under 8 MB.', 'error');
-    }
-    resizeAndUpload(file);
-  });
-
-  el('btn-remove-photo')?.addEventListener('click', async () => {
-    const res = await api.post('/auth/update-profile', { avatar_url: '' });
-    if (!res.ok) return toast(res.error || 'Could not remove photo.', 'error');
-    toast('Photo removed');
-    notifyUpdated(res.data.user);
-    closeDialog();
-  });
-
-  async function resizeAndUpload(file) {
-    try {
-      const dataUrl = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-      const img = await new Promise((resolve, reject) => {
-        const i = new Image();
-        i.onload = () => resolve(i);
-        i.onerror = reject;
-        i.src = dataUrl;
-      });
-
-      const size = Math.min(img.width, img.height);
-      const canvas = document.createElement('canvas');
-      canvas.width = 256;
-      canvas.height = 256;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, (img.width - size) / 2, (img.height - size) / 2, size, size, 0, 0, 256, 256);
-      const jpegUrl = canvas.toDataURL('image/jpeg', 0.88);
-      el('photo-preview').innerHTML = `<img src="${jpegUrl}" alt="" style="width:96px;height:96px;border-fit:cover;border-radius:50%;object-fit:cover;" />`;
-
-      const btn = el('btn-pick-photo');
-      setBusy(btn, true, 'Uploading...');
-      const res = await api.post('/auth/avatar', { image_base64: jpegUrl });
-      setBusy(btn, false);
-      if (!res.ok) {
-        el('photo-preview').innerHTML = avatarHtml;
-        return toast(res.error || 'Could not upload photo.', 'error');
-      }
-      toast('Profile photo updated');
-      notifyUpdated(res.data.user);
-    } catch {
-      toast('Could not process that image. Try a different one.', 'error');
-    }
-  }
-}
+import { el, modal, field, closeDialog, getDialogUser } from './dialogs.js';
+import { bindDialogForm } from './dialog-form.js';
+export { dialogPhoto } from './photo-editor.js';
 
 export function dialogPassword() {
-  const owner = getDialogUser();
-  const adding = owner?.has_password === false;
-  modal({
-    title: adding ? 'Add password' : 'Change password',
-    sub: 'Choose a strong password with at least 8 characters. Other devices will be signed out.',
-    body:
-      credentialField(getDialogUser(), 'dlg-current-pw') +
-      field('dlg-new-pw', 'New password (min. 8 chars)', { type: 'password', autocomplete: 'new-password', eye: true }) +
-      field('dlg-confirm-pw', 'Confirm new password', { type: 'password', autocomplete: 'new-password', eye: true }) +
-      mfaActionField(getDialogUser(), 'dlg-password-mfa'),
-    actions: '<button type="button" class="btn btn-primary" id="dlg-save">Update password</button>',
-  });
-  el('dlg-current-pw').focus();
-
-  document.querySelectorAll('#modal-body .input-eye').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const input = el(btn.dataset.eye);
-      if (!input) return;
-      const show = input.type === 'password';
-      input.type = show ? 'text' : 'password';
-      const icon = btn.querySelector('.msym');
-      if (icon) icon.textContent = show ? 'visibility_off' : 'visibility';
-    });
-  });
-
-  el('dlg-save').addEventListener('click', async () => {
-    const current = el('dlg-current-pw').value;
-    const next = el('dlg-new-pw').value;
-    const confirm = el('dlg-confirm-pw').value;
-    if (next.length < 8) return toast('New password must be at least 8 characters.', 'error');
-    if (next !== confirm) return toast('New passwords do not match.', 'error');
-    const btn = el('dlg-save');
-    setBusy(btn, true, 'Updating...');
-    const res = await securityPost(adding ? '/auth/add-password' : '/auth/change-password', { current_password: current, new_password: next, mfa_code: mfaActionCode('dlg-password-mfa') }, owner);
-    setBusy(btn, false);
-    if (!res.ok) return toast(res.error || 'Could not change password.', 'error');
-    toast(adding ? 'Password added. Other devices were signed out.' : 'Password changed. Other devices were signed out.');
-    if (res.data.user) notifyUpdated(res.data.user);
-    closeDialog();
-    import('./tabs/security.js').then((m) => m.markPasswordChanged());
-  });
+  const owner = getDialogUser(), adding = owner?.has_password === false;
+  modal({ title: adding ? 'Add password' : 'Change password',
+    sub: 'Use 8–128 characters of your choice. Other sessions will be signed out. Keep a recovery method available.',
+    body: credentialField(owner, 'dlg-current-pw') +
+      field('dlg-new-pw', 'New password', { type: 'password', autocomplete: 'new-password', eye: true, maxlength: 128, hint: '8–128 characters. No required character combinations.' }) +
+      field('dlg-confirm-pw', 'Confirm new password', { type: 'password', autocomplete: 'new-password', eye: true, maxlength: 128 }) + mfaActionField(owner, 'dlg-password-mfa'),
+    actions: '<button type="button" class="btn btn-primary" id="dlg-save">Update password</button>' });
+  bindDialogForm({ unchanged: false, read: () => ({ current_password: el('dlg-current-pw').value, new_password: el('dlg-new-pw').value, confirm: el('dlg-confirm-pw').value, mfa_code: mfaActionCode('dlg-password-mfa') }),
+    validate: body => body.new_password.length < 8 || body.new_password.length > 128 ? { message: 'Use a password between 8 and 128 characters.', fields: ['dlg-new-pw'] } : body.new_password !== body.confirm ? { message: 'The new passwords do not match.', fields: ['dlg-confirm-pw'] } : null,
+    submit: ({ confirm, ...body }) => securityPost(adding ? '/auth/add-password' : '/auth/change-password', body, owner),
+    success: adding ? 'Password added. Other sessions were signed out.' : 'Password changed. Other sessions were signed out.' });
 }
 
 export function dialogDelete() {
-  const currentUser = getDialogUser();
-  if (!currentUser) return;
-  const email = gothwadEmail(currentUser.username);
-  modal({
-    title: 'Delete your Gothwad Account',
-    sub: 'This action is permanent and cannot be undone. Your username, email address, profile, and all account data will be permanently deleted.',
-    danger: true,
-    body: `
-      <div class="alert alert-error" style="margin-bottom:16px;">
-        <b>${escapeHtml(email)}</b> will be permanently deleted.
-      </div>
-      ${credentialField(getDialogUser(), 'dlg-delete-pw')}
-      ${mfaActionField(currentUser, 'dlg-delete-mfa')}`,
-    actions: '<button type="button" class="btn btn-danger" id="dlg-confirm-delete">Delete my account</button>',
-  });
-  el('dlg-delete-pw').focus();
-
-  const eye = document.querySelector('#modal-body .input-eye');
-  eye?.addEventListener('click', () => {
-    const input = el('dlg-delete-pw');
-    const show = input.type === 'password';
-    input.type = show ? 'text' : 'password';
-    const icon = eye.querySelector('.msym');
-    if (icon) icon.textContent = show ? 'visibility_off' : 'visibility';
-  });
-
-  el('dlg-confirm-delete').addEventListener('click', async () => {
-    const pw = el('dlg-delete-pw').value;
-    if (!pw && currentUser.has_password !== false) return toast('Please enter your password to confirm.', 'error');
-    const btn = el('dlg-confirm-delete');
-    setBusy(btn, true, 'Deleting...');
-
-    const res = await securityPost('/auth/delete-account', { password: pw, mfa_code: mfaActionCode('dlg-delete-mfa') }, currentUser);
-    if (!res.ok) {
-      setBusy(btn, false);
-      return toast(res.error || 'Could not delete account.', 'error');
-    }
-
-    try {
-      clearAllAccounts();
-      clearTokens();
-    } catch { /* ignore */ }
-    toast('Your Gothwad Account has been deleted.');
-    setTimeout(() => {
-      location.href = '/';
-    }, 900);
-  });
+  const owner = getDialogUser();
+  if (!owner) return;
+  modal({ title: 'Delete your Gothwad Account', danger: true,
+    sub: 'Permanent deletion of this Accounts identity cannot be undone. Export your Accounts data first.',
+    body: `<div class="alert alert-error"><strong>${escapeHtml(gothwadEmail(owner.username))}</strong> is the account being deleted.</div>
+      <p>This removes the Accounts profile, sign-in methods, sessions, app grants and retained Accounts activity. It does not guarantee deletion of Mail, Drive or other services’ separate databases, backups or legal records. Manage those with each service first. Other signed-in accounts are not deleted.</p>
+      ${field('dlg-delete-username', 'Type your username to confirm', { autocomplete: 'off' })}
+      <label class="confirmation-check"><input type="checkbox" id="dlg-delete-ack" /> I understand this is permanent and service data is separate.</label>
+      ${credentialField(owner, 'dlg-delete-pw')}${mfaActionField(owner, 'dlg-delete-mfa')}`,
+    actions: '<button type="button" class="btn btn-danger" id="dlg-confirm-delete">Delete this account permanently</button>' });
+  bindDialogForm({ buttonId: 'dlg-confirm-delete', unchanged: false,
+    read: () => ({ username: el('dlg-delete-username').value, acknowledge: el('dlg-delete-ack').checked, password: el('dlg-delete-pw').value, mfa_code: mfaActionCode('dlg-delete-mfa') }),
+    validate: body => body.username !== owner.username ? { message: 'Enter the selected account’s exact username.', fields: ['dlg-delete-username'] } : !body.acknowledge ? { message: 'Confirm that you understand the deletion scope.', fields: ['dlg-delete-ack'] } : !body.password && owner.has_password !== false ? { message: 'Enter your current password.', fields: ['dlg-delete-pw'] } : null,
+    submit: ({ password, mfa_code }) => securityPost('/auth/delete-account', { password, mfa_code }, owner),
+    onSuccess: () => { clearTokens(); closeDialog(); toast('The selected Accounts identity was deleted.'); location.assign('/me'); } });
 }

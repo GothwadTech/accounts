@@ -1,74 +1,49 @@
-/**
- * /me — DATA & PRIVACY section (storage, activity, export, delete account).
- */
-
+/** Account export, retained history and honest scope; never claim sibling-service deletion/export. */
+import { renderDataFailure } from '../data-failure.js';
 import { buildAuthHeaders, refreshOnce } from '../../../js/api.js';
 import { apiUrl } from '../../../js/config.js';
 import { toast } from '../../../js/common.js';
 import { renderActivity } from './activity.js';
 import { setDialogUser, openDialog } from '../dialogs.js';
 import { getActivity } from '../store.js';
-
-let user = null;
-let refreshAll = () => {};
-let bound = false;
-
+import { captureView, beginView, onViewInvalidated } from '../view-context.js';
+let user = null, refreshAll = () => {}, bound = false, exporting = false;
+onViewInvalidated(() => { exporting = false; });
 export function syncDataUser(nextUser) {
   user = nextUser;
-  setDialogUser(user, (updated) => {
-    user = updated;
-    refreshAll();
-  });
-  loadActivity();
+  setDialogUser(user, updated => { user = updated; refreshAll(); }, 'data');
+  const btn = document.getElementById('btn-export'); if (btn && !exporting) { btn.disabled = false; btn.textContent = 'Download Accounts JSON'; }
 }
-
 export function initDataPrivacy(currentUser, cb) {
   if (cb) refreshAll = cb;
-
   if (!bound) {
     bound = true;
     document.getElementById('btn-export')?.addEventListener('click', exportData);
     document.getElementById('btn-open-delete')?.addEventListener('click', () => openDialog('delete'));
   }
-
   syncDataUser(currentUser);
 }
-
 async function exportData() {
-  const btn = document.getElementById('btn-export');
-  const old = btn.innerHTML;
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;"></span> Preparing...';
-
+  if (exporting) return;
+  const valid = captureView(), btn = document.getElementById('btn-export');
+  exporting = true; btn.disabled = true; btn.setAttribute('aria-busy', 'true'); btn.textContent = 'Preparing download…';
   try {
-    const reqInit = { credentials: 'include', headers: buildAuthHeaders() };
-    let res = await fetch(apiUrl('/auth/export'), reqInit);
-    if (res.status === 401 && (await refreshOnce())) {
-      res = await fetch(apiUrl('/auth/export'), reqInit);
-    }
-    if (!res.ok) {
-      const data = await res.json().catch(() => null);
-      throw new Error((data && data.error) || 'Export failed');
-    }
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'gothwad-account-data.json';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-    toast('Your data has been downloaded');
-  } catch (err) {
-    toast(err.message || 'Could not export data.', 'error');
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = old;
-  }
+    const options = { credentials: 'include', headers: buildAuthHeaders() };
+    let response = await fetch(apiUrl('/auth/export'), options);
+    if (!valid()) return;
+    if (response.status === 401 && await refreshOnce()) { if (!valid()) return; response = await fetch(apiUrl('/auth/export'), options); }
+    if (!valid()) return;
+    if (!response.ok) { const body = await response.json().catch(() => null); throw new Error(body?.error || 'Export could not be prepared. Try again.'); }
+    const blob = await response.blob(); if (!valid()) return;
+    const url = URL.createObjectURL(blob), link = document.createElement('a');
+    link.href = url; link.download = 'gothwad-account-data.json'; document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast('Accounts JSON download prepared. Check your browser downloads; keep the file private.');
+  } catch (error) { if (valid()) toast(error.message || 'Export failed. Use Download to retry.', 'error'); }
+  finally { if (valid()) { exporting = false; btn.disabled = false; btn.removeAttribute('aria-busy'); btn.textContent = 'Download Accounts JSON'; } }
 }
-
 export async function loadActivity() {
-  const rows = await getActivity();
-  renderActivity('dp-activity', rows);
+  const current = beginView('data-activity');
+  try { const rows = await getActivity(); if (current()) renderActivity('dp-activity', rows); }
+  catch { if (current()) renderDataFailure('dp-activity', loadActivity); }
 }

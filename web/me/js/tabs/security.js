@@ -1,192 +1,70 @@
-/**
- * /me — SECURITY section (password, activity, devices, apps summary).
- */
-
-import { api } from '../../../js/api.js';
-import { setBusy, toast, escapeHtml, formatDate } from '../../../js/common.js';
+/** Security priorities and truthful metadata; network work starts when this section is visible. */
+import { renderDataFailure } from '../data-failure.js';
 import { getActivity, getAuthorizations } from '../store.js';
-import { renderActivity } from './activity.js';
+import { beginView } from '../view-context.js';
+import { renderActivity, SECURITY_TYPES } from './activity.js';
 import { setDialogUser, dialogPassword } from '../dialogs.js';
 import { openPasskeySettings } from '../passkey-settings.js';
 import { openMfaSettings } from '../mfa-settings.js';
-
-let googleLinkNotice = new URLSearchParams(location.search).get('google') === 'linked'
-  ? (new URLSearchParams(location.search).get('notification') === 'failed' ? 'failed' : 'sent') : null;
-let user = null;
-let onUserUpdated = () => {};
-let bound = false;
-
+import { initSessionActions } from './sessions.js';
+import { loadSecurityOverview } from '../security-overview.js';
+import { fullDate } from '../display-data.js';
+import { gothwadEmail } from '../../../js/config.js';
+import { toast } from '../../../js/common.js';
+export { loadSessions } from './sessions.js';
+let user = null, onUserUpdated = () => {}, bound = false;
 export function syncSecurityUser(nextUser) {
   user = nextUser;
-  setDialogUser(user, (updated) => {
-    user = updated;
-    onUserUpdated(updated);
-    refreshRows();
-  });
+  setDialogUser(user, updated => { user = updated; onUserUpdated(updated); refreshRows(); }, 'security');
   refreshRows();
-  loadSessions();
-  loadActivity();
-  loadAppsSummary();
 }
-
 export function initSecurity(currentUser, cb) {
   if (cb) onUserUpdated = cb;
-
   if (!bound) {
     bound = true;
-
-    document
-      .querySelectorAll('#section-security [data-dialog="password"]')
-      .forEach((row) => row.addEventListener('click', dialogPassword));
-
-    document
-      .querySelectorAll('#section-security [data-dialog="recovery"]')
-      .forEach((row) =>
-        row.addEventListener('click', () => import('../dialogs.js').then((m) => m.openDialog('recovery'))),
-      );
-
+    document.querySelectorAll('#section-security [data-dialog="password"]').forEach(row => row.addEventListener('click', dialogPassword));
+    document.querySelectorAll('#section-security [data-dialog="recovery"]').forEach(row => row.addEventListener('click', () => import('../dialogs.js').then(m => m.openDialog('recovery'))));
     document.getElementById('btn-google-settings')?.addEventListener('click', () => import('../google-settings.js').then(m => m.openGoogleSettings()));
     document.getElementById('btn-passkey-settings')?.addEventListener('click', openPasskeySettings);
     document.getElementById('btn-mfa-settings')?.addEventListener('click', openMfaSettings);
-
-    const revokeOthersBtn = document.getElementById('btn-revoke-others');
-    revokeOthersBtn?.addEventListener('click', async (e) => {
-      const btn = e.currentTarget;
-      setBusy(btn, true, 'Signing out...');
-      const res = await api.post('/auth/sessions/revoke-others', {});
-      setBusy(btn, false);
-      if (res.ok) {
-        toast('All other devices signed out');
-        loadSessions();
-        loadActivity();
-      } else {
-        toast(res.error || 'Could not sign out devices', 'error');
-      }
-    });
+    initSessionActions();
   }
-
   syncSecurityUser(currentUser);
-  if (googleLinkNotice) {
-    toast(googleLinkNotice === 'failed' ? 'Google account connected, but the email alert could not be delivered.' : 'Google account connected.');
-    googleLinkNotice = null;
+  const params = new URLSearchParams(location.search);
+  if (params.get('google') === 'linked') {
+    toast(params.get('notification') === 'failed' ? 'Google account connected, but the email alert could not be delivered.' : 'Google account connected.');
     const clean = new URL(location.href); clean.searchParams.delete('google'); clean.searchParams.delete('notification');
     history.replaceState(history.state, '', clean.pathname + clean.search + clean.hash);
   }
-
 }
-
-function refreshRows() {
+export function refreshRows() {
   if (!user) return;
-  const passwordRow = document.querySelector('#section-security [data-dialog="password"]');
-  const passwordLabel = passwordRow?.querySelector('.setting-label');
-  if (passwordLabel) passwordLabel.textContent = user.has_password === false ? 'Add password' : 'Change password';
-  const passwordStatus = passwordRow?.querySelector('.setting-value');
-  if (passwordStatus && user.has_password === false) passwordStatus.textContent = 'No password added. You sign in with Google or a registered passkey.';
-  else if (passwordStatus && !passwordStatus.querySelector('#sec-pw-last')) {
-    passwordStatus.textContent = 'Last changed: ';
-    const last = document.createElement('span'); last.id = 'sec-pw-last'; last.textContent = '—';
-    passwordStatus.append(last);
-  }
-  const googleRow = document.getElementById('btn-google-settings');
-  if (googleRow) googleRow.querySelector('.setting-label').textContent = user.google_linked ? 'Google accounts' : 'Connect Google';
-  const el = document.getElementById('sec-recovery');
-  if (el) el.textContent = user.recovery_email || 'Not set';
-  const status = document.getElementById('sec-mfa-status');
-  const badge = document.getElementById('sec-mfa-badge');
-  if (status) status.textContent = user.two_factor_enabled ? 'Authenticator and recovery codes' : 'Add an authenticator app';
-  if (badge) badge.textContent = user.two_factor_enabled ? 'On' : 'Off';
+  const password = document.querySelector('#section-security [data-dialog="password"]');
+  const label = password?.querySelector('.setting-label'), value = password?.querySelector('.setting-value');
+  if (label) label.textContent = user.has_password === false ? 'Add password' : 'Change password';
+  if (value && user.has_password === false) value.textContent = 'No password added. Use your registered Google account or passkey.';
+  else if (value && !value.querySelector('#sec-pw-last')) value.innerHTML = 'Last recorded change: <span id="sec-pw-last"></span>';
+  const set = (id, text) => { const node = document.getElementById(id); if (node) node.textContent = text; };
+  set('security-account-context', `Settings for ${gothwadEmail(user.username)}. Changes affect this account, not other signed-in accounts.`);
+  set('sec-pw-last', fullDate(user.password_changed_at));
+  set('sec-recovery', user.recovery_email || 'Not set');
+  set('sec-recovery-status', !user.recovery_email ? '' : user.recovery_email_verified === true ? 'Verified' : user.recovery_email_verified === false ? 'Not verified' : 'Verification status unavailable');
+  set('sec-mfa-status', user.two_factor_enabled === true ? 'Authenticator enabled · Checking recovery codes…' : 'Checking authenticator availability…');
+  set('sec-mfa-badge', user.two_factor_enabled === true ? 'On' : 'Checking');
 }
-
-export function markPasswordChanged() {
-  const el = document.getElementById('sec-pw-last');
-  if (el) el.textContent = 'just now';
-}
-
+export function loadMethodSummary() { return loadSecurityOverview(user); }
+export function markPasswordChanged() { refreshRows(); }
 export async function loadActivity() {
-  const rows = await getActivity();
-  const securityTypes = [
-    'signin',
-    'signout',
-    'password_change',
-    'password_reset',
-    'session_revoked',
-    'app_authorized',
-    'app_revoked',
-    'google_method_added', 'google_method_removed', 'signup', 'mfa_enabled', 'mfa_disabled', 'mfa_codes_regenerated', 'recovery_email_verified',
-  ];
-  renderActivity('sec-activity', rows.filter((r) => securityTypes.includes(r.type)).slice(0, 10));
+  const current = beginView('security-activity');
+  try { const rows = await getActivity(); if (current()) renderActivity('sec-activity', rows.filter(row => SECURITY_TYPES.includes(row.type))); }
+  catch { if (current()) renderDataFailure('sec-activity', loadActivity); }
 }
-
-export async function loadSessions() {
-  const list = document.getElementById('device-list');
-  if (!list) return;
-
-  list.innerHTML = '<div class="text-muted text-sm">Loading sessions…</div>';
-
-  const res = await api.get('/auth/sessions');
-  if (!res.ok) {
-    list.innerHTML = `<div class="text-sm text-danger">${escapeHtml(res.error || 'Could not load sessions.')}</div>`;
-    return;
-  }
-
-  const sessions = res.data.sessions || [];
-  if (sessions.length === 0) {
-    list.innerHTML = '<div class="text-sm text-muted">No active sessions found.</div>';
-    return;
-  }
-
-  list.innerHTML = sessions
-    .map((s) => {
-      const isMobile = s.device_name?.includes('Mobile') || s.os === 'Android' || s.os === 'iOS';
-      return `
-      <div class="device">
-        <div class="device-info">
-          <div class="device-icon"><span class="msym">${isMobile ? 'smartphone' : 'laptop'}</span></div>
-          <div>
-            <div class="device-name">
-              ${escapeHtml(s.device_name || 'Unknown device')}
-              ${s.is_current ? '<span class="tag tag-success" style="margin-left:6px;">This device</span>' : ''}
-            </div>
-            <div class="device-meta">
-              ${escapeHtml(s.browser || '')} · ${escapeHtml(s.os || '')} · Last active ${escapeHtml(formatDate(s.last_active))}
-            </div>
-          </div>
-        </div>
-        ${s.is_current
-          ? ''
-          : `<button class="btn btn-ghost btn-sm btn-revoke" data-id="${escapeHtml(s.id)}">Sign out</button>`}
-      </div>`;
-    })
-    .join('');
-
-  list.querySelectorAll('.btn-revoke').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      setBusy(btn, true, '...');
-      const r = await api.post('/auth/sessions/revoke', { session_id: btn.dataset.id });
-      if (r.ok) {
-        toast('Device signed out');
-        loadSessions();
-        loadActivity();
-      } else {
-        setBusy(btn, false);
-        toast(r.error || 'Could not sign out device', 'error');
-      }
-    });
-  });
-}
-
-async function loadAppsSummary() {
-  const box = document.getElementById('sec-apps-summary');
-  if (!box) return;
-
-  const data = await getAuthorizations();
-  const connected = data.connected || [];
-  const extra = connected.filter((c) => !c.core && c.app_id && !c.app_id.startsWith('gothwad-'));
-  const total = extra.length;
-  box.innerHTML =
-    total === 0
-      ? 'No third-party apps are connected to your account.'
-      : `${total} app${total > 1 ? 's' : ''} connected: ${extra
-          .map((c) => escapeHtml(c.name || c.app_id))
-          .join(', ')}`;
+export async function loadAppsSummary() {
+  const current = beginView('security-apps-summary');
+  try {
+    const data = await getAuthorizations(); if (!current()) return;
+    const box = document.getElementById('sec-apps-summary');
+    const count = (data.connected || []).filter(row => !row.core).length;
+    if (box) box.textContent = `${count} optional app grant${count === 1 ? '' : 's'}. Review permissions and disconnect effects in Connected apps.`;
+  } catch { if (current()) renderDataFailure('sec-apps-summary', loadAppsSummary); }
 }

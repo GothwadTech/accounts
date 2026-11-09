@@ -1,10 +1,14 @@
+import { bindViewAccount, invalidateViews, captureView, onViewInvalidated } from './view-context.js';
+import { configureSectionData, loadSectionData } from './section-data.js';
+import { closeDialog } from './dialogs.js';
+import { initDrawer } from './drawer.js';
 /**
  * =============================================================================
  * `/u/<0..5>/me` — GOOGLE-GRADE MULTI-ACCOUNT ORCHESTRATOR
  * =============================================================================
  * - Single-call boot via `GET /api/auth/me` (returns `{ user, activeId, authuser, accounts }`)
  * - Canonical Google session URLs (`/u/0/me`, `/u/1/me`, `#personal`, `#security`, ...)
- * - `< 16ms` optimistic zero-reload account switching (`history.pushState` + live sync)
+ * - Account-bound zero-reload switching with guarded hydration and failure rollback
  * - Middle-click / Ctrl-click opens `/u/<n>/me` in an independent tab
  * - Browser Back / Forward (`popstate`) switches accounts seamlessly
  * =============================================================================
@@ -30,6 +34,7 @@ import { initPeople, loadPeople } from './tabs/people.js';
 import { loadConnectedApps } from './tabs/apps.js';
 import { initSearch } from './search.js';
 
+document.getElementById('skip-to-content')?.addEventListener('click', event => { event.preventDefault(); document.getElementById('me-content')?.focus(); });
 window.__GOTHWAD_ME_BOOTED = true;
 mountThemeToggles();
 
@@ -37,6 +42,16 @@ let currentUser = null;
 let currentAuthuser = 0;
 let currentActiveSlot = null;
 let cachedAccounts = [];
+let switchSequence = 0;
+configureSectionData(() => currentUser, () => currentAuthuser);
+onViewInvalidated(() => {
+  for (const id of ['home-activity', 'sec-activity', 'device-list', 'sec-apps-summary', 'security-readiness', 'dp-activity', 'gothwad-services-list', 'connected-list', 'apps-grid', 'people-apps-count', 'sec-google-count', 'sec-passkey-count']) {
+    const node = document.getElementById(id); if (node) node.textContent = 'Open this section to load information for the selected account.';
+  }
+  const status = document.getElementById('page-status'); if (status) status.hidden = true;
+  const bulk = document.getElementById('btn-revoke-others'); if (bulk) bulk.disabled = true;
+});
+for (const event of ['account-data-changed', 'account-data-refresh']) window.addEventListener(event, () => { resetMeStore(); void loadSectionData(); });
 
 function showLoadFailure(message) {
   const box = document.getElementById('auth-loading');
@@ -61,6 +76,7 @@ async function boot() {
     cachedAccounts = session.accounts || [];
 
     syncMeBrowserUrl(currentAuthuser, { push: false });
+    bindViewAccount(currentUser, currentAuthuser);
 
     document.getElementById('auth-loading')?.classList.add('hidden');
     document.getElementById('dash-root')?.classList.remove('hidden');
@@ -68,15 +84,12 @@ async function boot() {
     renderUserEverywhere(currentUser);
     renderAccountMenu(currentUser, cachedAccounts);
 
-    initNav();
     initPersonalInfo(currentUser, onUserUpdated);
     initSecurity(currentUser, onUserUpdated);
     initDataPrivacy(currentUser, refreshAll);
     initPeople();
-    loadConnectedApps(currentAuthuser);
     initSearch();
-    loadPeople(currentUser);
-    loadHome(currentUser);
+    initNav();
   } catch {
     showLoadFailure('Could not finish loading your Gothwad Account.');
   }
@@ -88,15 +101,14 @@ function applyHydratedAccount(user, authuser, activeId, accounts) {
   currentActiveSlot = activeId;
   if (Array.isArray(accounts)) cachedAccounts = accounts;
 
+  bindViewAccount(currentUser, currentAuthuser);
   resetMeStore();
   renderUserEverywhere(currentUser);
   renderAccountMenu(currentUser, cachedAccounts);
   syncPersonalUser(currentUser);
   syncSecurityUser(currentUser);
   syncDataUser(currentUser);
-  loadConnectedApps(currentAuthuser);
-  loadPeople(currentUser);
-  loadHome(currentUser);
+  void loadSectionData();
 }
 
 async function switchAccountInPlace(targetAccount, { updateHistory = true } = {}) {
@@ -110,28 +122,20 @@ async function switchAccountInPlace(targetAccount, { updateHistory = true } = {}
     return;
   }
 
-  // 1. `< 16ms` optimistic URL + header/profile paint (zero white reload flash!)
-  if (updateHistory) {
-    syncMeBrowserUrl(targetIndex, { push: true });
-  }
-  const nextAvatar = targetAccount.avatarUrl || targetAccount.avatar_url || null;
-  const optimisticUser = {
-    ...currentUser,
-    username: targetAccount.username,
-    first_name: targetAccount.firstName || targetAccount.first_name || '',
-    last_name: targetAccount.lastName || targetAccount.last_name || '',
-    email: targetAccount.email,
-    avatar_url: nextAvatar,
-    avatarUrl: nextAvatar,
-  };
-  currentActiveSlot = targetAccount.id;
-  currentAuthuser = targetIndex;
-  renderUserEverywhere(optimisticUser);
-  renderAccountMenu(optimisticUser, cachedAccounts);
+  const sequence = ++switchSequence;
+  const previousIndex = currentAuthuser;
+  invalidateViews(); closeDialog();
+  const dashboard = document.getElementById('dash-root'), content = document.getElementById('me-content');
+  dashboard?.setAttribute('aria-busy', 'true'); if (content) content.inert = true;
+  if (updateHistory) syncMeBrowserUrl(targetIndex, { push: true });
 
-  // 2. Sync `.gothwadtech.com` active cookie + hydrate full D1 profile in 1 round-trip
   const sw = await switchToAccount({ id: targetAccount.id, authuser: targetIndex });
+  if (sequence !== switchSequence) return;
+  dashboard?.removeAttribute('aria-busy'); if (content) content.inert = false;
   if (!sw.ok) {
+    syncMeBrowserUrl(previousIndex, { push: false });
+    bindViewAccount(currentUser, previousIndex);
+    void loadSectionData();
     toast(sw.error || 'Could not switch account', 'error');
     if (sw.status === 409) {
       location.href = addAccountHref(mePathForAuthuser(0));
@@ -139,7 +143,8 @@ async function switchAccountInPlace(targetAccount, { updateHistory = true } = {}
     return;
   }
 
-  const hydratedUser = sw.user || optimisticUser;
+  const hydratedUser = sw.user;
+  if (!hydratedUser) { syncMeBrowserUrl(previousIndex, { push: false }); void loadSectionData(); toast('Account switch was not confirmed. Reload to retry.', 'error'); return; }
   const resolvedIndex = Number.isInteger(sw.authuser) ? sw.authuser : targetIndex;
   syncMeBrowserUrl(resolvedIndex, { push: false });
   applyHydratedAccount(
@@ -170,14 +175,11 @@ function onUserUpdated(user) {
 }
 
 function refreshAll() {
-  if (currentUser) {
-    renderUserEverywhere(currentUser);
-    loadHome(currentUser);
-    loadPeople(currentUser);
-  }
+  if (currentUser) { renderUserEverywhere(currentUser); void loadSectionData(); }
 }
 
 async function renderAccountMenu(user, preloaded = null) {
+  const valid = captureView();
   const avatarEl = document.getElementById('appbar-avatar');
   renderAvatar(avatarEl, user);
   const nameEl = document.getElementById('menu-name');
@@ -188,6 +190,7 @@ async function renderAccountMenu(user, preloaded = null) {
   let accounts = Array.isArray(preloaded) && preloaded.length > 0 ? preloaded : null;
   if (!accounts) {
     const fetched = await fetchAccounts();
+    if (!valid()) return;
     currentActiveSlot = currentActiveSlot || fetched.activeId;
     accounts = fetched.accounts;
   }
@@ -226,7 +229,7 @@ function openUniversalAccountSheet() {
       onSignOutAll: () => signOut({ all: true }),
       onEditAvatar: () => {
         document.querySelector('[data-section="personal"]')?.click();
-        document.getElementById('btn-change-avatar')?.click();
+        document.getElementById('pi-photo-edit')?.click();
       },
       onManageAccount: () => {
         document.querySelector('[data-section="home"]')?.click();
@@ -247,8 +250,9 @@ globalThis.addEventListener?.('popstate', async () => {
       await switchAccountInPlace(match, { updateHistory: false });
       return;
     }
+    const valid = captureView();
     const session = await getSession();
-    if (session.authenticated && session.user) {
+    if (valid() && session.authenticated && session.user) {
       applyHydratedAccount(session.user, session.authuser, session.activeId, session.accounts);
     }
   }
@@ -263,18 +267,7 @@ if (menuBtn) {
   });
 }
 
-/* Mobile sidebar drawer */
-const sidebar = document.getElementById('me-sidebar');
-const backdrop = document.getElementById('me-backdrop');
-document.getElementById('btn-menu')?.addEventListener('click', () => {
-  sidebar?.classList.add('open');
-  backdrop?.classList.add('show');
-});
-backdrop?.addEventListener('click', closeDrawer);
-function closeDrawer() {
-  sidebar?.classList.remove('open');
-  backdrop?.classList.remove('show');
-}
-document.getElementById('me-nav')?.addEventListener('click', () => closeDrawer());
+/* Shared responsive navigation behavior. */
+initDrawer();
 
 boot();

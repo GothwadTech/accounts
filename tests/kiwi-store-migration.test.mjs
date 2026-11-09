@@ -1,3 +1,5 @@
+import { GOTHWAD_SERVICES } from '../web/js/gothwad-apps.js';
+import { GOTHWAD_CONFIG } from '../web/js/config.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -47,7 +49,7 @@ test('Kiwi Store D1 migration registers exact production, local and Android call
 test('app chooser catalog points Store users to Kiwi Store', () => {
   assert.match(appCatalog, /id: 'kiwi-store'/);
   assert.match(appCatalog, /name: 'Kiwi Store'/);
-  assert.match(appCatalog, /url: 'https:\/\/kiwistore\.gothwadtech\.com'/);
+  assert.equal(GOTHWAD_SERVICES.find(app => app.id === 'kiwi-store').url, `https://kiwistore.${GOTHWAD_CONFIG.APP_DOMAIN}`);
   assert.doesNotMatch(appCatalog, /gothwad-store|Gothwad Store|https:\/\/store\.gothwadtech\.com/);
 });
 

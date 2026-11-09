@@ -1,97 +1,79 @@
-/**
- * `/me` — "Search Gothwad Account" instant settings search.
- * Filters account settings as the user types and jumps straight to the target section or dialog.
- */
-
-const SETTINGS_INDEX = [
-  { title: 'Change your name', sub: 'Personal info', icon: 'person', section: 'personal', dialog: 'name' },
-  { title: 'Change your photo', sub: 'Personal info', icon: 'photo_camera', section: 'personal', dialog: 'photo' },
-  { title: 'Date of birth', sub: 'Personal info', icon: 'cake', section: 'personal', dialog: 'dob' },
-  { title: 'Gender', sub: 'Personal info', icon: 'diversity_3', section: 'personal', dialog: 'gender' },
-  { title: 'Phone number', sub: 'Personal info · Contact info', icon: 'call', section: 'personal', dialog: 'phone' },
-  { title: 'Recovery email', sub: 'Personal info · Security', icon: 'mark_email_read', section: 'personal', dialog: 'recovery' },
-  { title: 'Your Gothwad email', sub: 'Personal info', icon: 'alternate_email', section: 'personal' },
-  { title: 'Add or change password', sub: 'Security', icon: 'password', section: 'security', dialog: 'password' },
-  { title: '2-Step Verification', sub: 'Security', icon: 'phonelink_lock', section: 'security' },
-  { title: 'Recent security activity', sub: 'Security', icon: 'history', section: 'security' },
-  { title: 'Your devices', sub: 'Security', icon: 'devices', section: 'security' },
-  { title: 'Sign out other devices', sub: 'Security', icon: 'logout', section: 'security' },
-  { title: 'Signing in with other sites', sub: 'Security', icon: 'apps', section: 'security' },
-  { title: 'Storage', sub: 'Data & privacy', icon: 'cloud', section: 'data' },
-  { title: 'Export your data', sub: 'Data & privacy', icon: 'download', section: 'data' },
-  { title: 'Delete your account', sub: 'Data & privacy', icon: 'warning', section: 'data', dialog: 'delete' },
-  { title: 'Gothwad Contacts', sub: 'People & sharing', icon: 'contacts', section: 'people' },
-  { title: 'Gothwad Services', sub: 'Connected apps', icon: 'apps', section: 'apps' },
-  { title: 'Disconnect an app', sub: 'Connected apps', icon: 'link_off', section: 'apps' },
-  { title: 'Home', sub: 'Overview', icon: 'home', section: 'home' },
-];
+/** Accessible settings combobox; Enter activates the selected exact destination. */
+import { captureView } from './view-context.js';
+import { findSettings } from './search-index.js';
+import { escapeHtml } from '../../js/common.js';
+import { showSection, focusSetting } from './nav.js';
 
 export function initSearch() {
   const input = document.getElementById('search-input');
   const results = document.getElementById('search-results');
   if (!input || !results) return;
-
-  let timer = null;
-
-  input.addEventListener('input', () => {
-    clearTimeout(timer);
-    const q = input.value.trim().toLowerCase();
-    if (!q) {
-      results.classList.add('hidden');
-      return;
-    }
-    timer = setTimeout(() => {
-      const matches = SETTINGS_INDEX.filter(
-        (s) => s.title.toLowerCase().includes(q) || s.sub.toLowerCase().includes(q),
-      ).slice(0, 8);
-      results.innerHTML =
-        matches.length === 0
-          ? `<div class="me-search-item" style="cursor:default;"><span class="msym">search_off</span>
-             <span><span class="me-search-item-title">No results found</span>
-             <span class="me-search-item-sub">Try "password", "photo", "devices"…</span></span></div>`
-          : matches
-              .map(
-                (s) => `
-        <button type="button" class="me-search-item" data-section-go="${s.section}" data-dialog-go="${s.dialog || ''}">
-          <span class="msym">${s.icon}</span>
-          <span>
-            <span class="me-search-item-title">${s.title}</span>
-            <span class="me-search-item-sub">${s.sub}</span>
-          </span>
-        </button>`,
-              )
-              .join('');
-      results.classList.remove('hidden');
-
-      results.querySelectorAll('[data-section-go]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const section = btn.dataset.sectionGo;
-          const dialog = btn.dataset.dialogGo;
-          results.classList.add('hidden');
-          input.value = '';
-          input.blur();
-          import('./nav.js').then((m) => m.showSection(section));
-          if (dialog) {
-            // Open target modal right after section transition completes
-            setTimeout(() => {
-              import('./dialogs.js').then((m) => m.openDialog(dialog));
-            }, 120);
-          }
-        });
-      });
-    }, 120);
-  });
-
-  // Dismiss dropdown when clicking outside search bar
-  document.addEventListener('click', (e) => {
-    if (!e.target.closest('#me-search')) results.classList.add('hidden');
-  });
-
-  // Escape → band
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      results.classList.add('hidden');
-      input.blur();
+  const shortcut = document.getElementById('search-shortcut');
+  if (shortcut) shortcut.textContent = /Mac|iPhone|iPad/.test(navigator.platform || '') ? '⌘ K' : 'Ctrl K';
+  let matches = [], active = -1;
+  const buttons = () => [...results.querySelectorAll('[role="option"]')];
+  function close() {
+    const status = document.getElementById('search-status'); if (status) status.textContent = '';
+    results.classList.add('hidden'); input.setAttribute('aria-expanded', 'false');
+    input.removeAttribute('aria-activedescendant'); active = -1;
+  }
+  function select(index) {
+    active = index;
+    buttons().forEach((button, i) => {
+      button.setAttribute('aria-selected', String(i === index));
+      button.classList.toggle('search-active', i === index);
+    });
+    const chosen = buttons()[index];
+    if (chosen) { input.setAttribute('aria-activedescendant', chosen.id); chosen.scrollIntoView({ block: 'nearest' }); }
+  }
+  async function activate(item) {
+    const valid = captureView();
+    close(); input.value = '';
+    showSection(item.section, { focus: true, target: item.target });
+    if (item.dialog) {
+      const row = document.querySelector(`#section-${item.section} [data-dialog="${item.dialog}"]`);
+      if (row?.id) focusSetting(row.id);
+      else if (row) { row.closest('details')?.setAttribute('open', ''); row.focus({ preventScroll: true }); }
+      const dialogs = await import('./dialogs.js'); if (valid()) dialogs.openDialog(item.dialog);
+    } else if (item.action === 'google') { const module = await import('./google-settings.js'); if (valid()) module.openGoogleSettings(); }
+    else if (item.action === 'passkeys') { const module = await import('./passkey-settings.js'); if (valid()) module.openPasskeySettings(); }
+    else if (item.action === 'mfa') { const module = await import('./mfa-settings.js'); if (valid()) module.openMfaSettings(); }
+  }
+  function render() {
+    matches = findSettings(input.value); active = -1;
+    input.removeAttribute('aria-activedescendant');
+    if (!input.value.trim()) return close();
+    results.innerHTML = matches.length ? matches.map((item, i) =>
+      `<button type="button" role="option" aria-selected="false" tabindex="-1" id="setting-result-${i}" class="me-search-item" data-search-index="${i}">
+        <span class="msym">${item.icon}</span><span><span class="me-search-item-title">${escapeHtml(item.title)}</span>
+        <span class="me-search-item-sub">${escapeHtml(item.sub)}</span></span></button>`).join('') :
+      '<div class="me-search-empty" role="option" aria-disabled="true">No settings found. Try “password”, “2FA” or “devices”.</div>';
+    const status = document.getElementById('search-status'); if (status) status.textContent = matches.length ? `${matches.length} settings found. Use arrow keys and Enter to choose.` : 'No settings found.';
+    results.classList.remove('hidden'); input.setAttribute('aria-expanded', 'true');
+  }
+  input.addEventListener('input', render);
+  input.addEventListener('focus', () => { if (input.value.trim()) render(); });
+  input.addEventListener('keydown', event => {
+    if (event.key === 'Escape') { event.preventDefault(); close(); }
+    else if (event.key === 'Tab') close();
+    else if (['ArrowDown', 'ArrowUp'].includes(event.key)) {
+      event.preventDefault();
+      if (results.classList.contains('hidden')) render();
+      if (matches.length) select(active < 0 ? (event.key === 'ArrowDown' ? 0 : matches.length - 1) : (active + (event.key === 'ArrowDown' ? 1 : -1) + matches.length) % matches.length);
+    } else if (event.key === 'Enter' && !results.classList.contains('hidden') && matches.length) {
+      event.preventDefault(); void activate(matches[active < 0 ? 0 : active]);
     }
   });
+  results.addEventListener('click', event => {
+    const button = event.target.closest('[data-search-index]');
+    if (button) void activate(matches[Number(button.dataset.searchIndex)]);
+  });
+  document.addEventListener('click', event => { if (!event.target.closest('.me-search')) close(); });
+  document.addEventListener('focusin', event => { if (!event.target.closest('.me-search')) close(); });
+  document.addEventListener('keydown', event => {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k' && !document.querySelector('[role="dialog"]:not(.hidden)')) {
+      event.preventDefault(); input.focus(); input.select();
+    }
+  });
+  close();
 }

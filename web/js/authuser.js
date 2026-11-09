@@ -51,15 +51,18 @@ export function syncMeBrowserUrl(authuser = 0, { push = false } = {}) {
   const hist = globalThis.history;
   if (!loc || !hist) return;
 
-  const target = mePathForAuthuser(authuser, loc.hash || '');
+  const params = new URLSearchParams(loc.search || '');
+  if (params.has('authuser')) params.set('authuser', String(authuser));
+  const query = params.toString();
+  const target = mePathForAuthuser(authuser) + (query ? '?' + query : '') + (loc.hash || '');
   const current = `${loc.pathname || ''}${loc.search || ''}${loc.hash || ''}`;
   if (current === target) return;
 
   try {
     if (push && typeof hist.pushState === 'function') {
-      hist.pushState({ authuser }, '', target);
+      hist.pushState({ ...hist.state, authuser }, '', target);
     } else if (typeof hist.replaceState === 'function') {
-      hist.replaceState({ authuser }, '', target);
+      hist.replaceState({ ...hist.state, authuser }, '', target);
     }
   } catch {
     // Non-browser test environment without History pushState support

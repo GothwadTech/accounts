@@ -2,6 +2,134 @@
 
 This directory provides local development servers, SQL migration generators, and automated security & hygiene test suites.
 
+## Canonical visual preview — simulated login and shared UI
+
+Run **`npm run preview:ui`** with the background process tool. The label is
+**Accounts visual preview — login and dashboard**, on port **3002**. The owner's
+latest instruction explicitly requires visuals, not real sandbox authentication.
+The separate tool serves the shared sign-in/dashboard/styles/dialogs with simulated
+API responses. Do not inject preview strips, extra buttons, alternate UI or banners.
+Use the authorized Arena panel; a raw sandbox link can be blocked by its traffic gateway.
+
+The simulator privately reads `.env.preview` for the configured username/password.
+It performs a visual-only input comparison, not password-hash/Worker authentication.
+Never hardcode or commit those credentials. Profile, sessions, security metadata and
+activity are invented review fixtures. A single **server-memory display flag** allows
+the normal-looking identifier/password/dashboard flow without cookies or browser
+storage. It is shared across the review process, resets on restart/sign-out, and is
+not an identity, credential, real session or security boundary. No tokens are issued.
+Simulated profile edits affect only in-memory sample data. External/security actions
+are unavailable; no Worker, account database or production API is used or changed.
+The simulator refuses production/CI and is not imported by the deployed application.
+
+All 110 scoped UI items are addressed in shared production UI files after explicit
+approval of Phases 1–2 together and Phases 3–5 together. This is not a preview-only
+redesign. See [completed IDs, scope and evidence](../docs/UI_REVIEW_PHASES.md).
+Stop for owner visual review. Real Cloudflare/provider/security and manual accessibility
+checks remain separate; never describe visual simulation as production authentication.
+
+Optional browser QA: `node --experimental-strip-types tools/test-visual-preview-browser.mjs`
+with external Playwright/Chromium/OpenSSL installed (use `BROWSER_TOOLS_PATH` if outside
+the checkout). Test-only `jsqr` and `axe-core` are installed by `npm ci`. It uses loopback
+HTTPS without production/provider requests: zero-cookie simulated sign-in/reload, no
+strip, all six sections in both themes at 1280/800/390/320px, contrast/touch/keyboard,
+forms/dirty/pending/retry, software-keyboard viewport, history/scroll/long values/zero use,
+photo framing, method states, session/app confirmations and retained-history filters.
+It independently decodes the actual displayed MFA QR and exercises synthetic account
+switch/race UI. Scoped axe-core A/AA scans supplement the manual checks; none of these
+fixtures certify real authentication/MFA/provider/revocation or full accessibility.
+QA restores fictional profile edits and signs out at the end. Sign-out resets the shared
+sign-in flag; restarting resets all fictional process-memory edits.
+
+`npm run build` also bundles the pinned, MIT-licensed `qrcode-generator` locally into
+`web/vendor/qrcode.js`; attribution is in `web/vendor/QR_LICENSE.txt`. Authenticator
+setup keys never go to a QR service. Decoder/accessibility tools are test-only and do
+not enter the deployed UI or Worker bundle.
+
+## Actual local authentication testing (separate from UI-only review)
+
+```sh
+npm ci
+npm run preview:local
+```
+
+This explicit development-only command reads **`.env.preview`**, prepares the
+account in ignored `.local-d1.sqlite`, then starts the preview on `0.0.0.0:3000`.
+It never connects to production D1. Normal `npm start`, `npm run dev`, frontend
+builds and deployed Workers do not seed an account or read this private file.
+
+The owner's current local username/password live only in `.env.preview`, already
+created in this workspace. **Read that file privately; never print it, commit it,
+copy it into docs/examples/frontend, or upload it to Cloudflare.** Preserve both it
+and the local database when continuing in another chat. The password in the local
+DB is hashed by normal signup; login uses normal authentication, not a bypass.
+
+If a completely fresh workspace lacks the ignored file, ask the owner for local
+credentials and create it privately with owner-only permissions (`chmod 600`).
+Do not guess them or introduce a public default. Required keys are `DEV_MODE=true`,
+`LOCAL_PREVIEW_USERNAME` and `LOCAL_PREVIEW_PASSWORD`; optional keys are
+`LOCAL_PREVIEW_FIRST_NAME` and `LOCAL_PREVIEW_LAST_NAME`. No provider secrets belong
+in this file. Ignored files do not travel through GitHub into a fresh checkout.
+
+The launcher reuses an existing matching account without resetting profile data,
+password, MFA or sessions. If the password was changed while reviewing UI, update
+its private configuration to match; a mismatch stops setup rather than silently
+resetting credentials. If the local account/database was intentionally deleted,
+the next explicit launch recreates the configured account. Setup refuses
+production/CI, missing credentials and a non-default database path. No credentials
+are logged. Do not use this local-only account for real data.
+
+For Arena, use the background process tool for `npm run preview:local`. Use the
+forwarded preview URL and relative `/api` requests; never direct the user's browser
+to sandbox localhost. The opt-in launcher pins the exact HTTPS public origin from
+`E2B_SANDBOX_ID` and `PORT` for the local server, because the preview proxy may
+rewrite Host/protocol. It does not trust arbitrary Origin/X-Forwarded-Host headers
+or allow all `.e2b.app` origins. Production Worker CSRF rules are unchanged.
+If login fails with `csrf_rejected`, restart with this launcher instead of relaxing
+CSRF checks or adding wildcard/`null` origins. Local signup/sign-in/profile flows and UI can be tested;
+Google/email/physical-device/cross-app behavior still needs its configured pilot.
+
+**Dashboard access:** use Arena's authorized embedded preview panel. A raw public
+preview link/new tab can return E2B's **403 Missing traffic access token** before
+Accounts runs. Do not copy traffic tokens into links, frontend code or browser
+storage, or disable the gateway. The previous standalone-tab prompt was removed.
+
+In this explicit local Arena mode only, the Node transport adapts the Worker's
+host-only authentication cookies to **SameSite=None; Secure; HttpOnly; Partitioned**
+(CHIPS). This allows native login inside the cross-site preview while isolating its
+cookies by top-level site. The adapter refuses parent-domain or weakened cookies,
+retains values/lifetimes and applies equally to refresh/signout clearing cookies.
+The exact-origin CSRF checks still apply. Regular localhost and production Worker
+cookies stay unchanged; production retains SameSite=Lax and parent-domain SSO.
+This is not a browser-storage token fallback or a synthetic authenticated dashboard.
+
+Optional browser regression (requires external Playwright/Chromium and OpenSSL):
+`node --experimental-strip-types tools/test-preview-browser.mjs`. It privately
+reads local configuration, uses temporary loopback HTTPS with browser DNS mapped
+to loopback, and forwards only real browser cookies to the local server. No
+outbound provider/production requests, shared API cookie jar or route-fulfilled
+Set-Cookie responses are used; those shortcuts can mask blocked cookies or lose
+partition keys. Temporary self-signed TLS certificates are deleted after testing.
+The check enables third-party cookie restrictions, verifies embedded native login,
+authenticated reload, six desktop/mobile sections, actual browser partition keys,
+isolation from another top-level site, partitioned signout, and a modeled gateway
+that rejects standalone tabs. It does not certify the live Arena/E2B gateway;
+the owner must still check the actual preview panel.
+
+Historical owner checks on port 3000 failed after dashboard loading. Do not claim the live
+preview is fixed based on simulated checks. The Arena launcher now enables
+local-only redacted auth diagnostics (`LOCAL_PREVIEW_TRACE=false` disables them).
+Inspect actual owner signin, dashboard-document and auth/me entries: known cookie
+names/counts, status and sanitized selector/origin classification only. Never
+log bodies, cookie values, traffic tokens, arbitrary headers or account identity.
+Use this evidence to distinguish gateway/browser cookie loss from session/selector
+failure before making another authentication change. The captured live owner retry
+returned signin 200 with six outgoing cookies, but subsequent auth/me requests had
+no Cookie header and returned 401. The missing-cookie transport is confirmed;
+browser blocking vs platform forwarding is not yet determined. Do not claim a
+platform cause from this evidence alone or keep requesting password retries.
+
+
 ## 1. `local-d1.mjs` — Real SQLite D1 Adapter (Zero External Packages!)
 
 Wraps Node 22's built-in `node:sqlite` (`DatabaseSync`) with the exact Cloudflare `D1Database` interface (`prepare`, `bind`, `first`, `all`, `run`, `batch`, `exec`).
